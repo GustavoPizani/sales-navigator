@@ -1,0 +1,63 @@
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+
+const createBrokerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  full_name: z.string().min(1).max(120),
+  phone: z.string().max(30).optional().nullable(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+});
+
+export const createBroker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => createBrokerSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    // Verify caller is admin
+    const { data: caller } = await context.supabase
+      .from("profiles").select("role").eq("id", context.userId).single();
+    if (!caller || caller.role !== "admin") throw new Error("Forbidden");
+
+    const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+      email: data.email,
+      password: data.password,
+      email_confirm: true,
+      user_metadata: { full_name: data.full_name },
+    });
+    if (error || !created.user) throw new Error(error?.message || "Failed to create user");
+
+    // Profile was auto-created via trigger; update its fields
+    const { error: pErr } = await supabaseAdmin.from("profiles").update({
+      full_name: data.full_name,
+      phone: data.phone ?? null,
+      color: data.color,
+      role: "broker",
+      is_active: true,
+    }).eq("id", created.user.id);
+    if (pErr) throw new Error(pErr.message);
+
+    return { id: created.user.id };
+  });
+
+const updateBrokerSchema = z.object({
+  id: z.string().uuid(),
+  full_name: z.string().min(1).max(120).optional(),
+  phone: z.string().max(30).nullable().optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  is_active: z.boolean().optional(),
+});
+
+export const updateBroker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => updateBrokerSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { data: caller } = await context.supabase
+      .from("profiles").select("role").eq("id", context.userId).single();
+    if (!caller || caller.role !== "admin") throw new Error("Forbidden");
+    const { id, ...patch } = data;
+    const { error } = await supabaseAdmin.from("profiles").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
