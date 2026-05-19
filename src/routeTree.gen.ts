@@ -15,9 +15,12 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
-import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
+import { Route as AuthenticatedDealsRouteImport } from './routes/_authenticated/deals'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedAppointmentsRouteImport } from './routes/_authenticated/appointments'
+import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
+import { Route as AuthenticatedDashboardCorretorIdRouteImport } from './routes/_authenticated/dashboard/corretor/$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -48,9 +51,14 @@ const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedMyDayRoute = AuthenticatedMyDayRouteImport.update({
-  id: '/my-day',
-  path: '/my-day',
+const AuthenticatedDealsRoute = AuthenticatedDealsRouteImport.update({
+  id: '/deals',
+  path: '/deals',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
@@ -64,26 +72,44 @@ const AuthenticatedAppointmentsRoute =
     path: '/appointments',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsProfileRoute =
+  AuthenticatedSettingsProfileRouteImport.update({
+    id: '/settings/profile',
+    path: '/settings/profile',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedDashboardCorretorIdRoute =
+  AuthenticatedDashboardCorretorIdRouteImport.update({
+    id: '/corretor/$id',
+    path: '/corretor/$id',
+    getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/appointments': typeof AuthenticatedAppointmentsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
-  '/my-day': typeof AuthenticatedMyDayRoute
+  '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
+  '/deals': typeof AuthenticatedDealsRoute
   '/projects': typeof AuthenticatedProjectsRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/appointments': typeof AuthenticatedAppointmentsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
-  '/my-day': typeof AuthenticatedMyDayRoute
+  '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
+  '/deals': typeof AuthenticatedDealsRoute
   '/projects': typeof AuthenticatedProjectsRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -92,10 +118,13 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/appointments': typeof AuthenticatedAppointmentsRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
-  '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
+  '/_authenticated/deals': typeof AuthenticatedDealsRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
+  '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/_authenticated/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -104,20 +133,26 @@ export interface FileRouteTypes {
     | '/login'
     | '/appointments'
     | '/calendar'
-    | '/my-day'
+    | '/dashboard'
+    | '/deals'
     | '/projects'
     | '/schedule'
     | '/team'
+    | '/settings/profile'
+    | '/dashboard/corretor/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/appointments'
     | '/calendar'
-    | '/my-day'
+    | '/dashboard'
+    | '/deals'
     | '/projects'
     | '/schedule'
     | '/team'
+    | '/settings/profile'
+    | '/dashboard/corretor/$id'
   id:
     | '__root__'
     | '/'
@@ -125,10 +160,13 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/appointments'
     | '/_authenticated/calendar'
-    | '/_authenticated/my-day'
+    | '/_authenticated/dashboard'
+    | '/_authenticated/deals'
     | '/_authenticated/projects'
     | '/_authenticated/schedule'
     | '/_authenticated/team'
+    | '/_authenticated/settings/profile'
+    | '/_authenticated/dashboard/corretor/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -181,11 +219,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/my-day': {
-      id: '/_authenticated/my-day'
-      path: '/my-day'
-      fullPath: '/my-day'
-      preLoaderRoute: typeof AuthenticatedMyDayRouteImport
+    '/_authenticated/deals': {
+      id: '/_authenticated/deals'
+      path: '/deals'
+      fullPath: '/deals'
+      preLoaderRoute: typeof AuthenticatedDealsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/calendar': {
@@ -202,25 +247,58 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppointmentsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/profile': {
+      id: '/_authenticated/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/dashboard/corretor/$id': {
+      id: '/_authenticated/dashboard/corretor/$id'
+      path: '/corretor/$id'
+      fullPath: '/dashboard/corretor/$id'
+      preLoaderRoute: typeof AuthenticatedDashboardCorretorIdRouteImport
+      parentRoute: typeof AuthenticatedDashboardRoute
+    }
   }
 }
+
+interface AuthenticatedDashboardRouteChildren {
+  AuthenticatedDashboardCorretorIdRoute: typeof AuthenticatedDashboardCorretorIdRoute
+}
+
+const AuthenticatedDashboardRouteChildren: AuthenticatedDashboardRouteChildren =
+  {
+    AuthenticatedDashboardCorretorIdRoute:
+      AuthenticatedDashboardCorretorIdRoute,
+  }
+
+const AuthenticatedDashboardRouteWithChildren =
+  AuthenticatedDashboardRoute._addFileChildren(
+    AuthenticatedDashboardRouteChildren,
+  )
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAppointmentsRoute: typeof AuthenticatedAppointmentsRoute
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
-  AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRouteWithChildren
+  AuthenticatedDealsRoute: typeof AuthenticatedDealsRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
+  AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAppointmentsRoute: AuthenticatedAppointmentsRoute,
   AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
-  AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRouteWithChildren,
+  AuthenticatedDealsRoute: AuthenticatedDealsRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
+  AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -235,3 +313,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

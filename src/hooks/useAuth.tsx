@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-export type AppRole = "admin" | "broker";
+export type AppRole = "admin" | "broker" | "director" | "master";
 export interface Profile {
   id: string;
   full_name: string;
@@ -11,6 +11,7 @@ export interface Profile {
   phone: string | null;
   color: string;
   is_active: boolean;
+  manager_id: string | null;
 }
 
 interface AuthContextValue {
@@ -19,6 +20,8 @@ interface AuthContextValue {
   profile: Profile | null;
   loading: boolean;
   isAdmin: boolean;
+  isDirector: boolean;
+  isMaster: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -57,7 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: session?.user ?? null,
     profile,
     loading,
-    isAdmin: profile?.role === "admin",
+    isAdmin: profile?.role === "admin" || profile?.role === "master",
+    isDirector: profile?.role === "director",
+    isMaster: profile?.role === "master",
     signOut: async () => { await supabase.auth.signOut(); },
     refreshProfile: async () => { if (session?.user) await loadProfile(session.user.id); },
   };

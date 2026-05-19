@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Plus, ExternalLink, Mail, AlertTriangle, Check } from "lucide-react";
+import { ptBR } from "date-fns/locale";
+import { Plus, ExternalLink, AlertTriangle, Check } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,6 +23,13 @@ type Appt = {
   include_manager: boolean; google_calendar_link: string | null;
 };
 
+const typeLabels: Record<Appt["type"], string> = {
+  visit: "visita",
+  meeting: "reunião",
+  call: "ligação",
+  "follow-up": "follow-up",
+};
+
 function AppointmentsPage() {
   const { user } = useAuth();
   const [editing, setEditing] = useState<Appt | "new" | null>(null);
@@ -38,26 +46,26 @@ function AppointmentsPage() {
   });
   return (
     <div className="pb-nav">
-      <AppHeader title="My Appointments" />
+      <AppHeader title="Meus Agendamentos" />
       <div className="px-4 pt-4 space-y-2">
         {(apptsQ.data ?? []).length === 0 && (
-          <p className="text-center text-muted-foreground py-12 text-sm">No upcoming appointments.</p>
+          <p className="text-center text-muted-foreground py-12 text-sm">Nenhum agendamento futuro.</p>
         )}
         {(apptsQ.data ?? []).map((a) => (
           <button key={a.id} onClick={() => setEditing(a)} className="w-full text-left bg-white rounded-xl p-3 border border-border">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-[var(--navy)] truncate">{a.title}</p>
-                <p className="text-xs text-muted-foreground">{format(new Date(a.date + "T00:00:00"), "EEE, MMM d")} · {a.start_time.slice(0,5)}–{a.end_time.slice(0,5)}</p>
-                {a.client_name && <p className="text-xs text-muted-foreground mt-0.5">Client: {a.client_name}</p>}
+                <p className="text-xs text-muted-foreground">{format(new Date(a.date + "T00:00:00"), "EEE, d 'de' MMM", { locale: ptBR })} · {a.start_time.slice(0,5)}–{a.end_time.slice(0,5)}</p>
+                {a.client_name && <p className="text-xs text-muted-foreground mt-0.5">Cliente: {a.client_name}</p>}
               </div>
-              <span className="text-[10px] uppercase tracking-wide px-2 py-1 rounded-full bg-[var(--gold)]/20 text-[var(--navy)] font-semibold">{a.type}</span>
+              <span className="text-[10px] uppercase tracking-wide px-2 py-1 rounded-full bg-[var(--gold)]/20 text-[var(--navy)] font-semibold">{typeLabels[a.type]}</span>
             </div>
           </button>
         ))}
       </div>
       <button onClick={() => setEditing("new")}
-        className="fixed right-4 bottom-24 z-30 w-14 h-14 rounded-full bg-[var(--gold)] text-[var(--navy)] shadow-lg flex items-center justify-center" aria-label="New appointment">
+        className="fixed right-4 bottom-24 z-30 w-14 h-14 rounded-full bg-[var(--gold)] text-[var(--navy)] shadow-lg flex items-center justify-center" aria-label="Novo agendamento">
         <Plus size={28} strokeWidth={2.5} />
       </button>
       {editing && <AppointmentForm appt={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
@@ -97,17 +105,15 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
   });
 
   const selectedProject = useMemo(() => projectsQ.data?.find((p) => p.id === projectId), [projectsQ.data, projectId]);
-  const showProjectLocation = type === "visit" && !!selectedProject;
+  const showProjectLocation = !!selectedProject;
   const location = showProjectLocation ? `${selectedProject!.address}, ${selectedProject!.city}` : customLoc;
 
-  // auto-fill title for visit + project
   useEffect(() => {
-    if (type === "visit" && selectedProject && (!appt || !title)) {
-      setTitle(`Visit – ${selectedProject.name}`);
+    if (selectedProject && (!appt || !title)) {
+      setTitle(`Visita – ${selectedProject.name}`);
     }
-  }, [type, selectedProject?.id]); // eslint-disable-line
+  }, [selectedProject?.id]); // eslint-disable-line
 
-  // Manager availability check
   const conflictQ = useQuery({
     queryKey: ["mgr-conflict", adminQ.data?.id, date, startT, endT],
     enabled: includeManager && !!adminQ.data?.id,
@@ -125,7 +131,7 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
 
   const save = useMutation({
     mutationFn: async () => {
-      const finalTitle = title || (selectedProject ? `Visit – ${selectedProject.name}` : "Appointment");
+      const finalTitle = title || (selectedProject ? `Visita – ${selectedProject.name}` : "Agendamento");
       const link = googleCalendarLink({
         title: finalTitle, date, startTime: startT, endTime: endT,
         description: description || undefined, location: location || undefined,
@@ -152,7 +158,7 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
       qc.invalidateQueries({ queryKey: ["my-appts"] });
       qc.invalidateQueries({ queryKey: ["team-appts"] });
       setSavedLink(link);
-      toast.success("Appointment saved");
+      toast.success("Agendamento salvo");
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -163,61 +169,52 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
       const { error } = await supabase.from("appointments").delete().eq("id", appt.id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["my-appts"] }); qc.invalidateQueries({ queryKey: ["team-appts"] }); toast.success("Deleted"); onClose(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-appts"] });
+      qc.invalidateQueries({ queryKey: ["team-appts"] });
+      toast.success("Excluído");
+      onClose();
+    },
   });
-
-  const mailtoLink = () => {
-    const subject = encodeURIComponent(title);
-    const body = encodeURIComponent(`Add to your calendar:\n\n${savedLink}`);
-    const to = [clientEmail, user?.email].filter(Boolean).join(",");
-    return `mailto:${to}?subject=${subject}&body=${body}`;
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto" onClick={onClose}>
       <div className="bg-white w-full min-h-screen sm:min-h-0 sm:max-w-md sm:mx-auto sm:mt-8 sm:rounded-2xl p-5 safe-top safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-[var(--navy)]">{appt ? "Edit" : "New"} appointment</h3>
-          <button onClick={onClose} className="text-muted-foreground">Close</button>
+          <h3 className="text-lg font-semibold text-[var(--navy)]">{appt ? "Editar" : "Novo"} agendamento</h3>
+          <button onClick={onClose} className="text-muted-foreground">Fechar</button>
         </div>
         <div className="space-y-3">
-          <div className="grid grid-cols-4 gap-1">
-            {(["visit", "meeting", "call", "follow-up"] as const).map((t) => (
-              <button key={t} onClick={() => setType(t)} className={`h-10 rounded-lg text-xs font-semibold capitalize ${type === t ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-muted-foreground border border-border"}`}>{t}</button>
-            ))}
-          </div>
-          <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Título" value={title} onChange={(e) => setTitle(e.target.value)} />
           <input type="date" className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={date} onChange={(e) => setDate(e.target.value)} />
           <div className="grid grid-cols-2 gap-2">
             <input type="time" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={startT} onChange={(e) => setStartT(e.target.value)} />
             <input type="time" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={endT} onChange={(e) => setEndT(e.target.value)} />
           </div>
 
-          {type === "visit" ? (
-            <select className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">Select project…</option>
-              {(projectsQ.data ?? []).map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
-            </select>
-          ) : null}
+          <select className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">Selecione o imóvel… (opcional)</option>
+            {(projectsQ.data ?? []).map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+          </select>
 
           {showProjectLocation ? (
             <div className="px-4 py-3 rounded-xl bg-[var(--surface)] border border-border text-sm">
-              <p className="text-xs text-muted-foreground">Location (from project)</p>
+              <p className="text-xs text-muted-foreground">Local (do imóvel)</p>
               <p className="text-[var(--navy)]">{location}</p>
             </div>
           ) : (
-            <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Location" value={customLoc} onChange={(e) => setCustomLoc(e.target.value)} />
+            <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Local" value={customLoc} onChange={(e) => setCustomLoc(e.target.value)} />
           )}
 
           <div className="grid grid-cols-2 gap-2">
-            <input className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="Client name" value={clientName} onChange={(e) => setClientName(e.target.value)} />
-            <input type="email" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="Client email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
+            <input className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="Nome do cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+            <input type="email" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="E-mail do cliente" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
           </div>
 
-          <textarea className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border min-h-[80px]" placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <textarea className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border min-h-[80px]" placeholder="Descrição (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} />
 
           <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border">
-            <span className="text-sm font-medium text-[var(--navy)]">Include manager{adminQ.data ? ` (${adminQ.data.full_name})` : ""}</span>
+            <span className="text-sm font-medium text-[var(--navy)]">Incluir gestor{adminQ.data ? ` (${adminQ.data.full_name})` : ""}</span>
             <input type="checkbox" checked={includeManager} onChange={(e) => setIncludeManager(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
           </label>
 
@@ -225,26 +222,25 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
             conflictQ.data ? (
               <div className="rounded-xl bg-red-50 border border-red-200 text-red-800 px-3 py-2 text-sm flex gap-2">
                 <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
-                <span>Manager has a conflict: <b>{conflictQ.data.title}</b> ({conflictQ.data.start_time.slice(0,5)}–{conflictQ.data.end_time.slice(0,5)}). Include anyway?</span>
+                <span>O gestor tem um conflito: <b>{conflictQ.data.title}</b> ({conflictQ.data.start_time.slice(0,5)}–{conflictQ.data.end_time.slice(0,5)}). Incluir mesmo assim?</span>
               </div>
             ) : (
               <div className="rounded-xl bg-green-50 border border-green-200 text-green-800 px-3 py-2 text-sm flex gap-2">
-                <Check size={16} className="flex-shrink-0 mt-0.5" /> Manager is available at this time
+                <Check size={16} className="flex-shrink-0 mt-0.5" /> O gestor está disponível neste horário
               </div>
             )
           )}
 
           {savedLink && (
-            <div className="space-y-2 pt-2 border-t border-border">
-              <a href={savedLink} target="_blank" rel="noreferrer" className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-semibold flex items-center justify-center gap-2"><ExternalLink size={16} />Open in Google Calendar</a>
-              <a href={mailtoLink()} className="w-full h-12 rounded-xl bg-[var(--navy)] text-white font-semibold flex items-center justify-center gap-2"><Mail size={16} />Send by email</a>
+            <div className="pt-2 border-t border-border">
+              <a href={savedLink} target="_blank" rel="noreferrer" className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-semibold flex items-center justify-center gap-2"><ExternalLink size={16} />Abrir no Google Agenda</a>
             </div>
           )}
 
           <div className="flex gap-2 pt-2">
-            {appt && <button onClick={() => del.mutate()} className="h-12 px-4 rounded-xl bg-red-50 text-red-600 font-medium">Delete</button>}
-            <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancel</button>
-            <button onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-60">Save</button>
+            {appt && <button onClick={() => del.mutate()} className="h-12 px-4 rounded-xl bg-red-50 text-red-600 font-medium">Excluir</button>}
+            <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancelar</button>
+            <button onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-60">Salvar</button>
           </div>
         </div>
       </div>

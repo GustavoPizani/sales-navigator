@@ -1,6 +1,9 @@
 import { createFileRoute, Navigate, Outlet } from "@tanstack/react-router";
+import { useState } from "react";
+import toast from "react-hot-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { BottomNav } from "@/components/BottomNav";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
@@ -8,22 +11,71 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   const { session, profile, loading } = useAuth();
-  if (loading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Loading…</div>;
+  if (loading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Carregando…</div>;
   if (!session) return <Navigate to="/login" replace />;
-  if (!profile) return <div className="min-h-screen grid place-items-center text-muted-foreground">Setting up your account…</div>;
+  if (!profile) return <div className="min-h-screen grid place-items-center text-muted-foreground">Configurando sua conta…</div>;
   if (!profile.is_active)
     return (
       <div className="min-h-screen grid place-items-center p-6 text-center">
         <div>
-          <h2 className="text-xl font-semibold text-[var(--navy)]">Account inactive</h2>
-          <p className="text-muted-foreground mt-2">Contact your administrator.</p>
+          <h2 className="text-xl font-semibold text-[var(--navy)]">Conta inativa</h2>
+          <p className="text-muted-foreground mt-2">Entre em contato com seu gestor.</p>
         </div>
       </div>
     );
+
+  if (session.user.user_metadata?.force_password_change) {
+    return <ForcePasswordChange />;
+  }
+
   return (
     <div className="min-h-screen bg-[var(--surface)]">
       <Outlet />
       <BottomNav />
+    </div>
+  );
+}
+
+function ForcePasswordChange() {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 6) return toast.error("A senha deve ter no mínimo 6 caracteres.");
+    
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({
+      password,
+      data: { force_password_change: false },
+    });
+    setBusy(false);
+    
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Senha atualizada! Redirecionando...");
+      window.location.reload();
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[var(--surface)] grid place-items-center p-4 safe-top safe-bottom">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-border w-full max-w-sm">
+        <h2 className="text-xl font-bold text-[var(--navy)] mb-2">Trocar Senha</h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Como este é o seu primeiro acesso, por motivos de segurança, você precisa definir uma nova senha.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Nova Senha</label>
+            <input type="password" required minLength={6} className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          <button type="submit" disabled={busy} className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold disabled:opacity-50">
+            {busy ? "Salvando..." : "Salvar nova senha e entrar"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

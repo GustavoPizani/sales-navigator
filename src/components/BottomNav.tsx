@@ -1,25 +1,32 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Sun, Calendar, CalendarDays, Building2, Users, ClipboardList } from "lucide-react";
+import { BarChart, Calendar, CalendarDays, Building2, Users, ClipboardList } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 const adminTabs = [
-  { to: "/my-day", label: "My Day", icon: Sun },
-  { to: "/schedule", label: "Schedule", icon: Calendar },
-  { to: "/calendar", label: "Calendar", icon: CalendarDays },
-  { to: "/projects", label: "Projects", icon: Building2 },
-  { to: "/team", label: "Team", icon: Users },
+  { to: "/dashboard", label: "Dashboard", icon: BarChart },
+  { to: "/schedule", label: "Escala", icon: Calendar },
+  { to: "/calendar", label: "Agendamentos", icon: CalendarDays },
+  { to: "/projects", label: "Imóveis", icon: Building2 },
+  { to: "/team", label: "Time", icon: Users },
+] as const;
+
+const directorTabs = [
+  { to: "/dashboard", label: "Dashboard", icon: BarChart },
+  { to: "/schedule", label: "Escala", icon: Calendar },
+  { to: "/calendar", label: "Agendamentos", icon: CalendarDays },
+  { to: "/team", label: "Time", icon: Users },
 ] as const;
 
 const brokerTabs = [
-  { to: "/my-day", label: "My Day", icon: Sun },
-  { to: "/schedule", label: "My Schedule", icon: Calendar },
-  { to: "/appointments", label: "Appointments", icon: ClipboardList },
+  { to: "/dashboard", label: "Dashboard", icon: BarChart },
+  { to: "/schedule", label: "Minha Escala", icon: Calendar },
+  { to: "/appointments", label: "Agendamentos", icon: ClipboardList },
 ] as const;
 
 export function BottomNav() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isDirector } = useAuth();
   const loc = useLocation();
-  const tabs = isAdmin ? adminTabs : brokerTabs;
+  const tabs = isAdmin ? adminTabs : isDirector ? directorTabs : brokerTabs;
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 bg-[var(--navy)] text-white safe-bottom shadow-[0_-2px_12px_rgba(0,0,0,0.15)]">
       <ul className="flex justify-around items-stretch h-16 px-1">
