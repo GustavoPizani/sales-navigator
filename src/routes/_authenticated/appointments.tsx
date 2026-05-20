@@ -8,7 +8,6 @@ import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
-import { googleCalendarLink } from "@/lib/gcal";
 
 export const Route = createFileRoute("/_authenticated/appointments")({
   component: AppointmentsPage,
@@ -22,6 +21,27 @@ type Appt = {
   type: "visit" | "meeting" | "call" | "follow-up";
   include_manager: boolean; google_calendar_link: string | null;
 };
+
+export function outlookCalendarLink(p: {
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  description?: string;
+  location?: string;
+  emails?: string[];
+}) {
+  const params = new URLSearchParams({
+    subject: p.title,
+    startdt: `${p.date}T${p.startTime}:00`,
+    enddt: `${p.date}T${p.endTime}:00`,
+  });
+  if (p.description) params.set("body", p.description);
+  if (p.location) params.set("location", p.location);
+  const emails = (p.emails || []).filter(Boolean);
+  if (emails.length) params.set("to", emails.join(","));
+  return `https://outlook.office.com/calendar/0/deeplink/compose?${params.toString()}`;
+}
 
 const typeLabels: Record<Appt["type"], string> = {
   visit: "visita",
@@ -132,7 +152,7 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
   const save = useMutation({
     mutationFn: async () => {
       const finalTitle = title || (selectedProject ? `Visita – ${selectedProject.name}` : "Agendamento");
-      const link = googleCalendarLink({
+      const link = outlookCalendarLink({
         title: finalTitle, date, startTime: startT, endTime: endT,
         description: description || undefined, location: location || undefined,
         emails: [clientEmail, includeManager ? adminQ.data?.email : undefined].filter((x): x is string => !!x),
@@ -233,7 +253,7 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
 
           {savedLink && (
             <div className="pt-2 border-t border-border">
-              <a href={savedLink} target="_blank" rel="noreferrer" className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-semibold flex items-center justify-center gap-2"><ExternalLink size={16} />Abrir no Google Agenda</a>
+              <a href={savedLink} target="_blank" rel="noreferrer" className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-semibold flex items-center justify-center gap-2"><ExternalLink size={16} />Abrir no Outlook Calendar</a>
             </div>
           )}
 

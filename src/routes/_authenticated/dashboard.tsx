@@ -53,6 +53,7 @@ function AdminDashboard({ user }: { user: any }) {
   const isAdmin = true;
   const filters = useDashboardFilters();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [editingAtendimento, setEditingAtendimento] = useState<any | null>(null);
 
   const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
@@ -218,9 +219,11 @@ function AdminDashboard({ user }: { user: any }) {
             <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
             <CsvImportButton brokers={brokersQ.data ?? []} />
           </div>
-          <AtendimentosTable atendimentos={atendimentos} isAdmin={isAdmin} />
+          <AtendimentosTable atendimentos={atendimentos} isAdmin={isAdmin} onRowClick={(a) => setEditingAtendimento(a)} />
         </div>
       </div>
+
+      {editingAtendimento && <AtendimentoEditForm atendimento={editingAtendimento} onClose={() => setEditingAtendimento(null)} />}
     </div>
   );
 }
