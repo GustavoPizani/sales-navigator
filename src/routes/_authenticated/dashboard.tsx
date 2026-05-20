@@ -435,6 +435,7 @@ function AtendimentoForm({ userId, onClose }: { userId: string; onClose: () => v
       setData(appt.date);
       if (appt.client_name) setNomeCliente(appt.client_name);
       if (appt.client_email) setEmailCliente(appt.client_email);
+      if (appt.client_id) setIdCliente(appt.client_id);
     }
   };
 

@@ -18,6 +18,7 @@ type Appt = {
   start_time: string; end_time: string; project_id: string | null;
   custom_location: string | null; description: string | null;
   client_name: string | null; client_email: string | null;
+  client_id: string | null;
   type: "visit" | "meeting" | "call" | "follow-up";
   include_manager: boolean; google_calendar_link: string | null;
 };
@@ -94,7 +95,7 @@ function AppointmentsPage() {
 }
 
 export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose: () => void }) {
-  const { user } = useAuth();
+  const { user, isAdmin, isDirector, profile } = useAuth();
   const qc = useQueryClient();
   const [type, setType] = useState<Appt["type"]>(appt?.type ?? "visit");
   const [date, setDate] = useState(appt?.date ?? format(new Date(), "yyyy-MM-dd"));
@@ -104,10 +105,13 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
   const [customLoc, setCustomLoc] = useState(appt?.custom_location ?? "");
   const [title, setTitle] = useState(appt?.title ?? "");
   const [clientName, setClientName] = useState(appt?.client_name ?? "");
+  const [clientId, setClientId] = useState(appt?.client_id ?? "");
   const [clientEmail, setClientEmail] = useState(appt?.client_email ?? "");
   const [description, setDescription] = useState(appt?.description ?? "");
   const [includeManager, setIncludeManager] = useState(appt?.include_manager ?? false);
   const [savedLink, setSavedLink] = useState<string | null>(appt?.google_calendar_link ?? null);
+
+  const isManager = isAdmin || isDirector;
 
   const projectsQ = useQuery({
     queryKey: ["projects-active"],
@@ -117,9 +121,10 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
     },
   });
   const adminQ = useQuery({
-    queryKey: ["admin-profile"],
+    queryKey: ["admin-profile", profile?.manager_id],
+    enabled: !!profile?.manager_id && !isManager,
     queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("id,full_name,email").eq("role", "admin").eq("is_active", true).limit(1).maybeSingle();
+      const { data } = await supabase.from("profiles").select("id,full_name,email").eq("id", profile!.manager_id).limit(1).maybeSingle();
       return data;
     },
   });
@@ -162,7 +167,8 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
         project_id: selectedProject?.id ?? null,
         custom_location: showProjectLocation ? null : (customLoc || null),
         description: description || null, client_name: clientName || null,
-        client_email: clientEmail || null, type, include_manager: includeManager,
+        client_email: clientEmail || null, client_id: clientId || null,
+        type, include_manager: isManager ? false : includeManager,
         google_calendar_link: link,
       };
       if (appt) {
@@ -226,19 +232,22 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
             <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Local" value={customLoc} onChange={(e) => setCustomLoc(e.target.value)} />
           )}
 
+          <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Nome do cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} />
           <div className="grid grid-cols-2 gap-2">
-            <input className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="Nome do cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+            <input className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="ID do cliente" value={clientId} onChange={(e) => setClientId(e.target.value)} />
             <input type="email" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="E-mail do cliente" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
           </div>
 
           <textarea className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border min-h-[80px]" placeholder="Descrição (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} />
 
-          <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border">
-            <span className="text-sm font-medium text-[var(--navy)]">Incluir gestor{adminQ.data ? ` (${adminQ.data.full_name})` : ""}</span>
-            <input type="checkbox" checked={includeManager} onChange={(e) => setIncludeManager(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
-          </label>
+          {!isManager && (
+            <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border">
+              <span className="text-sm font-medium text-[var(--navy)]">Incluir gestor{adminQ.data ? ` (${adminQ.data.full_name})` : ""}</span>
+              <input type="checkbox" checked={includeManager} onChange={(e) => setIncludeManager(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
+            </label>
+          )}
 
-          {includeManager && (
+          {!isManager && includeManager && (
             conflictQ.data ? (
               <div className="rounded-xl bg-red-50 border border-red-200 text-red-800 px-3 py-2 text-sm flex gap-2">
                 <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
