@@ -71,6 +71,29 @@ function entregaBadge(entrega?: string) {
   return "bg-amber-100 text-amber-700";
 }
 
+function normalizeProjectName(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function findExistingProject(
+  name: string,
+  existing: { id: string; name: string }[]
+): { id: string; name: string } | null {
+  const norm = normalizeProjectName(name);
+  const exact = existing.find((p) => normalizeProjectName(p.name) === norm);
+  if (exact) return exact;
+  const wordsA = norm.split(" ").filter((w) => w.length > 2);
+  let best = { score: 0.4, proj: null as { id: string; name: string } | null };
+  for (const p of existing) {
+    const wordsB = new Set(normalizeProjectName(p.name).split(" ").filter((w) => w.length > 2));
+    const common = wordsA.filter((w) => wordsB.has(w)).length;
+    const union = new Set([...wordsA, ...wordsB]).size;
+    const score = union > 0 ? common / union : 0;
+    if (score > best.score) best = { score, proj: p };
+  }
+  return best.proj;
+}
+
 // ─── Groq ────────────────────────────────────────────────────────────────────
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -382,6 +405,7 @@ function ImportModal({
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
   const [extracted, setExtracted] = useState<ExtractedProperty[]>([]);
+  const [existingProjects, setExistingProjects] = useState<{ id: string; name: string }[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -412,12 +436,16 @@ function ImportModal({
     setLoading(true);
     setLoadingMsg("Analisando com IA...");
     try {
-      const props = await extractFromGroq(text);
+      const [props, { data: existing }] = await Promise.all([
+        extractFromGroq(text),
+        supabase.from("projects").select("id, name"),
+      ]);
       if (!props.length) {
         toast.error("Nenhum imóvel encontrado no texto");
         return;
       }
       setExtracted(props);
+      setExistingProjects((existing ?? []) as { id: string; name: string }[]);
       setSelected(new Set(props.map((_, i) => i)));
       setStep("select");
     } catch (err: any) {
@@ -446,27 +474,44 @@ function ImportModal({
       return;
     }
     setSaving(true);
+    let updated = 0;
+    let inserted = 0;
     try {
-      const toInsert = extracted
-        .filter((_, i) => selected.has(i))
-        .map((p) => ({
-          name: p.name,
-          address: p.address,
-          city: p.city || "São Paulo",
-          description: JSON.stringify({
-            neighborhood: p.neighborhood,
-            entrega: p.entrega,
-            diferencial: p.diferencial,
-            estrutura: p.estrutura,
-            typologies: p.typologies,
-          }),
-          is_active: true,
-          manager_id: managerId,
-        }));
-
-      const { error } = await supabase.from("projects").insert(toInsert);
-      if (error) throw error;
-      toast.success(`${toInsert.length} imóvel(eis) importado(s)`);
+      for (const [idx, p] of extracted.entries()) {
+        if (!selected.has(idx)) continue;
+        const desc = JSON.stringify({
+          neighborhood: p.neighborhood,
+          entrega: p.entrega,
+          diferencial: p.diferencial,
+          estrutura: p.estrutura,
+          typologies: p.typologies,
+        });
+        const match = findExistingProject(p.name, existingProjects);
+        if (match) {
+          const { error } = await supabase.from("projects").update({
+            address: p.address,
+            city: p.city || "São Paulo",
+            description: desc,
+          }).eq("id", match.id);
+          if (error) throw error;
+          updated++;
+        } else {
+          const { error } = await supabase.from("projects").insert({
+            name: p.name,
+            address: p.address,
+            city: p.city || "São Paulo",
+            description: desc,
+            is_active: true,
+            manager_id: managerId,
+          });
+          if (error) throw error;
+          inserted++;
+        }
+      }
+      const parts: string[] = [];
+      if (updated) parts.push(`${updated} atualizado(s)`);
+      if (inserted) parts.push(`${inserted} novo(s)`);
+      toast.success(parts.join(", "));
       onImported();
       onClose();
     } catch (err: any) {
@@ -539,16 +584,13 @@ function ImportModal({
                 onClick={toggleAll}
                 className="flex items-center gap-2 text-sm text-[var(--navy)] font-medium py-1"
               >
-                {selected.size === extracted.length ? (
-                  <CheckSquare size={16} />
-                ) : (
-                  <Square size={16} />
-                )}
+                {selected.size === extracted.length ? <CheckSquare size={16} /> : <Square size={16} />}
                 {selected.size === extracted.length ? "Desmarcar todos" : "Selecionar todos"}
               </button>
 
               {extracted.map((p, i) => {
                 const on = selected.has(i);
+                const existingMatch = findExistingProject(p.name, existingProjects);
                 return (
                   <button
                     key={i}
@@ -567,6 +609,9 @@ function ImportModal({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-sm text-[var(--navy)]">{p.name}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${existingMatch ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}>
+                            {existingMatch ? "ATUALIZAR" : "NOVO"}
+                          </span>
                           {p.entrega && (
                             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${entregaBadge(p.entrega)}`}>
                               {p.entrega}
@@ -633,7 +678,7 @@ function ImportModal({
                 className="flex-1 h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {saving && <Loader2 size={16} className="animate-spin" />}
-                Importar {selected.size > 0 ? `(${selected.size})` : ""}
+                {saving ? "Salvando..." : `Confirmar (${selected.size})`}
               </button>
             </div>
           )}
@@ -643,7 +688,9 @@ function ImportModal({
   );
 }
 
-// ─── Project form (manual edit) ───────────────────────────────────────────────
+// ─── Project form (manual edit + typologies editor) ───────────────────────────
+const INPUT = "w-full h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm";
+
 function ProjectForm({
   project,
   managerId,
@@ -655,19 +702,39 @@ function ProjectForm({
 }) {
   const qc = useQueryClient();
   const rich = parseDesc(project?.description ?? null);
+
   const [name, setName] = useState(project?.name ?? "");
   const [address, setAddress] = useState(project?.address ?? "");
-  const [city, setCity] = useState(project?.city ?? "");
-  const [description, setDescription] = useState(rich ? "" : (project?.description ?? ""));
+  const [city, setCity] = useState(project?.city ?? "São Paulo");
+  const [entrega, setEntrega] = useState(rich?.entrega ?? "");
+  const [diferencial, setDiferencial] = useState(rich?.diferencial ?? "");
+  const [estrutura, setEstrutura] = useState(rich?.estrutura ?? "");
+  const [typologies, setTypologies] = useState<Typology[]>(rich?.typologies ?? []);
   const [active, setActive] = useState(project?.is_active ?? true);
+
+  const addTypology = () =>
+    setTypologies((prev) => [...prev, { type: "", area: 0, vagas: 0 }]);
+
+  const updateTypology = (i: number, field: keyof Typology, value: any) =>
+    setTypologies((prev) => prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)));
+
+  const removeTypology = (i: number) =>
+    setTypologies((prev) => prev.filter((_, idx) => idx !== i));
 
   const save = useMutation({
     mutationFn: async () => {
+      const desc: RichDesc = {
+        neighborhood: rich?.neighborhood,
+        entrega: entrega || undefined,
+        diferencial: diferencial || undefined,
+        estrutura: estrutura || undefined,
+        typologies: typologies.filter((t) => t.type.trim()),
+      };
       const payload = {
         name,
         address,
         city,
-        description: description || null,
+        description: JSON.stringify(desc),
         is_active: active,
         manager_id: managerId,
       };
@@ -682,6 +749,7 @@ function ProjectForm({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects-all"] });
       qc.invalidateQueries({ queryKey: ["projects-active"] });
+      qc.invalidateQueries({ queryKey: ["projects-for-dashboard"] });
       toast.success("Salvo");
       onClose();
     },
@@ -691,44 +759,105 @@ function ProjectForm({
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end" onClick={onClose}>
       <div
-        className="bg-white w-full rounded-t-2xl p-5 safe-bottom"
+        className="bg-white w-full rounded-t-2xl flex flex-col"
+        style={{ maxHeight: "92vh" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold text-[var(--navy)] mb-3">
-          {project ? "Editar" : "Novo"} imóvel
-        </h3>
-        <div className="space-y-3">
-          <input
-            className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
-            placeholder="Nome do imóvel"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <input
-            className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
-            placeholder="Endereço completo"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-          />
-          <input
-            className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
-            placeholder="Cidade"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-          />
-          {!rich && (
-            <textarea
-              className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border min-h-[80px]"
-              placeholder="Descrição (opcional)"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          )}
-          {rich && (
-            <p className="text-xs text-muted-foreground px-1">
-              Este imóvel foi importado do tabelão — tipologias e preços são gerenciados automaticamente.
-            </p>
-          )}
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
+          <h3 className="text-lg font-semibold text-[var(--navy)]">
+            {project ? "Editar" : "Novo"} imóvel
+          </h3>
+          <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
+        </div>
+
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Basic info */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Informações básicas</label>
+            <input className={INPUT} placeholder="Nome do imóvel *" value={name} onChange={(e) => setName(e.target.value)} />
+            <input className={INPUT} placeholder="Endereço completo *" value={address} onChange={(e) => setAddress(e.target.value)} />
+            <div className="grid grid-cols-2 gap-2">
+              <input className={INPUT} placeholder="Cidade *" value={city} onChange={(e) => setCity(e.target.value)} />
+              <input className={INPUT} placeholder="Status obra (ex: PRONTO, ago-26)" value={entrega} onChange={(e) => setEntrega(e.target.value)} />
+            </div>
+            <input className={INPUT} placeholder="Diferencial (ex: 60m do Metrô)" value={diferencial} onChange={(e) => setDiferencial(e.target.value)} />
+            <input className={INPUT} placeholder="Estrutura de atendimento" value={estrutura} onChange={(e) => setEstrutura(e.target.value)} />
+          </div>
+
+          {/* Typologies */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Tipologias</label>
+              <button
+                onClick={addTypology}
+                className="text-xs font-semibold text-[var(--navy)] flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface)] border border-border"
+              >
+                <Plus size={12} /> Adicionar
+              </button>
+            </div>
+
+            {typologies.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-3">Nenhuma tipologia. Clique em Adicionar.</p>
+            )}
+
+            {typologies.map((t, i) => (
+              <div key={i} className="border border-border rounded-xl p-3 space-y-2 bg-[var(--surface)]/40">
+                <div className="flex items-center gap-2">
+                  <input
+                    className={`${INPUT} flex-1`}
+                    placeholder="Tipo (Studio, 2 dorms, Laje...)"
+                    value={t.type}
+                    onChange={(e) => updateTypology(i, "type", e.target.value)}
+                  />
+                  <button onClick={() => removeTypology(i)} className="p-1.5 text-red-400 hover:text-red-600 flex-shrink-0">
+                    <X size={15} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    className={INPUT}
+                    placeholder="Área m²"
+                    value={t.area || ""}
+                    onChange={(e) => updateTypology(i, "area", parseFloat(e.target.value) || 0)}
+                  />
+                  <input
+                    type="number"
+                    className={INPUT}
+                    placeholder="Vagas"
+                    value={t.vagas || ""}
+                    onChange={(e) => updateTypology(i, "vagas", parseInt(e.target.value) || 0)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    className={INPUT}
+                    placeholder="Preço/m²"
+                    value={t.preco_m2 ?? ""}
+                    onChange={(e) => updateTypology(i, "preco_m2", parseFloat(e.target.value) || undefined)}
+                  />
+                  <input
+                    type="number"
+                    className={INPUT}
+                    placeholder="Valor cheio (R$)"
+                    value={t.valor_cheio ?? ""}
+                    onChange={(e) => updateTypology(i, "valor_cheio", parseFloat(e.target.value) || undefined)}
+                  />
+                </div>
+                <input
+                  className={INPUT}
+                  placeholder="Unidade referência"
+                  value={t.unid_ref ?? ""}
+                  onChange={(e) => updateTypology(i, "unid_ref", e.target.value || undefined)}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Active toggle */}
           <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border">
             <span className="text-sm font-medium text-[var(--navy)]">Ativo</span>
             <input
@@ -738,21 +867,20 @@ function ProjectForm({
               className="w-5 h-5 accent-[var(--gold)]"
             />
           </label>
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={onClose}
-              className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={() => save.mutate()}
-              disabled={!name || !address || !city || save.isPending}
-              className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
-            >
-              Salvar
-            </button>
-          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5 pt-3 border-t border-border flex-shrink-0 flex gap-2">
+          <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">
+            Cancelar
+          </button>
+          <button
+            onClick={() => save.mutate()}
+            disabled={!name || !address || !city || save.isPending}
+            className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
+          >
+            {save.isPending ? "Salvando..." : "Salvar"}
+          </button>
         </div>
       </div>
     </div>

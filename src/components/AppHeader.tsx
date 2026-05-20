@@ -13,8 +13,10 @@ export function AppHeader({
   left?: ReactNode;
   right?: ReactNode;
 }) {
-  useEffect(() => { document.title = `${title} — Pizani Setin`; }, [title]);
-  const { isAdmin, signOut } = useAuth();
+  const { isAdmin, signOut, profile } = useAuth();
+  useEffect(() => {
+    document.title = `${title} — ${profile?.full_name ?? "Sales Navigator"}`;
+  }, [title, profile?.full_name]);
 
   return (
     <header className="bg-[var(--navy)] text-white safe-top sticky top-0 z-30 shadow-sm">

@@ -412,17 +412,18 @@ function BrokerCard({
   );
 }
 
-function buildWhatsAppLink(phone: string, name: string, email: string, tempPassword: string, roleLabel: string) {
+function buildWhatsAppLink(phone: string, name: string, email: string, tempPassword: string, roleLabel: string, managerName: string) {
   const digits = phone.replace(/\D/g, "");
   if (!digits) return null;
-  const msg = `Olá ${name}! 🎉\n\nVocê foi cadastrado(a) como ${roleLabel} no sistema Pizani Setin.\n\n🔗 Acesso: ${window.location.origin}\n📧 E-mail: ${email}\n🔑 Senha inicial: ${tempPassword}\n\nAcesse e altere sua senha no primeiro login. Bem-vindo(a)! 🏆`;
+  const msg = `Olá ${name}! \n\nVocê foi cadastrado(a) como ${roleLabel} na equipe de ${managerName}.\n\nAcesso: ${window.location.origin}\nE-mail: ${email}\nSenha inicial: ${tempPassword}\n\nAcesse e altere sua senha no primeiro login. Bem-vindo(a)!`;
   return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
 }
 
 function SuccessSheet({ name, roleLabel, email, phone, tempPassword, onClose }: {
   name: string; roleLabel: string; email: string; phone: string; tempPassword: string; onClose: () => void;
 }) {
-  const waLink = buildWhatsAppLink(phone, name, email, tempPassword, roleLabel);
+  const { profile } = useAuth();
+  const waLink = buildWhatsAppLink(phone, name, email, tempPassword, roleLabel, profile?.full_name ?? "seu gerente");
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
       <div className="bg-white w-full rounded-t-2xl p-5 safe-bottom" onClick={(e) => e.stopPropagation()}>
