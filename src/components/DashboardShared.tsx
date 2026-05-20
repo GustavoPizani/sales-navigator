@@ -1,6 +1,6 @@
 import { ReactNode, useState, useMemo } from "react";
 import { format, parseISO } from "date-fns";
-import { ArrowUp, ArrowDown, Check, X } from "lucide-react";
+import { ArrowUp, ArrowDown, Check, X, Search } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList, Cell } from "recharts";
 
 const STATUS_HEX: Record<string, string> = {
@@ -172,23 +172,34 @@ export function VisitsByProductChart({ data }: { data: { name: string; visitas: 
   );
 }
 
-export function AtendimentosTable({ atendimentos, isAdmin }: { atendimentos: any[]; isAdmin: boolean }) {
+export function AtendimentosTable({ atendimentos, isAdmin, onRowClick }: {
+  atendimentos: any[];
+  isAdmin: boolean;
+  onRowClick?: (a: any) => void;
+}) {
   const [sortConfig, setSortConfig] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "data", dir: "desc" });
   const [page, setPage] = useState(1);
+  const [phoneSearch, setPhoneSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!phoneSearch.trim()) return atendimentos;
+    const digits = phoneSearch.replace(/\D/g, "");
+    return atendimentos.filter((a) => a.telefone && a.telefone.replace(/\D/g, "").includes(digits));
+  }, [atendimentos, phoneSearch]);
 
   const sortedAtendimentos = useMemo(() => {
-    let sortable = [...atendimentos];
+    let sortable = [...filtered];
     sortable.sort((a, b) => {
       let valA = a[sortConfig.key];
       let valB = b[sortConfig.key];
-      if (sortConfig.key === "corretor") { valA = a.profiles?.full_name || ""; valB = b.profiles?.full_name || ""; } 
+      if (sortConfig.key === "corretor") { valA = a.profiles?.full_name || ""; valB = b.profiles?.full_name || ""; }
       else if (sortConfig.key === "valor") { valA = Number(a.valor) || 0; valB = Number(b.valor) || 0; }
       if (valA < valB) return sortConfig.dir === "asc" ? -1 : 1;
       if (valA > valB) return sortConfig.dir === "asc" ? 1 : -1;
       return 0;
     });
     return sortable;
-  }, [atendimentos, sortConfig]);
+  }, [filtered, sortConfig]);
 
   const paginated = sortedAtendimentos.slice((page - 1) * 20, page * 20);
 
@@ -226,6 +237,22 @@ export function AtendimentosTable({ atendimentos, isAdmin }: { atendimentos: any
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
+      <div className="px-4 py-3 border-b border-border">
+        <div className="relative max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            className="w-full h-9 pl-8 pr-3 rounded-lg bg-[var(--surface)] border border-border text-sm outline-none focus:border-[var(--navy)]"
+            placeholder="Buscar por telefone..."
+            value={phoneSearch}
+            onChange={(e) => { setPhoneSearch(e.target.value); setPage(1); }}
+          />
+          {phoneSearch && (
+            <button onClick={() => { setPhoneSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[var(--navy)]">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left border-collapse">
           <thead className="bg-[var(--surface)] text-[var(--navy)] text-xs uppercase">
@@ -247,7 +274,11 @@ export function AtendimentosTable({ atendimentos, isAdmin }: { atendimentos: any
               </tr>
             ) : (
               paginated.map((a) => (
-                <tr key={a.id} className="border-b border-border hover:bg-[#FDF8EC] transition-colors">
+                <tr
+                  key={a.id}
+                  className={`border-b border-border hover:bg-[#FDF8EC] transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                  onClick={() => onRowClick?.(a)}
+                >
                   <td className="px-4 py-3 whitespace-nowrap">{format(parseISO(a.data), "dd/MM/yyyy")}</td>
                   <td className="px-4 py-3 text-muted-foreground">{a.id_cliente || "—"}</td>
                   <td className="px-4 py-3 font-medium text-[var(--navy)]">{a.nome_cliente}</td>

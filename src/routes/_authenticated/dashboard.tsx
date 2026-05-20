@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronDown, Plus, Upload } from "lucide-react";
+import { ChevronDown, Plus, Upload, X } from "lucide-react";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
@@ -228,6 +228,7 @@ function AdminDashboard({ user }: { user: any }) {
 function BrokerDashboard({ user }: { user: any }) {
   const filters = useDashboardFilters();
   const [insertOpen, setInsertOpen] = useState(false);
+  const [editingAtendimento, setEditingAtendimento] = useState<any | null>(null);
 
   const { data: atendimentos = [] } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
@@ -269,11 +270,113 @@ function BrokerDashboard({ user }: { user: any }) {
               <Plus size={14} strokeWidth={2.5} /> Inserir
             </button>
           </div>
-          <AtendimentosTable atendimentos={atendimentos} isAdmin={false} />
+          <AtendimentosTable atendimentos={atendimentos} isAdmin={false} onRowClick={(a) => setEditingAtendimento(a)} />
         </div>
       </div>
 
       {insertOpen && <AtendimentoForm userId={user?.id} onClose={() => setInsertOpen(false)} />}
+      {editingAtendimento && <AtendimentoEditForm atendimento={editingAtendimento} onClose={() => setEditingAtendimento(null)} />}
+    </div>
+  );
+}
+
+function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [produto, setProduto] = useState(atendimento.produto ?? "");
+  const [ocorrencia, setOcorrencia] = useState(atendimento.ocorrencia ?? "");
+  const [visita, setVisita] = useState(atendimento.visita ?? false);
+  const [venda, setVenda] = useState(atendimento.venda ?? false);
+  const [temperatura, setTemperatura] = useState(atendimento.temperatura ?? "");
+  const [status, setStatus] = useState(atendimento.status ?? "");
+  const [valor, setValor] = useState(atendimento.valor ? String(atendimento.valor) : "");
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("atendimentos")
+        .update({
+          produto: produto || null,
+          ocorrencia: ocorrencia || null,
+          visita,
+          venda,
+          temperatura: temperatura || null,
+          status: status || null,
+          valor: valor ? parseFloat(valor.replace(",", ".")) : null,
+        })
+        .eq("id", atendimento.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dashboard-atendimentos"] });
+      toast.success("Atendimento atualizado!");
+      onClose();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const fieldCls = "w-full h-11 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm";
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end" onClick={onClose}>
+      <div
+        className="bg-white w-full rounded-t-2xl flex flex-col safe-bottom"
+        style={{ maxHeight: "85vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
+          <div>
+            <h3 className="text-base font-semibold text-[var(--navy)]">Editar Atendimento</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{atendimento.nome_cliente}</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <input className={fieldCls} placeholder="Produto" value={produto} onChange={(e) => setProduto(e.target.value)} />
+          <input className={fieldCls} placeholder="Ocorrência" value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} />
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer select-none ${visita ? "bg-blue-50 border-blue-200" : "bg-[var(--surface)] border-border"}`}>
+              <span className="text-sm font-medium text-[var(--navy)]">Visita</span>
+              <input type="checkbox" checked={visita} onChange={(e) => setVisita(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
+            </label>
+            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer select-none ${venda ? "bg-green-50 border-green-200" : "bg-[var(--surface)] border-border"}`}>
+              <span className="text-sm font-medium text-[var(--navy)]">Venda</span>
+              <input type="checkbox" checked={venda} onChange={(e) => setVenda(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
+            </label>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Temperatura</label>
+            <div className="grid grid-cols-3 gap-2">
+              {TEMPERATURAS.map((t) => (
+                <button key={t} onClick={() => setTemperatura(temperatura === t ? "" : t)}
+                  className={`h-10 rounded-xl text-sm font-semibold transition-colors ${temperatura === t ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Status</label>
+            <select className={fieldCls} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">Selecione...</option>
+              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <input className={fieldCls} placeholder="Valor (R$)" value={valor} onChange={(e) => setValor(e.target.value)} />
+        </div>
+
+        <div className="px-5 pb-5 pt-3 border-t border-border flex gap-2 flex-shrink-0">
+          <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancelar</button>
+          <button onClick={() => save.mutate()} disabled={save.isPending}
+            className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50">
+            {save.isPending ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
