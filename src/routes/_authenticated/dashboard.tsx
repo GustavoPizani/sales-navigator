@@ -598,17 +598,39 @@ function BrokerPerformanceCard({ bp }: { bp: any }) {
 
 // ─── CSV Import ───────────────────────────────────────────────────────────────
 
-function parseCsvLine(line: string): string[] {
-  const result: string[] = [];
+function parseCsvText(text: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = "";
   let inQuotes = false;
-  let current = "";
-  for (const ch of line) {
-    if (ch === '"') { inQuotes = !inQuotes; }
-    else if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ""; }
-    else { current += ch; }
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentCell += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      currentRow.push(currentCell.trim());
+      currentCell = "";
+    } else if ((char === '\n' || (char === '\r' && nextChar === '\n')) && !inQuotes) {
+      if (char === '\r') i++;
+      currentRow.push(currentCell.trim());
+      rows.push(currentRow);
+      currentRow = [];
+      currentCell = "";
+    } else {
+      currentCell += char;
+    }
   }
-  result.push(current.trim());
-  return result;
+  if (currentCell || currentRow.length > 0) {
+    currentRow.push(currentCell.trim());
+    rows.push(currentRow);
+  }
+  return rows.filter(row => row.some(cell => cell.trim() !== ''));
 }
 
 function parseBrDate(s: string): string {
@@ -664,15 +686,15 @@ function CsvImportButton({ brokers }: { brokers: any[] }) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      if (lines.length < 2) return;
-      const headers = parseCsvLine(lines[0]);
+      const rows = parseCsvText(text);
+      if (rows.length < 2) return;
+      const headers = rows[0];
       const rawRows: any[] = [];
       const errors: string[] = [];
       const get = (cols: string[], h: string) =>
         cols[headers.findIndex(x => x.toLowerCase().includes(h.toLowerCase()))]?.trim() ?? "";
-      for (let i = 1; i < lines.length; i++) {
-        const cols = parseCsvLine(lines[i]);
+      for (let i = 1; i < rows.length; i++) {
+        const cols = rows[i];
         if (cols.length < 2) continue;
         const dataStr = parseBrDate(get(cols, "data"));
         if (!dataStr) { errors.push(`Linha ${i + 1}: data inválida "${get(cols, "data")}"`); continue; }
