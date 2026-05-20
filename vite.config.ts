@@ -16,4 +16,9 @@ export default defineConfig({
       disableCsrfMiddlewareWarning: true,
     },
   },
+  vite: {
+    ssr: {
+      noExternal: true,
+    },
+  },
 });
