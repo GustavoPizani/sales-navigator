@@ -1,7 +1,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Phone, MessageCircle, Mail, MoreVertical, ChevronDown, ChevronRight, Check, Trash2 } from "lucide-react";
+import { Plus, Phone, MessageCircle, Mail, MoreVertical, ChevronDown, ChevronRight, Check, Trash2, Copy, Link } from "lucide-react";
 import toast from "react-hot-toast";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Collapsible from "@radix-ui/react-collapsible";
@@ -10,6 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar } from "@/components/Avatar";
+import { deleteUser } from "@/lib/admin.functions";
+import { useBrokers } from "@/hooks/useBrokers";
 
 export const Route = createFileRoute("/_authenticated/team")({
   component: TeamPage,
@@ -42,18 +44,7 @@ function AdminTeamView() {
 
   const qc = useQueryClient();
 
-  const brokersQ = useQuery({
-    queryKey: ["team"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("role", "broker")
-        .order("full_name");
-      if (error) throw error;
-      return (data ?? []) as Profile[];
-    },
-  });
+  const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
   const toggleActive = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
@@ -61,7 +52,6 @@ function AdminTeamView() {
       if (error) throw error;
     },
     onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["team"] });
       qc.invalidateQueries({ queryKey: ["brokers-active"] });
       toast.success(vars.is_active ? "Corretor desativado" : "Corretor reativado");
     },
@@ -69,12 +59,8 @@ function AdminTeamView() {
   });
 
   const deleteProfile = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("profiles").delete().eq("id", id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => deleteUser({ data: { id } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team"] });
       qc.invalidateQueries({ queryKey: ["brokers-active"] });
       toast.success("Corretor excluído");
     },
@@ -168,10 +154,7 @@ function DirectorTeamView() {
   });
 
   const deleteManager = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("profiles").delete().eq("id", id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => deleteUser({ data: { id } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["team-managers"] });
       toast.success("Gerente excluído");
@@ -471,12 +454,24 @@ function SuccessSheet({ name, roleLabel, email, phone, tempPassword, onClose }: 
 
 function AddBrokerSheet({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const { profile } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [color, setColor] = useState("#C9A84C");
   const [tempPassword] = useState(() => "Setin@" + Math.floor(100000 + Math.random() * 900000));
   const [created, setCreated] = useState<{ name: string; email: string; phone: string } | null>(null);
+
+  const inviteLink = profile?.id
+    ? `${window.location.origin}/cadastro?m=${profile.id}`
+    : null;
+
+  const copyInviteLink = () => {
+    if (!inviteLink) return;
+    navigator.clipboard.writeText(inviteLink);
+    toast.success("Link copiado!");
+  };
+
 
   const m = useMutation({
     mutationFn: async () => {
@@ -502,11 +497,12 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
       if (error) throw error;
 
       if (data.user) {
-        await supabase.from("profiles").update({
+        await (supabase.from("profiles") as any).update({
           full_name: name,
           color,
           phone: phone || null,
           role: "broker",
+          manager_id: profile?.id ?? null,
         }).eq("id", data.user.id);
       }
     },
@@ -529,6 +525,32 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-[var(--navy)] mb-4">Adicionar corretor</h3>
+
+        {inviteLink && (
+          <div className="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Link size={14} className="text-amber-700" />
+              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Enviar para corretor se cadastrar</p>
+            </div>
+            <p className="text-xs text-amber-600 mb-3">Compartilhe o link abaixo. O corretor preenche os dados e fica vinculado à sua equipe automaticamente.</p>
+            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-200 mb-3">
+              <span className="text-xs text-gray-500 truncate flex-1 font-mono">{inviteLink}</span>
+            </div>
+            <button
+              onClick={copyInviteLink}
+              className="w-full h-9 rounded-lg bg-amber-100 text-amber-800 text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-amber-200 transition-colors"
+            >
+              <Copy size={13} /> Copiar link de cadastro
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-xs text-muted-foreground">ou cadastrar manualmente</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+
         <div className="space-y-3">
           <input
             className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"

@@ -9,6 +9,7 @@ import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 import { useDashboardFilters, useDashboardData } from "@/hooks/useDashboard";
 import { DashboardCharts, AtendimentosTable, KpiCard, MiniAvatar, formatBRL } from "@/components/DashboardShared";
@@ -33,14 +34,7 @@ function AdminDashboard({ user }: { user: any }) {
   const filters = useDashboardFilters();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  const brokersQ = useQuery({
-    queryKey: ["dashboard-brokers"],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("*").eq("role", "broker").order("full_name");
-      return data ?? [];
-    },
-    enabled: isAdmin,
-  });
+  const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
   const { data: atendimentos = [], isPending } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, isAdmin, user?.id],
@@ -80,7 +74,7 @@ function AdminDashboard({ user }: { user: any }) {
       b.total++;
       if (a.visita) b.visitas++;
       if (a.venda) b.vendas++;
-      const isTratativa = ["Prospect", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado"].includes(a.status);
+      const isTratativa = ["Prospect", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado"].includes(a.status ?? "");
       if (isTratativa) b.tratativas += Number(a.valor) || 0;
       if (a.status === "Contrato Assinado") b.volume += Number(a.valor) || 0;
       b.monthly[a.data.slice(0, 7)] = (b.monthly[a.data.slice(0, 7)] || 0) + 1;

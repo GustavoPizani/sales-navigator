@@ -41,6 +41,25 @@ export const createBroker = createServerFn({ method: "POST" })
     return { id: created.user.id };
   });
 
+const deleteUserSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export const deleteUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => deleteUserSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { data: caller } = await context.supabase
+      .from("profiles").select("role").eq("id", context.userId).single();
+    if (!caller || (caller.role !== "admin" && caller.role !== "master" && caller.role !== "director")) {
+      throw new Error("Forbidden");
+    }
+    // Delete from auth.users — cascades to profiles via FK or trigger
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 const updateBrokerSchema = z.object({
   id: z.string().uuid(),
   full_name: z.string().min(1).max(120).optional(),

@@ -14,6 +14,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      atendimentos: {
+        Row: {
+          id: string
+          created_at: string
+          broker_id: string
+          appointment_id: string | null
+          data: string
+          nome_cliente: string | null
+          id_cliente: string | null
+          telefone: string | null
+          email: string | null
+          produto: string | null
+          setor: string | null
+          ocorrencia: string | null
+          temperatura: string | null
+          visita: boolean
+          venda: boolean
+          status: string | null
+          valor: number | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          broker_id: string
+          appointment_id?: string | null
+          data: string
+          nome_cliente?: string | null
+          id_cliente?: string | null
+          telefone?: string | null
+          email?: string | null
+          produto?: string | null
+          setor?: string | null
+          ocorrencia?: string | null
+          temperatura?: string | null
+          visita?: boolean
+          venda?: boolean
+          status?: string | null
+          valor?: number | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          broker_id?: string
+          appointment_id?: string | null
+          data?: string
+          nome_cliente?: string | null
+          id_cliente?: string | null
+          telefone?: string | null
+          email?: string | null
+          produto?: string | null
+          setor?: string | null
+          ocorrencia?: string | null
+          temperatura?: string | null
+          visita?: boolean
+          venda?: boolean
+          status?: string | null
+          valor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atendimentos_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       appointments: {
         Row: {
           client_email: string | null
@@ -91,6 +159,7 @@ export type Database = {
           full_name: string
           id: string
           is_active: boolean
+          manager_id: string | null
           phone: string | null
           role: Database["public"]["Enums"]["app_role"]
         }
@@ -101,6 +170,7 @@ export type Database = {
           full_name?: string
           id: string
           is_active?: boolean
+          manager_id?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["app_role"]
         }
@@ -111,10 +181,19 @@ export type Database = {
           full_name?: string
           id?: string
           is_active?: boolean
+          manager_id?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["app_role"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       projects: {
         Row: {
@@ -261,7 +340,7 @@ export type Database = {
       is_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "admin" | "broker"
+      app_role: "admin" | "broker" | "director" | "master"
       appointment_type: "visit" | "meeting" | "call" | "follow-up"
       task_priority: "high" | "medium" | "low"
     }
@@ -391,7 +470,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "broker"],
+      app_role: ["admin", "broker", "director", "master"],
       appointment_type: ["visit", "meeting", "call", "follow-up"],
       task_priority: ["high", "medium", "low"],
     },

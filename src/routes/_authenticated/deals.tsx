@@ -7,6 +7,7 @@ import { Plus, Check, X, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 
 export const Route = createFileRoute("/_authenticated/deals")({
@@ -42,14 +43,7 @@ function DealsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [brokerFilter, setBrokerFilter] = useState<string>("all");
 
-  const brokersQ = useQuery({
-    queryKey: ["brokers-active"],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("id,full_name").order("full_name");
-      return data ?? [];
-    },
-    enabled: isAdmin,
-  });
+  const brokersQ = useBrokers({ select: "id,full_name", enabled: isAdmin });
 
   const { data: deals = [] } = useQuery({
     queryKey: ["deals", month, statusFilter, brokerFilter],
@@ -74,7 +68,7 @@ function DealsPage() {
       if (isAdmin && brokerFilter !== "all") {
         q = q.eq("broker_id", brokerFilter);
       } else if (!isAdmin) {
-        q = q.eq("broker_id", user?.id);
+        q = q.eq("broker_id", user!.id);
       }
 
       const { data, error } = await q;
@@ -129,11 +123,11 @@ function DealsPage() {
       </div>
 
       <div className="px-4 pt-4 space-y-3">
-        {atendimentos.length === 0 && (
+        {deals.length === 0 && (
           <p className="text-center text-muted-foreground py-12 text-sm">Nenhum atendimento encontrado.</p>
         )}
 
-        {atendimentos.map((a) => {
+        {deals.map((a) => {
           const prof = a.profiles as any;
           return (
             <button
@@ -264,14 +258,7 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
     },
   });
 
-  const brokersQ = useQuery({
-    queryKey: ["brokers-active"],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("id,full_name").order("full_name");
-      return data ?? [];
-    },
-    enabled: isAdmin,
-  });
+  const brokersQ = useBrokers({ select: "id,full_name", enabled: isAdmin });
 
   const handleValorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const numeric = e.target.value.replace(/\D/g, "");

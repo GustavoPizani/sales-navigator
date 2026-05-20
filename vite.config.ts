@@ -6,8 +6,11 @@
 // You can pass additional config via defineConfig({ vite: { ... } }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-// Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-// @cloudflare/vite-plugin builds from this — wrangler.jsonc main alone is insufficient.
+// noExternal: true is needed for production (bundles React into SSR output for Vercel).
+// In dev, Vite 7's ESM module runner can't evaluate CJS modules (react/index.js uses
+// module.exports), so we skip noExternal and let Node.js load React natively.
+const isBuild = process.env.NODE_ENV === "production";
+
 export default defineConfig({
   cloudflare: false,
   tanstackStart: {
@@ -16,9 +19,11 @@ export default defineConfig({
       disableCsrfMiddlewareWarning: true,
     },
   },
-  vite: {
-    ssr: {
-      noExternal: true,
-    },
-  },
+  ...(isBuild
+    ? {
+        vite: {
+          ssr: { noExternal: true },
+        },
+      }
+    : {}),
 });

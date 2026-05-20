@@ -11,7 +11,11 @@
       "PowerShell(ls \"C:\\\\Users\\\\gusta\\\\sales-navigator\\\\.vercel\\\\output\" -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName | Select-Object -First 30)",
       "Bash(del \"C:\\\\Users\\\\gusta\\\\sales-navigator\\\\supabase\\\\migrations\\\\20260519200000_add_director_master_roles.sql\")",
       "Bash(git config *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('type:', d.get\\('type','cjs-default'\\)\\); print\\('main:', d.get\\('main'\\)\\); print\\('exports keys:', list\\(d.get\\('exports',{}\\).keys\\(\\)\\)[:5]\\)\")",
+      "Bash(npx tsr *)",
+      "Bash(npx @tanstack/router-cli generate)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.get\\('scripts',{}\\).items\\(\\)}, indent=2\\)\\)\")"
     ]
   }
 }

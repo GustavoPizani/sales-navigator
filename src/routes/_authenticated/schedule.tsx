@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 
 export const Route = createFileRoute("/_authenticated/schedule")({
@@ -25,16 +26,7 @@ function SchedulePage() {
   const startStr = format(weekStart, "yyyy-MM-dd");
   const endStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
 
-  const brokersQ = useQuery({
-    queryKey: ["brokers-active"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("id,full_name,color,role,is_active")
-        .eq("role", "broker").eq("is_active", true).order("full_name");
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: isAdmin,
-  });
+  const brokersQ = useBrokers({ select: "id,full_name,color,role,is_active", enabled: isAdmin });
 
   const shiftsQ = useQuery({
     queryKey: ["shifts", startStr, endStr, isAdmin, user?.id],
