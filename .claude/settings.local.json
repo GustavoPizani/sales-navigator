@@ -15,7 +15,14 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('type:', d.get\\('type','cjs-default'\\)\\); print\\('main:', d.get\\('main'\\)\\); print\\('exports keys:', list\\(d.get\\('exports',{}\\).keys\\(\\)\\)[:5]\\)\")",
       "Bash(npx tsr *)",
       "Bash(npx @tanstack/router-cli generate)",
-      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.get\\('scripts',{}\\).items\\(\\)}, indent=2\\)\\)\")"
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.get\\('scripts',{}\\).items\\(\\)}, indent=2\\)\\)\")",
+      "Bash(cd \"C:\\\\Users\\\\gusta\\\\Real-sales\" && pwd && ls -la | head -20)",
+      "Read(//c/Users/gusta/Real-sales/**)",
+      "Bash(xargs grep -l \"PDF\\\\|pdf\\\\|parse\")",
+      "Bash(ls \"c:\\\\Users\\\\gusta\\\\sales-navigator\\\\\" | grep -i env; cat \"c:\\\\Users\\\\gusta\\\\sales-navigator\\\\.env.local\" 2>/dev/null || echo \"no .env.local\")",
+      "Read(//c/Users/gusta/sales-navigator\" | grep -i env; cat c:Usersgustasales-navigator.env.local 2>/dev/**)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(node -e \"const f = s => s.toLowerCase\\(\\).normalize\\('NFD'\\).replace\\(/[̀-ͯ]/g, ''\\).replace\\(/[^a-z0-9]/g, ' '\\).replace\\(/\\\\s+/g, ' '\\).trim\\(\\); console.log\\(f\\('Zeit Brooklín'\\)\\); console.log\\(f\\('Downtown Nova República'\\)\\);\")"
     ]
   }
 }

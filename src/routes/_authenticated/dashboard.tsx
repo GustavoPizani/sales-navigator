@@ -12,10 +12,30 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 import { useDashboardFilters, useDashboardData } from "@/hooks/useDashboard";
-import { DashboardCharts, AtendimentosTable, KpiCard, MiniAvatar, formatBRL } from "@/components/DashboardShared";
+import { DashboardCharts, AtendimentosTable, KpiCard, MiniAvatar, formatBRL, StatusChart, VisitsByProductChart } from "@/components/DashboardShared";
 import { BarChart, Bar, Tooltip, ResponsiveContainer } from "recharts";
 
 const STATUSES = ["Prospect", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado", "Contrato Assinado", "Cancelada"];
+
+function normalizeStr(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function matchProjectName(produto: string, projects: { name: string }[]): string {
+  const normP = normalizeStr(produto);
+  const exact = projects.find((p) => normalizeStr(p.name) === normP);
+  if (exact) return exact.name;
+  const wordsA = normP.split(" ").filter((w) => w.length > 2);
+  let best = { score: 0.25, name: "" };
+  for (const p of projects) {
+    const wordsB = new Set(normalizeStr(p.name).split(" ").filter((w) => w.length > 2));
+    const common = wordsA.filter((w) => wordsB.has(w)).length;
+    const union = new Set([...wordsA, ...wordsB]).size;
+    const score = union > 0 ? common / union : 0;
+    if (score > best.score) best = { score, name: p.name };
+  }
+  return best.name || produto;
+}
 const TEMPERATURAS = ["Frio", "Morno", "Quente"] as const;
 const SETORES = ["Online", "Salão"] as const;
 
@@ -36,29 +56,69 @@ function AdminDashboard({ user }: { user: any }) {
 
   const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
-  const { data: atendimentos = [], isPending } = useQuery({
-    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, isAdmin, user?.id],
-    queryFn: async () => {
-      let q = supabase
-        .from("atendimentos")
-        .select("*, profiles(full_name, color)")
-        .gte("data", filters.appliedStartDate)
-        .lte("data", filters.appliedEndDate);
+  const teamBrokerIds = (brokersQ.data ?? []).map((b) => b.id);
 
-      if (!isAdmin) {
-        q = q.eq("broker_id", user?.id);
-      } else if (filters.appliedBrokerId !== "all") {
-        q = q.eq("broker_id", filters.appliedBrokerId);
+  const { data: atendimentos = [], isPending } = useQuery({
+    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, user?.id, teamBrokerIds.join(",")],
+    queryFn: async () => {
+      // Specific broker selected — no need for team filter
+      if (filters.appliedBrokerId !== "all") {
+        const { data, error } = await supabase
+          .from("atendimentos")
+          .select("*, profiles(full_name, color)")
+          .eq("broker_id", filters.appliedBrokerId)
+          .gte("data", filters.appliedStartDate)
+          .lte("data", filters.appliedEndDate);
+        if (error) throw error;
+        return data ?? [];
       }
 
-      const { data, error } = await q;
+      // Admin "all" mode: filter ONLY to this manager's team
+      // Guard: if no team brokers loaded yet, return empty to avoid showing all data
+      if (teamBrokerIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from("atendimentos")
+        .select("*, profiles(full_name, color)")
+        .in("broker_id", teamBrokerIds)
+        .gte("data", filters.appliedStartDate)
+        .lte("data", filters.appliedEndDate);
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
-    enabled: !!user,
+    enabled: !!user && Array.isArray(brokersQ.data),
   });
 
   const dbData = useDashboardData(atendimentos);
+
+  const projectsQ = useQuery({
+    queryKey: ["projects-for-dashboard"],
+    queryFn: async () => {
+      const { data } = await supabase.from("projects").select("id, name, city").eq("is_active", true);
+      return (data ?? []) as { id: string; name: string; city: string }[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const statusCounts = useMemo(() =>
+    STATUSES.map((s) => ({ name: s, count: atendimentos.filter((a) => a.status === s).length })),
+    [atendimentos]
+  );
+
+  const visitsByProduct = useMemo(() => {
+    const projects = projectsQ.data ?? [];
+    const map: Record<string, { total: number; visitas: number }> = {};
+    atendimentos.forEach((a) => {
+      if (!a.produto) return;
+      const key = matchProjectName(a.produto, projects);
+      if (!map[key]) map[key] = { total: 0, visitas: 0 };
+      map[key].total++;
+      if (a.visita) map[key].visitas++;
+    });
+    return Object.entries(map)
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.visitas - a.visitas || b.total - a.total);
+  }, [atendimentos, projectsQ.data]);
 
   const brokerPerformance = useMemo(() => {
     if (!isAdmin) return [];
@@ -136,6 +196,11 @@ function AdminDashboard({ user }: { user: any }) {
         </div>
 
         <DashboardCharts dbData={dbData} />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <StatusChart data={statusCounts} />
+          <VisitsByProductChart data={visitsByProduct} />
+        </div>
 
         {isAdmin && brokerPerformance.length > 0 && (
           <div className="space-y-4">

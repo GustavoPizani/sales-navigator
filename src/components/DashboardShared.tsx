@@ -1,7 +1,16 @@
 import { ReactNode, useState, useMemo } from "react";
 import { format, parseISO } from "date-fns";
 import { ArrowUp, ArrowDown, Check, X } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList, Cell } from "recharts";
+
+const STATUS_HEX: Record<string, string> = {
+  "Prospect": "#6B7280",
+  "Proposta em Análise": "#2563EB",
+  "Proposta Aprovada": "#4F46E5",
+  "Contrato Gerado": "#D97706",
+  "Contrato Assinado": "#16A34A",
+  "Cancelada": "#DC2626",
+};
 
 export const formatBRL = (val: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
@@ -113,6 +122,53 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
         </ChartCard>
       </div>
     </>
+  );
+}
+
+export function StatusChart({ data }: { data: { name: string; count: number }[] }) {
+  const filtered = data.filter((d) => d.count > 0);
+  if (filtered.length === 0) return null;
+  return (
+    <ChartCard title="Atendimentos por Status">
+      <ResponsiveContainer width="100%" height={Math.max(180, filtered.length * 46)}>
+        <BarChart data={filtered} layout="vertical" margin={{ top: 0, right: 60, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
+          <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} allowDecimals={false} />
+          <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#6B7280" }} width={145} />
+          <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} formatter={(v: any) => [`${v} atendimento(s)`, "Qtd."]} />
+          <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={22}>
+            {filtered.map((entry) => (
+              <Cell key={entry.name} fill={STATUS_HEX[entry.name] ?? "#6B7280"} />
+            ))}
+            <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: "#6B7280", fontWeight: 600 }} formatter={(v: number) => (v > 0 ? v : "")} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+export function VisitsByProductChart({ data }: { data: { name: string; visitas: number; total: number }[] }) {
+  if (data.length === 0) return null;
+  const sliced = data.slice(0, 15);
+  return (
+    <ChartCard title="Visitas por Produto">
+      <ResponsiveContainer width="100%" height={Math.max(200, sliced.length * 46)}>
+        <BarChart data={sliced} layout="vertical" margin={{ top: 0, right: 60, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
+          <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} allowDecimals={false} />
+          <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} width={145} />
+          <Tooltip
+            cursor={{ fill: "rgba(0,0,0,0.04)" }}
+            contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
+            formatter={(value: any, _name: any, item: any) => [`${value} de ${item.payload.total} atendimentos`, "Visitas"]}
+          />
+          <Bar dataKey="visitas" name="Visitas" fill="#0C2340" radius={[0, 4, 4, 0]} barSize={22}>
+            <LabelList dataKey="visitas" position="right" style={{ fontSize: 11, fill: "#6B7280", fontWeight: 600 }} formatter={(v: number) => (v > 0 ? v : "")} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
   );
 }
 

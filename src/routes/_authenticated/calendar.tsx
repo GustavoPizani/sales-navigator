@@ -6,6 +6,7 @@ import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar } from "@/components/Avatar";
 import { AppointmentForm } from "./appointments";
@@ -32,20 +33,17 @@ function CalendarPage() {
   const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
-  const profilesQ = useQuery({
-    queryKey: ["all-profiles"],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("id,full_name,color,role,is_active,phone,email");
-      return data ?? [];
-    },
-  });
+  const brokersQ = useBrokers();
+  const allBrokerIds = useMemo(() => (brokersQ.data ?? []).map((p) => p.id), [brokersQ.data]);
+  const effectiveFilter = filterBrokers.length ? filterBrokers : allBrokerIds;
 
   const apptsQ = useQuery({
-    queryKey: ["team-appts", format(monthStart, "yyyy-MM"), filterBrokers.join(",")],
+    queryKey: ["team-appts", format(monthStart, "yyyy-MM"), effectiveFilter.join(",")],
+    enabled: allBrokerIds.length > 0,
     queryFn: async () => {
       let q = supabase.from("appointments").select("*")
-        .gte("date", format(gridStart, "yyyy-MM-dd")).lte("date", format(gridEnd, "yyyy-MM-dd"));
-      if (filterBrokers.length) q = q.in("owner_id", filterBrokers);
+        .gte("date", format(gridStart, "yyyy-MM-dd")).lte("date", format(gridEnd, "yyyy-MM-dd"))
+        .in("owner_id", effectiveFilter);
       const { data } = await q;
       return data ?? [];
     },
@@ -57,23 +55,27 @@ function CalendarPage() {
     return map;
   }, [apptsQ.data]);
 
-  const profileById = (id: string) => (profilesQ.data ?? []).find((p) => p.id === id);
+  const profileById = (id: string) => (brokersQ.data ?? []).find((p) => p.id === id);
   const dayAppts = (byDay[selectedDay] ?? []).sort((a, b) => a.start_time.localeCompare(b.start_time));
 
+  const numWeeks = days.length / 7;
+
   return (
-    <div className="pb-nav">
+    <div className="flex flex-col h-[100dvh] overflow-hidden">
       <AppHeader title="Calendário" />
-      <div className="px-4 pt-4">
-        <div className="flex items-center justify-between mb-3">
+
+      <div className="flex-1 min-h-0 flex flex-col px-4 pt-3 pb-nav gap-2">
+        {/* Month navigation */}
+        <div className="flex items-center justify-between flex-shrink-0">
           <button onClick={() => setMonth(addDays(monthStart, -1))} className="p-2 rounded-lg bg-white border border-border"><ChevronLeft size={18} /></button>
           <p className="font-semibold text-[var(--navy)] capitalize">{format(month, "MMMM yyyy", { locale: ptBR })}</p>
           <button onClick={() => setMonth(addDays(monthEnd, 1))} className="p-2 rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
         </div>
 
         {/* Filter chips */}
-        <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+        <div className="flex gap-2 overflow-x-auto flex-shrink-0 -mx-1 px-1">
           <button onClick={() => setFilterBrokers([])} className={`h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap ${filterBrokers.length === 0 ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground border border-border"}`}>Todos</button>
-          {(profilesQ.data ?? []).filter((p) => p.is_active).map((p) => {
+          {(brokersQ.data ?? []).map((p) => {
             const on = filterBrokers.includes(p.id);
             return (
               <button key={p.id} onClick={() => setFilterBrokers(on ? filterBrokers.filter((x) => x !== p.id) : [...filterBrokers, p.id])}
@@ -86,9 +88,14 @@ function CalendarPage() {
           })}
         </div>
 
-        {/* Month grid */}
-        <div className="grid grid-cols-7 gap-1 mt-3">
-          {DAY_INITIALS.map((d, i) => (<div key={i} className="text-center text-[10px] font-semibold text-muted-foreground py-1">{d}</div>))}
+        {/* Calendar grid — fills all remaining space */}
+        <div
+          className="flex-1 min-h-0 grid grid-cols-7 gap-1"
+          style={{ gridTemplateRows: `auto repeat(${numWeeks}, 1fr)` }}
+        >
+          {DAY_INITIALS.map((d, i) => (
+            <div key={i} className="text-center text-[10px] font-semibold text-muted-foreground py-1">{d}</div>
+          ))}
           {days.map((d) => {
             const ds = format(d, "yyyy-MM-dd");
             const inMonth = d.getMonth() === month.getMonth();
@@ -97,16 +104,15 @@ function CalendarPage() {
             const isSel = ds === selectedDay;
             return (
               <button key={ds} onClick={() => { setSelectedDay(ds); setDayModalOpen(true); }}
-                className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs ${isSel ? "bg-[var(--navy)] text-white" : "bg-white"} ${!inMonth ? "opacity-40" : ""}`}>
+                className={`rounded-lg flex flex-col items-center justify-center text-xs min-h-0 ${isSel ? "bg-[var(--navy)] text-white" : "bg-white"} ${!inMonth ? "opacity-40" : ""}`}>
                 <span>{format(d, "d")}</span>
-                <div className="flex gap-0.5 mt-0.5 h-1.5">
+                <div className="flex gap-0.5 mt-0.5">
                   {uniq.map((c, i) => (<span key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: c }} />))}
                 </div>
               </button>
             );
           })}
         </div>
-
       </div>
 
       <button onClick={() => { setEditing("new"); setDayModalOpen(false); }}

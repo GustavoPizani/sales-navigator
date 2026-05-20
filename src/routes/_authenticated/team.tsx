@@ -41,6 +41,7 @@ function AdminTeamView() {
   const [addNew, setAddNew] = useState(false);
   const [editing, setEditing] = useState<Profile | null>(null);
   const [inactiveOpen, setInactiveOpen] = useState(false);
+  const { profile } = useAuth();
 
   const qc = useQueryClient();
 
@@ -74,7 +75,7 @@ function AdminTeamView() {
 
   return (
     <div className="pb-nav">
-      <AppHeader title="Equipe Pizani Setin" />
+      <AppHeader title={`Equipe ${profile?.full_name ?? ""}`} />
 
       <div className="px-4 pt-4 space-y-3">
         <button
@@ -138,6 +139,7 @@ function DirectorTeamView() {
   const [inactiveOpen, setInactiveOpen] = useState(false);
   const [addManager, setAddManager] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Profile | null>(null);
+  const { profile } = useAuth();
   const qc = useQueryClient();
 
   const managersQ = useQuery({
@@ -180,7 +182,7 @@ function DirectorTeamView() {
 
   return (
     <div className="pb-nav">
-      <AppHeader title="Equipe Pizani Setin" />
+      <AppHeader title={`Equipe ${profile?.full_name ?? ""}`} />
       <div className="px-4 pt-4 space-y-3">
         {/* Managers section */}
         <div className="flex items-center justify-between">
