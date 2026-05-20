@@ -72,6 +72,17 @@ function RootComponent() {
         navigator.serviceWorker.register("/sw.js").catch(() => {});
       }
     }
+
+    const handlePreloadError = (e: Event) => {
+      console.warn("Módulo desatualizado ou falha na rede. Recarregando a página para buscar a nova versão...", e);
+      window.location.reload();
+    };
+
+    window.addEventListener("vite:preloadError", handlePreloadError as EventListener);
+
+    return () => {
+      window.removeEventListener("vite:preloadError", handlePreloadError as EventListener);
+    };
   }, []);
   return (
     <QueryClientProvider client={queryClient}>
