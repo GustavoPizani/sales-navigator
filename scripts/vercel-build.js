@@ -9,18 +9,20 @@ const out = join(root, '.vercel', 'output');
 if (existsSync(out)) rmSync(out, { recursive: true });
 
 mkdirSync(join(out, 'static'), { recursive: true });
-mkdirSync(join(out, 'functions', 'index.func'), { recursive: true });
+mkdirSync(join(out, 'functions', 'index.func', 'dist'), { recursive: true });
 
-// Static client assets
+// Ativos estáticos do cliente (servidos pelo CDN do Vercel)
 cpSync(join(root, 'dist', 'client'), join(out, 'static'), { recursive: true });
 
-// SSR server bundle into the function directory
-cpSync(join(root, 'dist', 'server'), join(out, 'functions', 'index.func'), { recursive: true });
+// O Servidor SSR precisa de ambos (Client e Server) disponíveis em tempo de execução
+// para ler o index.html e renderizar as rotas corretamente.
+cpSync(join(root, 'dist', 'server'), join(out, 'functions', 'index.func', 'dist', 'server'), { recursive: true });
+cpSync(join(root, 'dist', 'client'), join(out, 'functions', 'index.func', 'dist', 'client'), { recursive: true });
 
-// Node.js adapter: converts Node.js req/res ↔ Web API Request/Response
+// Adaptador Node.js: converte Node.js req/res ↔ Web API Request/Response
 writeFileSync(
   join(out, 'functions', 'index.func', 'index.js'),
-  `import server from './server.js';
+  `import server from './dist/server/server.js';
 
 async function toWebRequest(req) {
   const proto = req.headers['x-forwarded-proto'] || 'https';

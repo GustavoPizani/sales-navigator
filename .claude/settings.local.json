@@ -10,7 +10,8 @@
       "PowerShell(mkdir \"C:\\\\Users\\\\gusta\\\\sales-navigator\\\\scripts\" 2>$null)",
       "PowerShell(ls \"C:\\\\Users\\\\gusta\\\\sales-navigator\\\\.vercel\\\\output\" -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName | Select-Object -First 30)",
       "Bash(del \"C:\\\\Users\\\\gusta\\\\sales-navigator\\\\supabase\\\\migrations\\\\20260519200000_add_director_master_roles.sql\")",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Bash(node -e ' *)"
     ]
   }
 }
