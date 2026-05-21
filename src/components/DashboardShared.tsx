@@ -172,10 +172,11 @@ export function VisitsByProductChart({ data }: { data: { name: string; visitas: 
   );
 }
 
-export function AtendimentosTable({ atendimentos, isAdmin, onRowClick }: {
+export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowContextMenu }: {
   atendimentos: any[];
   isAdmin: boolean;
   onRowClick?: (a: any) => void;
+  onRowContextMenu?: (e: any, a: any) => void;
 }) {
   const [sortConfig, setSortConfig] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "data", dir: "desc" });
   const [page, setPage] = useState(1);
@@ -278,6 +279,7 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick }: {
                   key={a.id}
                   className={`border-b border-border hover:bg-[#FDF8EC] transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
                   onClick={() => onRowClick?.(a)}
+                  onContextMenu={(e) => onRowContextMenu?.(e, a)}
                 >
                   <td className="px-4 py-3 whitespace-nowrap">{format(parseISO(a.data), "dd/MM/yyyy")}</td>
                   <td className="px-4 py-3 text-muted-foreground">{a.id_cliente || "—"}</td>

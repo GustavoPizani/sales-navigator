@@ -54,6 +54,9 @@ function AdminDashboard({ user }: { user: any }) {
   const filters = useDashboardFilters();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [editingAtendimento, setEditingAtendimento] = useState<any | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
+  const [insertOpen, setInsertOpen] = useState(false);
+  const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
 
   const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
@@ -219,11 +222,34 @@ function AdminDashboard({ user }: { user: any }) {
             <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
             <CsvImportButton brokers={brokersQ.data ?? []} />
           </div>
-          <AtendimentosTable atendimentos={atendimentos} isAdmin={isAdmin} onRowClick={(a) => setEditingAtendimento(a)} />
+          <AtendimentosTable 
+            atendimentos={atendimentos} 
+            isAdmin={isAdmin} 
+            onRowClick={(a) => setEditingAtendimento(a)} 
+            onRowContextMenu={(e: any, a: any) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
+            }}
+          />
         </div>
       </div>
 
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
+          <div className="fixed z-50 bg-white border border-border shadow-xl rounded-lg py-1 w-48" style={{ top: contextMenu.y, left: contextMenu.x }}>
+            <button 
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--surface)] text-[var(--navy)]"
+              onClick={() => { setInsertPreFill(contextMenu.atendimento); setInsertOpen(true); setContextMenu(null); }}
+            >
+              Novo Atendimento
+            </button>
+          </div>
+        </>
+      )}
+
       {editingAtendimento && <AtendimentoEditForm atendimento={editingAtendimento} onClose={() => setEditingAtendimento(null)} />}
+      {insertOpen && <AtendimentoForm userId={user?.id} onClose={() => { setInsertOpen(false); setInsertPreFill(null); }} preFill={insertPreFill} />}
     </div>
   );
 }
@@ -232,6 +258,8 @@ function BrokerDashboard({ user }: { user: any }) {
   const filters = useDashboardFilters();
   const [insertOpen, setInsertOpen] = useState(false);
   const [editingAtendimento, setEditingAtendimento] = useState<any | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
+  const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
 
   const { data: atendimentos = [] } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
@@ -269,15 +297,36 @@ function BrokerDashboard({ user }: { user: any }) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-            <button onClick={() => setInsertOpen(true)} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
+            <button onClick={() => { setInsertPreFill(null); setInsertOpen(true); }} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
               <Plus size={14} strokeWidth={2.5} /> Inserir
             </button>
           </div>
-          <AtendimentosTable atendimentos={atendimentos} isAdmin={false} onRowClick={(a) => setEditingAtendimento(a)} />
+          <AtendimentosTable 
+            atendimentos={atendimentos} 
+            isAdmin={false} 
+            onRowClick={(a) => setEditingAtendimento(a)} 
+            onRowContextMenu={(e: any, a: any) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
+            }}
+          />
         </div>
       </div>
 
-      {insertOpen && <AtendimentoForm userId={user?.id} onClose={() => setInsertOpen(false)} />}
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
+          <div className="fixed z-50 bg-white border border-border shadow-xl rounded-lg py-1 w-48" style={{ top: contextMenu.y, left: contextMenu.x }}>
+            <button 
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--surface)] text-[var(--navy)]"
+              onClick={() => { setInsertPreFill(contextMenu.atendimento); setInsertOpen(true); setContextMenu(null); }}
+            >
+              Novo Atendimento
+            </button>
+          </div>
+        </>
+      )}
+      {insertOpen && <AtendimentoForm userId={user?.id} onClose={() => { setInsertOpen(false); setInsertPreFill(null); }} preFill={insertPreFill} />}
       {editingAtendimento && <AtendimentoEditForm atendimento={editingAtendimento} onClose={() => setEditingAtendimento(null)} />}
     </div>
   );
@@ -384,17 +433,18 @@ function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClo
   );
 }
 
-function AtendimentoForm({ userId, onClose }: { userId: string; onClose: () => void }) {
+function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose: () => void, preFill?: any }) {
   const qc = useQueryClient();
   const todayStr = format(new Date(), "yyyy-MM-dd");
+  const targetUserId = preFill?.broker_id || userId;
 
   const [linkedApptId, setLinkedApptId] = useState("");
   const [data, setData] = useState(todayStr);
-  const [nomeCliente, setNomeCliente] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [emailCliente, setEmailCliente] = useState("");
-  const [idCliente, setIdCliente] = useState("");
-  const [produto, setProduto] = useState("");
+  const [nomeCliente, setNomeCliente] = useState(preFill?.nome_cliente || "");
+  const [telefone, setTelefone] = useState(preFill?.telefone || "");
+  const [emailCliente, setEmailCliente] = useState(preFill?.email || "");
+  const [idCliente, setIdCliente] = useState(preFill?.id_cliente || "");
+  const [produto, setProduto] = useState(preFill?.produto || "");
   const [ocorrencia, setOcorrencia] = useState("");
   const [setor, setSetor] = useState("");
   const [visita, setVisita] = useState(false);
@@ -404,23 +454,23 @@ function AtendimentoForm({ userId, onClose }: { userId: string; onClose: () => v
   const [valor, setValor] = useState("");
 
   const apptsQ = useQuery({
-    queryKey: ["broker-past-appts", userId],
+    queryKey: ["broker-past-appts", targetUserId],
     queryFn: async () => {
       const { data } = await supabase.from("appointments").select("*")
-        .eq("owner_id", userId).lte("date", todayStr).order("date", { ascending: false }).limit(50);
+        .eq("owner_id", targetUserId).lte("date", todayStr).order("date", { ascending: false }).limit(50);
       return data ?? [];
     },
-    enabled: !!userId,
+    enabled: !!targetUserId,
   });
 
   const linkedIdsQ = useQuery({
-    queryKey: ["linked-appt-ids", userId],
+    queryKey: ["linked-appt-ids", targetUserId],
     queryFn: async () => {
       const { data } = await supabase.from("atendimentos")
-        .select("appointment_id").eq("broker_id", userId).not("appointment_id", "is", null);
+        .select("appointment_id").eq("broker_id", targetUserId).not("appointment_id", "is", null);
       return (data ?? []).map((a: any) => a.appointment_id).filter(Boolean) as string[];
     },
-    enabled: !!userId,
+    enabled: !!targetUserId,
   });
 
   const availableAppts = useMemo(() =>
@@ -442,7 +492,7 @@ function AtendimentoForm({ userId, onClose }: { userId: string; onClose: () => v
   const save = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("atendimentos").insert({
-        broker_id: userId,
+        broker_id: targetUserId,
         appointment_id: linkedApptId || null,
         data,
         nome_cliente: nomeCliente,
