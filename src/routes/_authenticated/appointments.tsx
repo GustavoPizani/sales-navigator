@@ -108,7 +108,6 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
   const [clientId, setClientId] = useState(appt?.client_id ?? "");
   const [clientEmail, setClientEmail] = useState(appt?.client_email ?? "");
   const [description, setDescription] = useState(appt?.description ?? "");
-  const [includeManager, setIncludeManager] = useState(appt?.include_manager ?? false);
   const [savedLink, setSavedLink] = useState<string | null>(appt?.google_calendar_link ?? null);
 
   const isManager = isAdmin || isDirector;
@@ -141,7 +140,7 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
 
   const conflictQ = useQuery({
     queryKey: ["mgr-conflict", adminQ.data?.id, date, startT, endT],
-    enabled: includeManager && !!adminQ.data?.id,
+    enabled: !isManager && !!adminQ.data?.id,
     queryFn: async () => {
       const { data } = await supabase.from("appointments").select("id,title,start_time,end_time")
         .eq("owner_id", adminQ.data!.id).eq("date", date);
@@ -160,7 +159,7 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
       const link = outlookCalendarLink({
         title: finalTitle, date, startTime: startT, endTime: endT,
         description: description || undefined, location: location || undefined,
-        emails: [clientEmail, includeManager ? adminQ.data?.email : undefined].filter((x): x is string => !!x),
+        emails: [clientEmail, !isManager ? adminQ.data?.email : undefined].filter((x): x is string => !!x),
       });
       const payload = {
         owner_id: user!.id, title: finalTitle, date, start_time: startT, end_time: endT,
@@ -168,7 +167,7 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
         custom_location: showProjectLocation ? null : (customLoc || null),
         description: description || null, client_name: clientName || null,
         client_email: clientEmail || null, client_id: clientId || null,
-        type, include_manager: isManager ? false : includeManager,
+        type, include_manager: !isManager,
         google_calendar_link: link,
       };
       if (appt) {
@@ -240,18 +239,11 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
 
           <textarea className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border min-h-[80px]" placeholder="Descrição (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} />
 
-          {!isManager && (
-            <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border">
-              <span className="text-sm font-medium text-[var(--navy)]">Incluir gestor{adminQ.data ? ` (${adminQ.data.full_name})` : ""}</span>
-              <input type="checkbox" checked={includeManager} onChange={(e) => setIncludeManager(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
-            </label>
-          )}
-
-          {!isManager && includeManager && (
+          {!isManager && adminQ.data && (
             conflictQ.data ? (
               <div className="rounded-xl bg-red-50 border border-red-200 text-red-800 px-3 py-2 text-sm flex gap-2">
                 <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
-                <span>O gestor tem um conflito: <b>{conflictQ.data.title}</b> ({conflictQ.data.start_time.slice(0,5)}–{conflictQ.data.end_time.slice(0,5)}). Incluir mesmo assim?</span>
+                <span>O gestor possui um conflito: <b>{conflictQ.data.title}</b> ({conflictQ.data.start_time.slice(0,5)}–{conflictQ.data.end_time.slice(0,5)}). O convite será enviado mesmo assim.</span>
               </div>
             ) : (
               <div className="rounded-xl bg-green-50 border border-green-200 text-green-800 px-3 py-2 text-sm flex gap-2">
