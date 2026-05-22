@@ -45,8 +45,8 @@ Retorne APENAS um objeto JSON no formato:
 
 Regras:
 1. day_offset: 0 para Segunda, 1 para Terça, 2 para Quarta, 3 para Quinta, 4 para Sexta, 5 para Sábado, 6 para Domingo.
-2. Ignore dias com "FOLGA", "STAND-BY", ou células vazias. Retorne apenas dias em que há um projeto/plantão definido.
-3. Se identificar projetos chamados "ONLINE" ou algo parecido, retorne "Central".
+2. Ignore dias com "FOLGA" ou células vazias. Retorne apenas dias em que há um projeto/plantão definido.
+3. Se identificar projetos chamados "ONLINE", "STAND-BY" ou algo parecido, retorne "Central".
 4. Os projetos cadastrados no sistema são: ${projectNames.length > 0 ? projectNames.join(", ") : "Nenhum cadastrado"}. Tente mapear o nome do plantão para o nome exato do projeto correspondente.
 5. Retorne apenas JSON válido sem markdown ou explicações.`;
 
@@ -103,7 +103,7 @@ function matchBroker(name: string, brokers: any[]): any {
 function matchProjectName(produto: string, projects: { name: string }[]): string {
   if (!produto) return "";
   const normP = normalizeStr(produto);
-  if (normP.includes("online") || normP.includes("on line")) return "Central";
+  if (normP.includes("online") || normP.includes("on line") || normP.includes("stand by") || normP.includes("standby") || normP.includes("central")) return "Central";
   
   const exact = projects.find((p) => normalizeStr(p.name) === normP);
   if (exact) return exact.name;
@@ -117,7 +117,7 @@ function matchProjectName(produto: string, projects: { name: string }[]): string
     const score = union > 0 ? common / union : 0;
     if (score > best.score) best = { score, name: p.name };
   }
-  return best.name || produto;
+  return best.name;
 }
 
 function ImportScheduleButton({ brokers, weekStart }: { brokers: any[]; weekStart: Date }) {
@@ -178,6 +178,7 @@ function ImportScheduleButton({ brokers, weekStart }: { brokers: any[]; weekStar
         const dateStr = format(addDays(weekStart, shift.day_offset), "yyyy-MM-dd");
 
         const finalProject = matchProjectName(shift.project, projectsList);
+        if (!finalProject) continue;
 
         toInsert.push({
           broker_id: broker.id,
