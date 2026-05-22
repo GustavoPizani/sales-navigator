@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_authenticated/appointments")({
   component: AppointmentsPage,
 });
 
-type Appt = {
+export type Appt = {
   id: string; owner_id: string; title: string; date: string;
   start_time: string; end_time: string; project_id: string | null;
   custom_location: string | null; description: string | null;
@@ -94,7 +94,7 @@ function AppointmentsPage() {
   );
 }
 
-export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose: () => void }) {
+export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null; onClose: () => void; preFill?: Partial<Appt> }) {
   const { user, isAdmin, isDirector, profile } = useAuth();
   const qc = useQueryClient();
   const [type, setType] = useState<Appt["type"]>(appt?.type ?? "visit");
@@ -104,9 +104,9 @@ export function AppointmentForm({ appt, onClose }: { appt: Appt | null; onClose:
   const [projectId, setProjectId] = useState<string | "">(appt?.project_id ?? "");
   const [customLoc, setCustomLoc] = useState(appt?.custom_location ?? "");
   const [title, setTitle] = useState(appt?.title ?? "");
-  const [clientName, setClientName] = useState(appt?.client_name ?? "");
-  const [clientId, setClientId] = useState(appt?.client_id ?? "");
-  const [clientEmail, setClientEmail] = useState(appt?.client_email ?? "");
+  const [clientName, setClientName] = useState(appt?.client_name ?? preFill?.client_name ?? "");
+  const [clientId, setClientId] = useState(appt?.client_id ?? preFill?.client_id ?? "");
+  const [clientEmail, setClientEmail] = useState(appt?.client_email ?? preFill?.client_email ?? "");
   const [description, setDescription] = useState(appt?.description ?? "");
   const [savedLink, setSavedLink] = useState<string | null>(appt?.google_calendar_link ?? null);
 

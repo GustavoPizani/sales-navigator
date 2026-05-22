@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronDown, Plus, Upload, X } from "lucide-react";
+import { ChevronDown, Plus, Upload, X, Trash2, Calendar, Bell } from "lucide-react";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Link } from "@tanstack/react-router";
 import toast from "react-hot-toast";
@@ -12,8 +12,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 import { useDashboardFilters, useDashboardData } from "@/hooks/useDashboard";
-import { DashboardCharts, AtendimentosTable, KpiCard, MiniAvatar, formatBRL, StatusChart, VisitsByProductChart } from "@/components/DashboardShared";
+import { DashboardCharts, AtendimentosTable, KpiCard as OriginalKpiCard, MiniAvatar, formatBRL, StatusChart, VisitsByProductChart } from "@/components/DashboardShared";
 import { BarChart, Bar, Tooltip, ResponsiveContainer } from "recharts";
+import { AppointmentForm } from "./appointments";
 
 const STATUSES = ["Prospect", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado", "Contrato Assinado", "Cancelada"];
 
@@ -39,6 +40,27 @@ function matchProjectName(produto: string, projects: { name: string }[]): string
 const TEMPERATURAS = ["Frio", "Morno", "Quente"] as const;
 const SETORES = ["Online", "Salão"] as const;
 
+function KpiCard({ label, value }: { label: string; value: string | number }) {
+  const valueStr = String(value);
+  const len = valueStr.length;
+
+  let valueClasses = "text-2xl";
+  if (len > 18) {
+    valueClasses = "text-base";
+  } else if (len > 15) {
+    valueClasses = "text-lg";
+  } else if (len > 12) {
+    valueClasses = "text-xl";
+  }
+
+  return (
+    <div className="bg-white p-4 rounded-2xl shadow-sm border border-border flex flex-col justify-center">
+      <p className="text-sm text-muted-foreground truncate">{label}</p>
+      <p className={`font-bold text-[var(--navy)] mt-1 ${valueClasses}`}>{value}</p>
+    </div>
+  );
+}
+
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
 });
@@ -49,6 +71,89 @@ function DashboardPage() {
   return <AdminDashboard user={user} />;
 }
 
+function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any) => void }) {
+  const [open, setOpen] = useState(false);
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  const apptsQ = useQuery({
+    queryKey: ["broker-past-appts", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from("appointments")
+        .select("*")
+        .eq("owner_id", user.id)
+        .lte("date", todayStr)
+        .order("date", { ascending: false })
+        .limit(50);
+      return data ?? [];
+    },
+    enabled: !!user?.id,
+  });
+
+  const linkedIdsQ = useQuery({
+    queryKey: ["linked-appt-ids", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from("atendimentos")
+        .select("appointment_id")
+        .eq("broker_id", user.id)
+        .not("appointment_id", "is", null);
+      return (data ?? []).map((a: any) => a.appointment_id).filter(Boolean) as string[];
+    },
+    enabled: !!user?.id,
+  });
+
+  const pending = useMemo(() =>
+    (apptsQ.data ?? []).filter((a) => !(linkedIdsQ.data ?? []).includes(a.id)),
+    [apptsQ.data, linkedIdsQ.data]
+  );
+
+  return (
+    <div className="relative flex-shrink-0">
+      <button onClick={() => setOpen(!open)} className="relative p-2 text-white/70 hover:text-white transition-colors">
+        <Bell size={20} />
+        {pending.length > 0 && (
+          <span className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-[var(--navy)]">
+            {pending.length}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-border z-50 overflow-hidden flex flex-col max-h-[400px]">
+            <div className="px-4 py-3 border-b border-border bg-[var(--surface)]">
+              <h3 className="font-semibold text-[var(--navy)] text-sm">Notificações</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Agendamentos pendentes de atualização</p>
+            </div>
+            <div className="overflow-y-auto flex-1 p-2 space-y-1">
+              {pending.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-6">Nenhum agendamento pendente.</p>
+              ) : (
+                pending.map(a => (
+                  <button 
+                    key={a.id}
+                    onClick={() => {
+                      onSelect(a);
+                      setOpen(false);
+                    }}
+                    className="w-full text-left p-3 rounded-lg hover:bg-[var(--surface)] border border-transparent hover:border-border transition-colors flex flex-col gap-1"
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="font-semibold text-[var(--navy)] text-sm truncate">{a.title}</span>
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">{format(new Date(a.date + "T00:00:00"), "dd/MM", { locale: ptBR })}</span>
+                    </div>
+                    {a.client_name && <span className="text-xs text-muted-foreground truncate">Cliente: {a.client_name}</span>}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AdminDashboard({ user }: { user: any }) {
   const isAdmin = true;
   const filters = useDashboardFilters();
@@ -57,6 +162,8 @@ function AdminDashboard({ user }: { user: any }) {
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
   const [insertOpen, setInsertOpen] = useState(false);
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
+  const [clientIdSearch, setClientIdSearch] = useState("");
+  const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
 
   const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
@@ -93,7 +200,13 @@ function AdminDashboard({ user }: { user: any }) {
     enabled: !!user && Array.isArray(brokersQ.data),
   });
 
-  const dbData = useDashboardData(atendimentos);
+  const filteredAtendimentos = useMemo(() => {
+    return atendimentos.filter(a => 
+      !clientIdSearch || (a.id_cliente && a.id_cliente.toLowerCase().includes(clientIdSearch.toLowerCase()))
+    );
+  }, [atendimentos, clientIdSearch]);
+
+  const dbData = useDashboardData(filteredAtendimentos);
 
   const projectsQ = useQuery({
     queryKey: ["projects-for-dashboard"],
@@ -105,14 +218,14 @@ function AdminDashboard({ user }: { user: any }) {
   });
 
   const statusCounts = useMemo(() =>
-    STATUSES.map((s) => ({ name: s, count: atendimentos.filter((a) => a.status === s).length })),
-    [atendimentos]
+    STATUSES.map((s) => ({ name: s, count: filteredAtendimentos.filter((a) => a.status === s).length })),
+    [filteredAtendimentos]
   );
 
   const visitsByProduct = useMemo(() => {
     const projects = projectsQ.data ?? [];
     const map: Record<string, { total: number; visitas: number }> = {};
-    atendimentos.forEach((a) => {
+    filteredAtendimentos.forEach((a) => {
       if (!a.produto) return;
       const key = matchProjectName(a.produto, projects);
       if (!map[key]) map[key] = { total: 0, visitas: 0 };
@@ -122,7 +235,7 @@ function AdminDashboard({ user }: { user: any }) {
     return Object.entries(map)
       .map(([name, v]) => ({ name, ...v }))
       .sort((a, b) => b.visitas - a.visitas || b.total - a.total);
-  }, [atendimentos, projectsQ.data]);
+  }, [filteredAtendimentos, projectsQ.data]);
 
   const brokerPerformance = useMemo(() => {
     if (!isAdmin) return [];
@@ -132,7 +245,7 @@ function AdminDashboard({ user }: { user: any }) {
       map[b.id] = { broker: b, total: 0, visitas: 0, vendas: 0, tratativas: 0, volume: 0, monthly: {} };
     });
 
-    atendimentos.forEach(a => {
+    filteredAtendimentos.forEach(a => {
       if (!map[a.broker_id]) return;
       const b = map[a.broker_id];
       b.total++;
@@ -149,13 +262,25 @@ function AdminDashboard({ user }: { user: any }) {
       const sparkline = Object.entries(b.monthly).sort((a,b) => a[0].localeCompare(b[0])).map(([m, count]) => ({ name: m, count }));
       return { ...b, conversao, sparkline };
     }).sort((a, b) => b.total - a.total);
-  }, [atendimentos, brokersQ.data, isAdmin]);
+  }, [filteredAtendimentos, brokersQ.data, isAdmin]);
 
   const selectedBroker = filters.brokerId === "all" ? null : brokersQ.data?.find(b => b.id === filters.brokerId);
 
   return (
     <div className="pb-nav bg-[var(--surface)] min-h-screen">
-      <AppHeader title="Dashboard" />
+      <AppHeader 
+        title="Dashboard" 
+        right={<NotificationBell user={user} onSelect={(appt) => {
+          setInsertPreFill({
+            appointment_id: appt.id,
+            nome_cliente: appt.client_name || "",
+            email: appt.client_email || "",
+            id_cliente: appt.client_id || "",
+            broker_id: user.id
+          });
+          setInsertOpen(true);
+        }} />} 
+      />
 
       {/* FILTER BAR */}
       <div className="bg-white px-4 py-3 border-b border-border sticky top-0 z-20 shadow-sm flex items-center gap-3 flex-wrap">
@@ -164,6 +289,13 @@ function AdminDashboard({ user }: { user: any }) {
           endDate={filters.endDate}
           onApply={filters.applyDateRange}
           className="flex-1 min-w-[220px]"
+        />
+        <input 
+          type="text" 
+          placeholder="Buscar por ID do Cliente..." 
+          value={clientIdSearch} 
+          onChange={(e) => setClientIdSearch(e.target.value)}
+          className="h-10 px-3 rounded-lg border border-border text-sm flex-1 min-w-[180px]"
         />
         {isAdmin && (
           <div className="relative flex-1 min-w-[180px]">
@@ -223,7 +355,7 @@ function AdminDashboard({ user }: { user: any }) {
             <CsvImportButton brokers={brokersQ.data ?? []} />
           </div>
           <AtendimentosTable 
-            atendimentos={atendimentos} 
+            atendimentos={filteredAtendimentos} 
             isAdmin={isAdmin} 
             onRowClick={(a) => setEditingAtendimento(a)} 
             onRowContextMenu={(e: any, a: any) => {
@@ -239,10 +371,23 @@ function AdminDashboard({ user }: { user: any }) {
           <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
           <div className="fixed z-50 bg-white border border-border shadow-xl rounded-lg py-1 w-48" style={{ top: contextMenu.y, left: contextMenu.x }}>
             <button 
-              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--surface)] text-[var(--navy)]"
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--surface)] text-[var(--navy)] flex items-center gap-2"
               onClick={() => { setInsertPreFill(contextMenu.atendimento); setInsertOpen(true); setContextMenu(null); }}
             >
-              Novo Atendimento
+              <Plus size={14} /> Novo Atendimento
+            </button>
+            <button 
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--surface)] text-[var(--navy)] flex items-center gap-2"
+              onClick={() => { 
+                setNewAppointmentData({
+                  client_name: contextMenu.atendimento.nome_cliente,
+                  client_id: contextMenu.atendimento.id_cliente,
+                  client_email: contextMenu.atendimento.email,
+                });
+                setContextMenu(null); 
+              }}
+            >
+              <Calendar size={14} /> Novo Agendamento
             </button>
           </div>
         </>
@@ -250,6 +395,7 @@ function AdminDashboard({ user }: { user: any }) {
 
       {editingAtendimento && <AtendimentoEditForm atendimento={editingAtendimento} onClose={() => setEditingAtendimento(null)} />}
       {insertOpen && <AtendimentoForm userId={user?.id} onClose={() => { setInsertOpen(false); setInsertPreFill(null); }} preFill={insertPreFill} />}
+      {newAppointmentData && <AppointmentForm appt={null} preFill={newAppointmentData} onClose={() => setNewAppointmentData(null)} />}
     </div>
   );
 }
@@ -260,6 +406,8 @@ function BrokerDashboard({ user }: { user: any }) {
   const [editingAtendimento, setEditingAtendimento] = useState<any | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
+  const [clientIdSearch, setClientIdSearch] = useState("");
+  const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
 
   const { data: atendimentos = [] } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
@@ -276,13 +424,38 @@ function BrokerDashboard({ user }: { user: any }) {
     enabled: !!user,
   });
 
-  const dbData = useDashboardData(atendimentos);
+  const filteredAtendimentos = useMemo(() => {
+    return atendimentos.filter(a => 
+      !clientIdSearch || (a.id_cliente && a.id_cliente.toLowerCase().includes(clientIdSearch.toLowerCase()))
+    );
+  }, [atendimentos, clientIdSearch]);
+
+  const dbData = useDashboardData(filteredAtendimentos);
 
   return (
     <div className="pb-nav bg-[var(--surface)] min-h-screen">
-      <AppHeader title="Dashboard" />
-      <div className="bg-white px-4 py-3 border-b border-border sticky top-0 z-20 shadow-sm">
-        <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="w-full" />
+      <AppHeader 
+        title="Dashboard" 
+        right={<NotificationBell user={user} onSelect={(appt) => {
+          setInsertPreFill({
+            appointment_id: appt.id,
+            nome_cliente: appt.client_name || "",
+            email: appt.client_email || "",
+            id_cliente: appt.client_id || "",
+            broker_id: user.id
+          });
+          setInsertOpen(true);
+        }} />} 
+      />
+      <div className="bg-white px-4 py-3 border-b border-border sticky top-0 z-20 shadow-sm flex items-center gap-3 flex-wrap">
+        <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="flex-1 min-w-[220px]" />
+        <input 
+          type="text" 
+          placeholder="Buscar por ID do Cliente..." 
+          value={clientIdSearch} 
+          onChange={(e) => setClientIdSearch(e.target.value)}
+          className="h-10 px-3 rounded-lg border border-border text-sm flex-1 min-w-[180px]"
+        />
       </div>
 
       <div className="px-4 pt-4 pb-8 space-y-6">
@@ -302,7 +475,7 @@ function BrokerDashboard({ user }: { user: any }) {
             </button>
           </div>
           <AtendimentosTable 
-            atendimentos={atendimentos} 
+            atendimentos={filteredAtendimentos} 
             isAdmin={false} 
             onRowClick={(a) => setEditingAtendimento(a)} 
             onRowContextMenu={(e: any, a: any) => {
@@ -318,21 +491,36 @@ function BrokerDashboard({ user }: { user: any }) {
           <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
           <div className="fixed z-50 bg-white border border-border shadow-xl rounded-lg py-1 w-48" style={{ top: contextMenu.y, left: contextMenu.x }}>
             <button 
-              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--surface)] text-[var(--navy)]"
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--surface)] text-[var(--navy)] flex items-center gap-2"
               onClick={() => { setInsertPreFill(contextMenu.atendimento); setInsertOpen(true); setContextMenu(null); }}
             >
-              Novo Atendimento
+              <Plus size={14} /> Novo Atendimento
+            </button>
+            <button 
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--surface)] text-[var(--navy)] flex items-center gap-2"
+              onClick={() => { 
+                setNewAppointmentData({
+                  client_name: contextMenu.atendimento.nome_cliente,
+                  client_id: contextMenu.atendimento.id_cliente,
+                  client_email: contextMenu.atendimento.email,
+                });
+                setContextMenu(null); 
+              }}
+            >
+              <Calendar size={14} /> Novo Agendamento
             </button>
           </div>
         </>
       )}
       {insertOpen && <AtendimentoForm userId={user?.id} onClose={() => { setInsertOpen(false); setInsertPreFill(null); }} preFill={insertPreFill} />}
       {editingAtendimento && <AtendimentoEditForm atendimento={editingAtendimento} onClose={() => setEditingAtendimento(null)} />}
+      {newAppointmentData && <AppointmentForm appt={null} preFill={newAppointmentData} onClose={() => setNewAppointmentData(null)} />}
     </div>
   );
 }
 
 function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClose: () => void }) {
+  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [produto, setProduto] = useState(atendimento.produto ?? "");
   const [ocorrencia, setOcorrencia] = useState(atendimento.ocorrencia ?? "");
@@ -361,6 +549,19 @@ function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClo
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dashboard-atendimentos"] });
       toast.success("Atendimento atualizado!");
+      onClose();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const del = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("atendimentos").delete().eq("id", atendimento.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dashboard-atendimentos"] });
+      toast.success("Atendimento excluído!");
       onClose();
     },
     onError: (e: any) => toast.error(e.message),
@@ -421,7 +622,19 @@ function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClo
           <input className={fieldCls} placeholder="Valor (R$)" value={valor} onChange={(e) => setValor(e.target.value)} />
         </div>
 
-        <div className="px-5 pb-5 pt-3 border-t border-border flex gap-2 flex-shrink-0">
+        <div className="px-5 pb-5 pt-3 border-t border-border flex gap-2 flex-shrink-0 items-center">
+          {isAdmin && (
+            <button
+              onClick={() => {
+                if (window.confirm("Deseja realmente excluir este atendimento?")) {
+                  del.mutate();
+                }
+              }}
+              className="h-12 w-12 flex-shrink-0 rounded-xl bg-red-50 text-red-600 flex items-center justify-center"
+            >
+              <Trash2 size={20} />
+            </button>
+          )}
           <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancelar</button>
           <button onClick={() => save.mutate()} disabled={save.isPending}
             className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50">
@@ -438,7 +651,7 @@ function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const targetUserId = preFill?.broker_id || userId;
 
-  const [linkedApptId, setLinkedApptId] = useState("");
+  const [linkedApptId, setLinkedApptId] = useState(preFill?.appointment_id || "");
   const [data, setData] = useState(todayStr);
   const [nomeCliente, setNomeCliente] = useState(preFill?.nome_cliente || "");
   const [telefone, setTelefone] = useState(preFill?.telefone || "");
@@ -491,7 +704,7 @@ function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose
 
   const save = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("atendimentos").insert({
+      const payload = {
         broker_id: targetUserId,
         appointment_id: linkedApptId || null,
         data,
@@ -507,7 +720,18 @@ function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose
         temperatura: temperatura || null,
         status: status || null,
         valor: valor ? parseFloat(valor.replace(",", ".")) : null,
-      });
+      };
+
+      if (idCliente) {
+        const { data: existing } = await supabase.from("atendimentos").select("id").eq("id_cliente", idCliente).limit(1).maybeSingle();
+        if (existing) {
+          const { error } = await supabase.from("atendimentos").update(payload).eq("id", existing.id);
+          if (error) throw error;
+          return;
+        }
+      }
+
+      const { error } = await supabase.from("atendimentos").insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {

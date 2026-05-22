@@ -294,6 +294,15 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
         const { error } = await supabase.from("atendimentos").update(payload).eq("id", deal.id);
         if (error) throw error;
       } else {
+        if (idCliente) {
+          const { data: existing } = await supabase.from("atendimentos").select("id").eq("id_cliente", idCliente).limit(1).maybeSingle();
+          if (existing) {
+            const { error } = await supabase.from("atendimentos").update(payload).eq("id", existing.id);
+            if (error) throw error;
+            return;
+          }
+        }
+
         const { error } = await supabase.from("atendimentos").insert(payload);
         if (error) throw error;
       }
