@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { addDays, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,7 +46,7 @@ Retorne APENAS um objeto JSON no formato:
 Regras:
 1. day_offset: 0 para Segunda, 1 para Terça, 2 para Quarta, 3 para Quinta, 4 para Sexta, 5 para Sábado, 6 para Domingo.
 2. Ignore dias com "FOLGA" ou células vazias. Retorne apenas dias em que há um projeto/plantão definido.
-3. Se identificar projetos chamados "ONLINE", "STAND-BY" ou algo parecido, retorne "Central".
+3. Se identificar projetos chamados "ONLINE", "STAND-BY", "CENTRAL" ou algo parecido, retorne "Online".
 4. Os projetos cadastrados no sistema são: ${projectNames.length > 0 ? projectNames.join(", ") : "Nenhum cadastrado"}. Tente mapear o nome do plantão para o nome exato do projeto correspondente.
 5. Retorne apenas JSON válido sem markdown ou explicações.`;
 
@@ -103,7 +103,7 @@ function matchBroker(name: string, brokers: any[]): any {
 function matchProjectName(produto: string, projects: { name: string }[]): string {
   if (!produto) return "";
   const normP = normalizeStr(produto);
-  if (normP.includes("online") || normP.includes("on line") || normP.includes("stand by") || normP.includes("standby") || normP.includes("central")) return "Central";
+  if (normP.includes("online") || normP.includes("on line") || normP.includes("stand by") || normP.includes("standby") || normP.includes("central")) return "Online";
   
   const exact = projects.find((p) => normalizeStr(p.name) === normP);
   if (exact) return exact.name;
@@ -120,11 +120,18 @@ function matchProjectName(produto: string, projects: { name: string }[]): string
   return best.name;
 }
 
-function ImportScheduleButton({ brokers, weekStart }: { brokers: any[]; weekStart: Date }) {
+function ImportScheduleButton({ brokers, currentWeekStart, onImported }: { brokers: any[]; currentWeekStart: Date; onImported: (d: Date) => void }) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
+  
+  const [parsedData, setParsedData] = useState<{
+    weekStart: Date;
+    shifts: any[];
+    notFound: string[];
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const projectsQ = useQuery({
     queryKey: ["projects-active"],
@@ -152,8 +159,6 @@ function ImportScheduleButton({ brokers, weekStart }: { brokers: any[]; weekStar
         return;
       }
 
-      setLoadingMsg("Salvando plantões...");
-      
       const toInsert = [];
       const notFound = new Set<string>();
 
@@ -250,7 +255,7 @@ function SchedulePage() {
             <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-2 rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
           </div>
           {isAdmin && (
-            <ImportScheduleButton brokers={brokersQ.data ?? []} weekStart={weekStart} />
+            <ImportScheduleButton brokers={brokersQ.data ?? []} currentWeekStart={weekStart} onImported={setWeekStart} />
           )}
         </div>
 
