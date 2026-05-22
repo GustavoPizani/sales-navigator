@@ -70,7 +70,7 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
-        <ChartCard title="Atendimentos x Vendas">
+        <ChartCard title="Visitas x Vendas">
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={dbData.chart2Data} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />

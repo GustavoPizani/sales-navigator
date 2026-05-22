@@ -45,7 +45,9 @@ export function useDashboardData(atendimentos: any[]) {
       }
 
       if (a.visita) monthlyData[m].Sim1++; else monthlyData[m].Não1++;
-      if (a.venda) monthlyData[m].Sim2++; else monthlyData[m].Não2++;
+      if (a.visita) {
+        if (a.venda) monthlyData[m].Sim2++; else monthlyData[m].Não2++;
+      }
       if (a.setor === "Online") monthlyData[m].Online++;
       else if (a.setor === "Salão") monthlyData[m].Salão++;
 

@@ -48,7 +48,8 @@ Regras:
 2. Ignore dias com "FOLGA" ou células vazias. Retorne apenas dias em que há um projeto/plantão definido.
 3. Se identificar projetos chamados "ONLINE", "STAND-BY", "CENTRAL" ou algo parecido, retorne "Online".
 4. Os projetos cadastrados no sistema são: ${projectNames.length > 0 ? projectNames.join(", ") : "Nenhum cadastrado"}. Tente mapear o nome do plantão para o nome exato do projeto correspondente.
-5. Retorne apenas JSON válido sem markdown ou explicações.`;
+5. Retorne apenas JSON válido sem markdown ou explicações.
+6. Se o corretor estiver escalado em mais de um turno no mesmo dia (ex: Manhã e Tarde), retorne objetos separados para o mesmo day_offset.`;
 
   const res = await fetch(GROQ_URL, {
     method: "POST",
@@ -283,7 +284,7 @@ function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
             ) : (
               my.map((s) => (
                 <p key={s.id} className="font-semibold text-[var(--navy)] mt-1">
-                  {derivePeriod(s.start_time) === "manha" ? "Manhã" : "Tarde"}
+                  {derivePeriod(s.start_time) === "manha" ? "Manhã" : (derivePeriod(s.start_time) === "tarde" ? "Tarde" : "Noite")}
                   {s.notes && <span className="block text-xs text-muted-foreground font-normal">{s.notes}</span>}
                 </p>
               ))
@@ -322,24 +323,50 @@ function AdminGrid({ days, brokers, shifts }: { days: Date[]; brokers: any[]; sh
                 </td>
                 {days.map((d) => {
                   const ds = format(d, "yyyy-MM-dd");
-                  const s = shifts.find((x) => x.broker_id === b.id && x.date === ds);
+                  const dayShifts = shifts.filter((x) => x.broker_id === b.id && x.date === ds);
                   return (
-                    <td key={ds} className="align-middle">
-                      <button
-                        onClick={() => setEditing({ broker: b, date: ds, shift: s })}
-                        className="w-full h-12 rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1"
-                        style={{
-                          background: s ? b.color : "#FFFFFF",
-                          color: s ? "#FFFFFF" : "var(--muted-foreground)",
-                          border: s ? "none" : "1px dashed var(--border)",
-                        }}>
-                        {s ? (
-                          <span className="text-center leading-tight">
-                            <span className="block font-bold">{derivePeriod(s.start_time) === "manha" ? "M" : "T"}</span>
-                            {s.notes && <span className="block truncate max-w-[48px] text-[9px] opacity-90">{s.notes}</span>}
-                          </span>
-                        ) : <Plus size={14} />}
-                      </button>
+                    <td key={ds} className="align-middle p-0.5">
+                      <div className="flex flex-col gap-1 min-h-[48px] justify-center">
+                        {dayShifts.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => setEditing({ broker: b, date: ds, shift: s })}
+                            className="w-full rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1 py-1 transition-opacity hover:opacity-90"
+                            style={{
+                              background: b.color,
+                              color: "#FFFFFF",
+                            }}>
+                            <span className="text-center leading-tight">
+                              <span className="block font-bold">{derivePeriod(s.start_time) === "manha" ? "M" : (derivePeriod(s.start_time) === "tarde" ? "T" : "N")}</span>
+                              {s.notes && <span className="block truncate max-w-[48px] text-[9px] opacity-90">{s.notes}</span>}
+                            </span>
+                          </button>
+                        ))}
+                        {dayShifts.length === 0 && (
+                          <button
+                            onClick={() => setEditing({ broker: b, date: ds })}
+                            className="w-full h-12 rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1 transition-colors hover:bg-gray-50"
+                            style={{
+                              background: "#FFFFFF",
+                              color: "var(--muted-foreground)",
+                              border: "1px dashed var(--border)",
+                            }}>
+                            <Plus size={14} />
+                          </button>
+                        )}
+                        {dayShifts.length > 0 && dayShifts.length < 3 && (
+                          <button
+                            onClick={() => setEditing({ broker: b, date: ds })}
+                            className="w-full h-5 rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1 transition-colors hover:bg-gray-100"
+                            style={{
+                              background: "#FFFFFF",
+                              color: "var(--muted-foreground)",
+                              border: "1px dashed var(--border)",
+                            }}>
+                            <Plus size={10} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   );
                 })}
@@ -359,19 +386,21 @@ function AdminGrid({ days, brokers, shifts }: { days: Date[]; brokers: any[]; sh
 const PERIODS = [
   { val: "manha" as const, label: "Manhã", start: "09:00", end: "14:00" },
   { val: "tarde" as const, label: "Tarde", start: "14:00", end: "19:00" },
+  { val: "noite" as const, label: "Noite", start: "19:00", end: "23:00" },
 ];
 
-function derivePeriod(startTime?: string): "manha" | "tarde" | null {
+function derivePeriod(startTime?: string): "manha" | "tarde" | "noite" | null {
   if (!startTime) return null;
   if (startTime.startsWith("08") || startTime.startsWith("07") || startTime.startsWith("06") || startTime.startsWith("09") || startTime.startsWith("10")) return "manha";
   if (startTime.startsWith("13") || startTime.startsWith("12") || startTime.startsWith("14")) return "tarde";
+  if (startTime.startsWith("18") || startTime.startsWith("19") || startTime.startsWith("20")) return "noite";
   return null;
 }
 
 function ShiftEditor({ broker, date, shift, onClose }: { broker: any; date: string; shift?: Shift; onClose: () => void }) {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [period, setPeriod] = useState<"manha" | "tarde" | null>(derivePeriod(shift?.start_time));
+  const [period, setPeriod] = useState<"manha" | "tarde" | "noite" | null>(derivePeriod(shift?.start_time));
   const [plantao, setPlantao] = useState(shift?.notes ?? "");
 
   const projectsQ = useQuery({
@@ -414,7 +443,7 @@ function ShiftEditor({ broker, date, shift, onClose }: { broker: any; date: stri
         <div className="space-y-4">
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Período</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {PERIODS.map((p) => (
                 <button
                   key={p.val}
