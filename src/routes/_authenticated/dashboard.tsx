@@ -44,19 +44,19 @@ function KpiCard({ label, value }: { label: string; value: string | number }) {
   const valueStr = String(value);
   const len = valueStr.length;
 
-  let valueClasses = "text-2xl";
+  let valueClasses = "text-2xl sm:text-3xl";
   if (len > 18) {
-    valueClasses = "text-base";
+    valueClasses = "text-base sm:text-lg";
   } else if (len > 15) {
-    valueClasses = "text-lg";
+    valueClasses = "text-lg sm:text-xl";
   } else if (len > 12) {
-    valueClasses = "text-xl";
+    valueClasses = "text-xl sm:text-2xl";
   }
 
   return (
-    <div className="bg-white p-4 rounded-2xl shadow-sm border border-border flex flex-col justify-center">
-      <p className="text-sm text-muted-foreground truncate">{label}</p>
-      <p className={`font-bold text-[var(--navy)] mt-1 ${valueClasses}`}>{value}</p>
+    <div className="bg-[var(--navy)] rounded-2xl p-4 flex flex-col justify-center items-center shadow-sm text-center min-h-[100px]">
+      <div className={`font-bold text-white mb-1 ${valueClasses}`}>{value}</div>
+      <div className="text-[10px] sm:text-xs font-semibold text-[var(--gold)] uppercase tracking-wide leading-tight">{label}</div>
     </div>
   );
 }
