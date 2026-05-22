@@ -162,7 +162,6 @@ function AdminDashboard({ user }: { user: any }) {
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
   const [insertOpen, setInsertOpen] = useState(false);
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
-  const [clientIdSearch, setClientIdSearch] = useState("");
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
 
   const brokersQ = useBrokers({ select: "*", includeInactive: true });
@@ -200,13 +199,7 @@ function AdminDashboard({ user }: { user: any }) {
     enabled: !!user && Array.isArray(brokersQ.data),
   });
 
-  const filteredAtendimentos = useMemo(() => {
-    return atendimentos.filter(a => 
-      !clientIdSearch || (a.id_cliente && a.id_cliente.toLowerCase().includes(clientIdSearch.toLowerCase()))
-    );
-  }, [atendimentos, clientIdSearch]);
-
-  const dbData = useDashboardData(filteredAtendimentos);
+  const dbData = useDashboardData(atendimentos);
 
   const projectsQ = useQuery({
     queryKey: ["projects-for-dashboard"],
@@ -218,14 +211,14 @@ function AdminDashboard({ user }: { user: any }) {
   });
 
   const statusCounts = useMemo(() =>
-    STATUSES.map((s) => ({ name: s, count: filteredAtendimentos.filter((a) => a.status === s).length })),
-    [filteredAtendimentos]
+    STATUSES.map((s) => ({ name: s, count: atendimentos.filter((a) => a.status === s).length })),
+    [atendimentos]
   );
 
   const visitsByProduct = useMemo(() => {
     const projects = projectsQ.data ?? [];
     const map: Record<string, { total: number; visitas: number }> = {};
-    filteredAtendimentos.forEach((a) => {
+    atendimentos.forEach((a) => {
       if (!a.produto) return;
       const key = matchProjectName(a.produto, projects);
       if (!map[key]) map[key] = { total: 0, visitas: 0 };
@@ -235,7 +228,7 @@ function AdminDashboard({ user }: { user: any }) {
     return Object.entries(map)
       .map(([name, v]) => ({ name, ...v }))
       .sort((a, b) => b.visitas - a.visitas || b.total - a.total);
-  }, [filteredAtendimentos, projectsQ.data]);
+  }, [atendimentos, projectsQ.data]);
 
   const brokerPerformance = useMemo(() => {
     if (!isAdmin) return [];
@@ -245,7 +238,7 @@ function AdminDashboard({ user }: { user: any }) {
       map[b.id] = { broker: b, total: 0, visitas: 0, vendas: 0, tratativas: 0, volume: 0, monthly: {} };
     });
 
-    filteredAtendimentos.forEach(a => {
+    atendimentos.forEach(a => {
       if (!map[a.broker_id]) return;
       const b = map[a.broker_id];
       b.total++;
@@ -262,7 +255,7 @@ function AdminDashboard({ user }: { user: any }) {
       const sparkline = Object.entries(b.monthly).sort((a,b) => a[0].localeCompare(b[0])).map(([m, count]) => ({ name: m, count }));
       return { ...b, conversao, sparkline };
     }).sort((a, b) => b.total - a.total);
-  }, [filteredAtendimentos, brokersQ.data, isAdmin]);
+  }, [atendimentos, brokersQ.data, isAdmin]);
 
   const selectedBroker = filters.brokerId === "all" ? null : brokersQ.data?.find(b => b.id === filters.brokerId);
 
@@ -289,13 +282,6 @@ function AdminDashboard({ user }: { user: any }) {
           endDate={filters.endDate}
           onApply={filters.applyDateRange}
           className="flex-1 min-w-[220px]"
-        />
-        <input 
-          type="text" 
-          placeholder="Buscar por ID do Cliente..." 
-          value={clientIdSearch} 
-          onChange={(e) => setClientIdSearch(e.target.value)}
-          className="h-10 px-3 rounded-lg border border-border text-sm flex-1 min-w-[180px]"
         />
         {isAdmin && (
           <div className="relative flex-1 min-w-[180px]">
@@ -355,7 +341,7 @@ function AdminDashboard({ user }: { user: any }) {
             <CsvImportButton brokers={brokersQ.data ?? []} />
           </div>
           <AtendimentosTable 
-            atendimentos={filteredAtendimentos} 
+            atendimentos={atendimentos} 
             isAdmin={isAdmin} 
             onRowClick={(a) => setEditingAtendimento(a)} 
             onRowContextMenu={(e: any, a: any) => {
@@ -406,7 +392,6 @@ function BrokerDashboard({ user }: { user: any }) {
   const [editingAtendimento, setEditingAtendimento] = useState<any | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
-  const [clientIdSearch, setClientIdSearch] = useState("");
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
 
   const { data: atendimentos = [] } = useQuery({
@@ -424,13 +409,7 @@ function BrokerDashboard({ user }: { user: any }) {
     enabled: !!user,
   });
 
-  const filteredAtendimentos = useMemo(() => {
-    return atendimentos.filter(a => 
-      !clientIdSearch || (a.id_cliente && a.id_cliente.toLowerCase().includes(clientIdSearch.toLowerCase()))
-    );
-  }, [atendimentos, clientIdSearch]);
-
-  const dbData = useDashboardData(filteredAtendimentos);
+  const dbData = useDashboardData(atendimentos);
 
   return (
     <div className="pb-nav bg-[var(--surface)] min-h-screen">
@@ -449,13 +428,6 @@ function BrokerDashboard({ user }: { user: any }) {
       />
       <div className="bg-white px-4 py-3 border-b border-border sticky top-0 z-20 shadow-sm flex items-center gap-3 flex-wrap">
         <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="flex-1 min-w-[220px]" />
-        <input 
-          type="text" 
-          placeholder="Buscar por ID do Cliente..." 
-          value={clientIdSearch} 
-          onChange={(e) => setClientIdSearch(e.target.value)}
-          className="h-10 px-3 rounded-lg border border-border text-sm flex-1 min-w-[180px]"
-        />
       </div>
 
       <div className="px-4 pt-4 pb-8 space-y-6">
@@ -475,7 +447,7 @@ function BrokerDashboard({ user }: { user: any }) {
             </button>
           </div>
           <AtendimentosTable 
-            atendimentos={filteredAtendimentos} 
+            atendimentos={atendimentos} 
             isAdmin={false} 
             onRowClick={(a) => setEditingAtendimento(a)} 
             onRowContextMenu={(e: any, a: any) => {

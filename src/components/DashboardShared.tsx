@@ -181,12 +181,19 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowCont
   const [sortConfig, setSortConfig] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "data", dir: "desc" });
   const [page, setPage] = useState(1);
   const [phoneSearch, setPhoneSearch] = useState("");
+  const [clientIdSearch, setClientIdSearch] = useState("");
 
   const filtered = useMemo(() => {
-    if (!phoneSearch.trim()) return atendimentos;
-    const digits = phoneSearch.replace(/\D/g, "");
-    return atendimentos.filter((a) => a.telefone && a.telefone.replace(/\D/g, "").includes(digits));
-  }, [atendimentos, phoneSearch]);
+    let result = atendimentos;
+    if (phoneSearch.trim()) {
+      const digits = phoneSearch.replace(/\D/g, "");
+      result = result.filter((a) => a.telefone && a.telefone.replace(/\D/g, "").includes(digits));
+    }
+    if (clientIdSearch.trim()) {
+      result = result.filter(a => a.id_cliente && a.id_cliente.toLowerCase().includes(clientIdSearch.toLowerCase()));
+    }
+    return result;
+  }, [atendimentos, phoneSearch, clientIdSearch]);
 
   const sortedAtendimentos = useMemo(() => {
     let sortable = [...filtered];
@@ -239,19 +246,35 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowCont
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
       <div className="px-4 py-3 border-b border-border">
-        <div className="relative max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <input
-            className="w-full h-9 pl-8 pr-3 rounded-lg bg-[var(--surface)] border border-border text-sm outline-none focus:border-[var(--navy)]"
-            placeholder="Buscar por telefone..."
-            value={phoneSearch}
-            onChange={(e) => { setPhoneSearch(e.target.value); setPage(1); }}
-          />
-          {phoneSearch && (
-            <button onClick={() => { setPhoneSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[var(--navy)]">
-              <X size={13} />
-            </button>
-          )}
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              className="w-full h-9 pl-8 pr-3 rounded-lg bg-[var(--surface)] border border-border text-sm outline-none focus:border-[var(--navy)]"
+              placeholder="Buscar por telefone..."
+              value={phoneSearch}
+              onChange={(e) => { setPhoneSearch(e.target.value); setPage(1); }}
+            />
+            {phoneSearch && (
+              <button onClick={() => { setPhoneSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[var(--navy)]">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              className="w-full h-9 pl-8 pr-3 rounded-lg bg-[var(--surface)] border border-border text-sm outline-none focus:border-[var(--navy)]"
+              placeholder="Buscar por ID do Cliente..."
+              value={clientIdSearch}
+              onChange={(e) => { setClientIdSearch(e.target.value); setPage(1); }}
+            />
+            {clientIdSearch && (
+              <button onClick={() => { setClientIdSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[var(--navy)]">
+                <X size={13} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -284,7 +307,7 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowCont
                   <td className="px-4 py-3 whitespace-nowrap">{format(parseISO(a.data), "dd/MM/yyyy")}</td>
                   <td className="px-4 py-3 text-muted-foreground">{a.id_cliente || "—"}</td>
                   <td className="px-4 py-3 font-medium text-[var(--navy)]">{a.nome_cliente}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{a.telefone || "—"}</td>
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap min-w-[140px]">{a.telefone || "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{a.email || "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{a.produto || "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground max-w-[150px] truncate" title={a.ocorrencia}>{a.ocorrencia || "—"}</td>
