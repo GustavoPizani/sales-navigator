@@ -124,6 +124,8 @@ function matchProjectName(produto: string, projects: { name: string }[]): string
 function ImportScheduleButton({ brokers, currentWeekStart, onImported }: { brokers: any[]; currentWeekStart: Date; onImported: (d: Date) => void }) {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedWeekStart, setSelectedWeekStart] = useState<Date>(currentWeekStart);
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
   
@@ -172,40 +174,37 @@ function ImportScheduleButton({ brokers, currentWeekStart, onImported }: { broke
 
         let start_time = "09:00";
         let end_time = "14:00";
+        let label_period = "Manhã";
         const periodUpper = shift.period?.toUpperCase() || "";
         if (periodUpper.includes("T")) {
           start_time = "14:00";
           end_time = "19:00";
+          label_period = "Tarde";
         } else if (periodUpper.includes("N") || periodUpper.includes("E")) { 
           start_time = "19:00";
           end_time = "23:00";
+          label_period = "Noite";
         }
-
-        const dateStr = format(addDays(weekStart, shift.day_offset), "yyyy-MM-dd");
 
         const finalProject = matchProjectName(shift.project, projectsList);
         if (!finalProject) continue;
 
         toInsert.push({
           broker_id: broker.id,
-          manager_id: user!.id,
-          date: dateStr,
+          broker_name: broker.full_name,
+          day_offset: shift.day_offset,
           start_time,
           end_time,
+          label_period,
           notes: finalProject,
         });
       }
 
-      if (toInsert.length > 0) {
-        const { error } = await supabase.from("shifts").insert(toInsert);
-        if (error) throw error;
-        toast.success(`${toInsert.length} plantões importados!`);
-        qc.invalidateQueries({ queryKey: ["shifts"] });
-      }
-
-      if (notFound.size > 0) {
-        toast.error(`Corretores não encontrados: ${Array.from(notFound).join(", ")}`, { duration: 8000 });
-      }
+      setParsedData({
+        weekStart: selectedWeekStart,
+        shifts: toInsert,
+        notFound: Array.from(notFound)
+      });
 
     } catch (err: any) {
       toast.error(err.message || "Erro ao importar escala");
@@ -216,12 +215,144 @@ function ImportScheduleButton({ brokers, currentWeekStart, onImported }: { broke
     }
   };
 
+  const handleConfirm = async () => {
+    if (!parsedData) return;
+    setSaving(true);
+    try {
+      const payload = parsedData.shifts.map(s => ({
+        broker_id: s.broker_id,
+        manager_id: user!.id,
+        date: format(addDays(parsedData.weekStart, s.day_offset), "yyyy-MM-dd"),
+        start_time: s.start_time,
+        end_time: s.end_time,
+        notes: s.notes
+      }));
+      
+      const { error } = await supabase.from("shifts").insert(payload);
+      if (error) throw error;
+      toast.success(`${payload.length} plantões importados!`);
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+      onImported(parsedData.weekStart);
+      setParsedData(null);
+      setIsOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao salvar plantões");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <label className={`flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm cursor-pointer hover:opacity-90 transition-opacity ${loading ? "opacity-50 pointer-events-none" : ""}`}>
-      {loading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} strokeWidth={2.5} />}
-      <span className="hidden sm:inline">{loading ? loadingMsg : "Importar CSV"}</span>
-      <input type="file" accept=".csv" className="hidden" onChange={handleFile} disabled={loading} />
-    </label>
+    <>
+      <button onClick={() => { setSelectedWeekStart(currentWeekStart); setIsOpen(true); }} className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm cursor-pointer hover:opacity-90 transition-opacity">
+        <Upload size={16} strokeWidth={2.5} />
+        <span className="hidden sm:inline">Importar CSV</span>
+      </button>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-[var(--surface)]">
+              <h3 className="font-bold text-[var(--navy)] text-lg">Importar Escala</h3>
+              <button onClick={() => { setIsOpen(false); setParsedData(null); }} className="text-muted-foreground hover:text-[var(--navy)]"><X size={20} /></button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {!parsedData ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1.5">1. Defina a data inicial da semana (Segunda-feira)</label>
+                    <input 
+                      type="date" 
+                      value={format(selectedWeekStart, "yyyy-MM-dd")} 
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const parts = e.target.value.split('-');
+                          const localDate = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+                          setSelectedWeekStart(startOfWeek(localDate, { weekStartsOn: 1 }));
+                        }
+                      }} 
+                      className="w-full h-11 px-3 rounded-xl bg-white border border-border text-sm text-[var(--navy)]" 
+                    />
+                    <p className="text-xs text-muted-foreground mt-1.5">Período que será importado: {format(selectedWeekStart, "dd/MM/yyyy")} até {format(addDays(selectedWeekStart, 6), "dd/MM/yyyy")}</p>
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1.5">2. Selecione o arquivo CSV</label>
+                    <label className={`w-full h-12 rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2 text-sm text-muted-foreground hover:border-[var(--gold)] hover:text-[var(--gold)] transition-colors cursor-pointer ${loading ? "opacity-50 pointer-events-none" : ""}`}>
+                      {loading ? (
+                        <><Loader2 size={16} className="animate-spin" /> {loadingMsg}</>
+                      ) : (
+                        <><Upload size={16} /> Carregar CSV da Escala</>
+                      )}
+                      <input type="file" accept=".csv" className="hidden" onChange={handleFile} disabled={loading} />
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center bg-[var(--surface)] p-3 rounded-xl border border-border">
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Semana selecionada</p>
+                      <p className="font-semibold text-[var(--navy)]">{format(parsedData.weekStart, "dd/MM/yyyy")} até {format(addDays(parsedData.weekStart, 6), "dd/MM/yyyy")}</p>
+                    </div>
+                  </div>
+
+                  {parsedData.notFound.length > 0 && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+                      <strong>Atenção:</strong> Os seguintes corretores não foram encontrados no sistema e serão ignorados: 
+                      <span className="block mt-1 font-medium">{parsedData.notFound.join(", ")}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <h4 className="font-semibold text-[var(--navy)] mb-2">Plantões identificados ({parsedData.shifts.length})</h4>
+                    <div className="border border-border rounded-xl overflow-hidden">
+                      <table className="w-full text-sm text-left border-collapse">
+                        <thead className="bg-[var(--surface)] text-[var(--navy)] text-xs uppercase">
+                          <tr>
+                            <th className="px-3 py-2 border-b border-border">Data</th>
+                            <th className="px-3 py-2 border-b border-border">Corretor</th>
+                            <th className="px-3 py-2 border-b border-border">Turno</th>
+                            <th className="px-3 py-2 border-b border-border">Plantão</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {parsedData.shifts.length === 0 ? (
+                            <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">Nenhum plantão válido encontrado no arquivo.</td></tr>
+                          ) : (
+                            parsedData.shifts.map((s, i) => {
+                              const d = addDays(parsedData.weekStart, s.day_offset);
+                              return (
+                                <tr key={i} className="hover:bg-gray-50">
+                                  <td className="px-3 py-2 whitespace-nowrap">{format(d, "dd/MM (EEE)", { locale: ptBR })}</td>
+                                  <td className="px-3 py-2 font-medium">{s.broker_name}</td>
+                                  <td className="px-3 py-2">{s.label_period}</td>
+                                  <td className="px-3 py-2 text-[var(--navy)] font-semibold">{s.notes}</td>
+                                </tr>
+                              )
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div className="px-5 py-4 border-t border-border bg-[var(--surface)] flex gap-2">
+              <button onClick={() => { setIsOpen(false); setParsedData(null); }} className="flex-1 h-11 rounded-xl bg-white border border-border text-[var(--navy)] font-medium">Cancelar</button>
+              {parsedData && (
+                <button onClick={handleConfirm} disabled={saving || parsedData.shifts.length === 0} className="flex-1 h-11 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold disabled:opacity-50 flex justify-center items-center gap-2">
+                  {saving ? <><Loader2 size={16} className="animate-spin" /> Salvando...</> : "Confirmar e Salvar Escala"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -431,7 +562,7 @@ function ShiftEditor({ broker, date, shift, onClose }: { broker: any; date: stri
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["shifts"] }); toast.success("Removido"); onClose(); },
   });
 
-  const plantaoOptions = ["Central", ...(projectsQ.data ?? []).map((p) => p.name)];
+  const plantaoOptions = ["Online", ...(projectsQ.data ?? []).map((p) => p.name)];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end" onClick={onClose}>
