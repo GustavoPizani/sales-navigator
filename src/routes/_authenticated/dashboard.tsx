@@ -5,7 +5,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronDown, Plus, Upload, X, Trash2, Calendar, Bell } from "lucide-react";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -74,6 +74,15 @@ function DashboardPage() {
 function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any) => void }) {
   const [open, setOpen] = useState(false);
   const todayStr = format(new Date(), "yyyy-MM-dd");
+  const navigate = useNavigate();
+
+  const [seenShifts, setSeenShifts] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`seen_shifts_${user?.id}`) || "{}");
+    } catch {
+      return {};
+    }
+  });
 
   const apptsQ = useQuery({
     queryKey: ["broker-past-appts", user?.id],
@@ -101,18 +110,58 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
     enabled: !!user?.id,
   });
 
-  const pending = useMemo(() =>
+  const shiftsQ = useQuery({
+    queryKey: ["broker-upcoming-shifts", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from("shifts")
+        .select("*")
+        .eq("broker_id", user.id)
+        .gte("date", todayStr)
+        .order("date", { ascending: true });
+      return data ?? [];
+    },
+    enabled: !!user?.id,
+  });
+
+  const pendingAppts = useMemo(() =>
     (apptsQ.data ?? []).filter((a) => !(linkedIdsQ.data ?? []).includes(a.id)),
     [apptsQ.data, linkedIdsQ.data]
   );
+
+  const getShiftSignature = (s: any) => `${s.date}_${s.start_time}_${s.end_time}_${s.notes || ""}`;
+
+  const pendingShifts = useMemo(() => {
+    const shifts = shiftsQ.data ?? [];
+    return shifts.filter(s => seenShifts[s.id] !== getShiftSignature(s));
+  }, [shiftsQ.data, seenShifts]);
+
+  const totalPending = pendingAppts.length + pendingShifts.length;
+
+  const handleShiftClick = (s: any) => {
+    const next = { ...seenShifts, [s.id]: getShiftSignature(s) };
+    setSeenShifts(next);
+    localStorage.setItem(`seen_shifts_${user.id}`, JSON.stringify(next));
+    setOpen(false);
+    navigate({ to: "/schedule" });
+  };
+
+  const handleMarkAllShiftsAsRead = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = { ...seenShifts };
+    pendingShifts.forEach(s => {
+      next[s.id] = getShiftSignature(s);
+    });
+    setSeenShifts(next);
+    localStorage.setItem(`seen_shifts_${user.id}`, JSON.stringify(next));
+  };
 
   return (
     <div className="relative flex-shrink-0">
       <button onClick={() => setOpen(!open)} className="relative p-2 text-white/70 hover:text-white transition-colors">
         <Bell size={20} />
-        {pending.length > 0 && (
+        {totalPending > 0 && (
           <span className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-[var(--navy)]">
-            {pending.length}
+            {totalPending}
           </span>
         )}
       </button>
@@ -121,30 +170,59 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-border z-50 overflow-hidden flex flex-col max-h-[400px]">
-            <div className="px-4 py-3 border-b border-border bg-[var(--surface)]">
+            <div className="px-4 py-3 border-b border-border bg-[var(--surface)] flex justify-between items-center">
               <h3 className="font-semibold text-[var(--navy)] text-sm">Notificações</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Agendamentos pendentes de atualização</p>
+              {pendingShifts.length > 0 && (
+                <button onClick={handleMarkAllShiftsAsRead} className="text-[10px] font-medium text-muted-foreground hover:text-[var(--navy)] underline">
+                  Marcar escalas como lidas
+                </button>
+              )}
             </div>
             <div className="overflow-y-auto flex-1 p-2 space-y-1">
-              {pending.length === 0 ? (
-                <p className="text-center text-xs text-muted-foreground py-6">Nenhum agendamento pendente.</p>
+              {totalPending === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-6">Nenhuma notificação.</p>
               ) : (
-                pending.map(a => (
-                  <button 
-                    key={a.id}
-                    onClick={() => {
-                      onSelect(a);
-                      setOpen(false);
-                    }}
-                    className="w-full text-left p-3 rounded-lg hover:bg-[var(--surface)] border border-transparent hover:border-border transition-colors flex flex-col gap-1"
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <span className="font-semibold text-[var(--navy)] text-sm truncate">{a.title}</span>
-                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">{format(new Date(a.date + "T00:00:00"), "dd/MM", { locale: ptBR })}</span>
+                <>
+                  {pendingShifts.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase px-2 py-1">Alterações na Escala</p>
+                      {pendingShifts.map(s => (
+                        <button 
+                          key={s.id}
+                          onClick={() => handleShiftClick(s)}
+                          className="w-full text-left p-3 rounded-lg hover:bg-[var(--surface)] border border-transparent hover:border-border transition-colors flex flex-col gap-1"
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="font-semibold text-[var(--navy)] text-sm truncate">{seenShifts[s.id] ? "Escala alterada" : "Novo plantão"}</span>
+                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">{format(new Date(s.date + "T00:00:00"), "dd/MM", { locale: ptBR })}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground truncate">{s.start_time.slice(0,5)} às {s.end_time.slice(0,5)}{s.notes ? ` - ${s.notes}` : ""}</span>
+                        </button>
+                      ))}
                     </div>
-                    {a.client_name && <span className="text-xs text-muted-foreground truncate">Cliente: {a.client_name}</span>}
-                  </button>
-                ))
+                  )}
+                  {pendingAppts.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase px-2 py-1">Atendimentos Pendentes</p>
+                      {pendingAppts.map(a => (
+                        <button 
+                          key={a.id}
+                          onClick={() => {
+                            onSelect(a);
+                            setOpen(false);
+                          }}
+                          className="w-full text-left p-3 rounded-lg hover:bg-[var(--surface)] border border-transparent hover:border-border transition-colors flex flex-col gap-1"
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="font-semibold text-[var(--navy)] text-sm truncate">{a.title}</span>
+                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">{format(new Date(a.date + "T00:00:00"), "dd/MM", { locale: ptBR })}</span>
+                          </div>
+                          {a.client_name && <span className="text-xs text-muted-foreground truncate">Cliente: {a.client_name}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
