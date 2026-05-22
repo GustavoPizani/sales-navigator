@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { addDays, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,6 +18,205 @@ type Shift = {
   id: string; broker_id: string; manager_id: string; date: string;
   start_time: string; end_time: string; notes: string | null;
 };
+
+// ─── Groq ────────────────────────────────────────────────────────────────────
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+async function extractShiftsFromGroq(text: string, projectNames: string[]): Promise<{ broker_name: string; period: string; day_offset: number; project: string }[]> {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+  if (!apiKey) throw new Error("VITE_GROQ_API_KEY não configurado no .env.local");
+
+  const systemPrompt = `Você é um assistente especializado em processar dados de escalas de corretores.
+O usuário enviará o texto extraído de um arquivo CSV com a escala da semana.
+A planilha pode conter várias colunas, como o Corretor, o Turno/Período (M para Manhã, T para Tarde, etc) e os dias da semana (Segunda a Domingo).
+Seu objetivo é retornar um objeto JSON com os plantões extraídos.
+
+Retorne APENAS um objeto JSON no formato:
+{
+  "shifts": [
+    {
+      "broker_name": "NOME DO CORRETOR",
+      "period": "M ou T",
+      "day_offset": 0,
+      "project": "NOME DO PLANTÃO"
+    }
+  ]
+}
+
+Regras:
+1. day_offset: 0 para Segunda, 1 para Terça, 2 para Quarta, 3 para Quinta, 4 para Sexta, 5 para Sábado, 6 para Domingo.
+2. Ignore dias com "FOLGA", "STAND-BY", ou células vazias. Retorne apenas dias em que há um projeto/plantão definido.
+3. Se identificar projetos chamados "ONLINE" ou algo parecido, retorne "Central".
+4. Os projetos cadastrados no sistema são: ${projectNames.length > 0 ? projectNames.join(", ") : "Nenhum cadastrado"}. Tente mapear o nome do plantão para o nome exato do projeto correspondente.
+5. Retorne apenas JSON válido sem markdown ou explicações.`;
+
+  const res = await fetch(GROQ_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: text },
+      ],
+      temperature: 0.1,
+      max_tokens: 4096,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error?.message ?? `Erro ${res.status} na API Groq`);
+  }
+
+  const data: any = await res.json();
+  const content = data.choices[0].message.content;
+  const parsed = JSON.parse(content);
+  return Array.isArray(parsed) ? parsed : (parsed.shifts ?? []);
+}
+
+function normalizeStr(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function matchBroker(name: string, brokers: any[]): any {
+  if (!name) return null;
+  const norm = normalizeStr(name);
+  if (!norm) return null;
+  
+  let match = brokers.find((b: any) => normalizeStr(b.full_name) === norm);
+  if (match) return match;
+
+  const firstName = norm.split(" ")[0];
+  match = brokers.find((b: any) => normalizeStr(b.full_name).split(" ")[0] === firstName);
+  if (match) return match;
+
+  match = brokers.find((b: any) => normalizeStr(b.full_name).includes(norm) || norm.includes(normalizeStr(b.full_name).split(" ")[0]));
+  
+  return match || null;
+}
+
+function matchProjectName(produto: string, projects: { name: string }[]): string {
+  if (!produto) return "";
+  const normP = normalizeStr(produto);
+  if (normP.includes("online") || normP.includes("on line")) return "Central";
+  
+  const exact = projects.find((p) => normalizeStr(p.name) === normP);
+  if (exact) return exact.name;
+  
+  const wordsA = normP.split(" ").filter((w) => w.length > 2);
+  let best = { score: 0.25, name: "" };
+  for (const p of projects) {
+    const wordsB = new Set(normalizeStr(p.name).split(" ").filter((w) => w.length > 2));
+    const common = wordsA.filter((w) => wordsB.has(w)).length;
+    const union = new Set([...wordsA, ...wordsB]).size;
+    const score = union > 0 ? common / union : 0;
+    if (score > best.score) best = { score, name: p.name };
+  }
+  return best.name || produto;
+}
+
+function ImportScheduleButton({ brokers, weekStart }: { brokers: any[]; weekStart: Date }) {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("");
+
+  const projectsQ = useQuery({
+    queryKey: ["projects-active"],
+    queryFn: async () => {
+      const { data } = await supabase.from("projects").select("id,name").eq("is_active", true).order("name");
+      return (data ?? []) as { id: string; name: string }[];
+    },
+  });
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    setLoadingMsg("Lendo arquivo...");
+    
+    try {
+      const text = await file.text();
+      setLoadingMsg("Analisando com IA...");
+      
+      const projectsList = projectsQ.data ?? [];
+      const extracted = await extractShiftsFromGroq(text, projectsList.map(p => p.name));
+
+      if (!extracted || extracted.length === 0) {
+        toast.error("Nenhum plantão encontrado no CSV.");
+        return;
+      }
+
+      setLoadingMsg("Salvando plantões...");
+      
+      const toInsert = [];
+      const notFound = new Set<string>();
+
+      for (const shift of extracted) {
+        const broker = matchBroker(shift.broker_name, brokers);
+        if (!broker) {
+          notFound.add(shift.broker_name);
+          continue;
+        }
+
+        let start_time = "09:00";
+        let end_time = "14:00";
+        const periodUpper = shift.period?.toUpperCase() || "";
+        if (periodUpper.includes("T")) {
+          start_time = "14:00";
+          end_time = "19:00";
+        } else if (periodUpper.includes("N") || periodUpper.includes("E")) { 
+          start_time = "19:00";
+          end_time = "23:00";
+        }
+
+        const dateStr = format(addDays(weekStart, shift.day_offset), "yyyy-MM-dd");
+
+        const finalProject = matchProjectName(shift.project, projectsList);
+
+        toInsert.push({
+          broker_id: broker.id,
+          manager_id: user!.id,
+          date: dateStr,
+          start_time,
+          end_time,
+          notes: finalProject,
+        });
+      }
+
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from("shifts").insert(toInsert);
+        if (error) throw error;
+        toast.success(`${toInsert.length} plantões importados!`);
+        qc.invalidateQueries({ queryKey: ["shifts"] });
+      }
+
+      if (notFound.size > 0) {
+        toast.error(`Corretores não encontrados: ${Array.from(notFound).join(", ")}`, { duration: 8000 });
+      }
+
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao importar escala");
+    } finally {
+      setLoading(false);
+      setLoadingMsg("");
+      e.target.value = "";
+    }
+  };
+
+  return (
+    <label className={`flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm cursor-pointer hover:opacity-90 transition-opacity ${loading ? "opacity-50 pointer-events-none" : ""}`}>
+      {loading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} strokeWidth={2.5} />}
+      <span className="hidden sm:inline">{loading ? loadingMsg : "Importar CSV"}</span>
+      <input type="file" accept=".csv" className="hidden" onChange={handleFile} disabled={loading} />
+    </label>
+  );
+}
 
 function SchedulePage() {
   const { isAdmin, user } = useAuth();
@@ -44,9 +243,14 @@ function SchedulePage() {
       <AppHeader title={isAdmin ? "Escala" : "Minha Escala"} />
       <div className="px-4 pt-4">
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => setWeekStart(addDays(weekStart, -7))} className="p-2 rounded-lg bg-white border border-border"><ChevronLeft size={18} /></button>
-          <p className="font-semibold text-[var(--navy)]">{format(weekStart, "d 'de' MMM", { locale: ptBR })} – {format(addDays(weekStart, 6), "d 'de' MMM, yyyy", { locale: ptBR })}</p>
-          <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-2 rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setWeekStart(addDays(weekStart, -7))} className="p-2 rounded-lg bg-white border border-border"><ChevronLeft size={18} /></button>
+            <p className="font-semibold text-[var(--navy)] text-sm sm:text-base whitespace-nowrap">{format(weekStart, "dd/MM", { locale: ptBR })} – {format(addDays(weekStart, 6), "dd/MM", { locale: ptBR })}</p>
+            <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-2 rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
+          </div>
+          {isAdmin && (
+            <ImportScheduleButton brokers={brokersQ.data ?? []} weekStart={weekStart} />
+          )}
         </div>
 
         {isAdmin ? (
@@ -153,7 +357,7 @@ const PERIODS = [
 
 function derivePeriod(startTime?: string): "manha" | "tarde" | null {
   if (!startTime) return null;
-  if (startTime.startsWith("08") || startTime.startsWith("07") || startTime.startsWith("06")) return "manha";
+  if (startTime.startsWith("08") || startTime.startsWith("07") || startTime.startsWith("06") || startTime.startsWith("09") || startTime.startsWith("10")) return "manha";
   if (startTime.startsWith("13") || startTime.startsWith("12") || startTime.startsWith("14")) return "tarde";
   return null;
 }
