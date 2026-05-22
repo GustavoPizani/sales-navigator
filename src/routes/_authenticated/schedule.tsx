@@ -23,8 +23,8 @@ type Shift = {
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 async function extractShiftsFromGroq(text: string, projectNames: string[]): Promise<{ broker_name: string; period: string; day_offset: number; project: string }[]> {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-  if (!apiKey) throw new Error("VITE_GROQ_API_KEY não configurado no .env.local");
+  const apiKey = import.meta.env.GROQ_API_KEY || import.meta.env.VITE_GROQ_API_KEY;
+  if (!apiKey) throw new Error("GROQ_API_KEY não configurado no .env.local");
 
   const systemPrompt = `Você é um assistente especializado em processar dados de escalas de corretores.
 O usuário enviará o texto extraído de um arquivo CSV com a escala da semana.

@@ -137,8 +137,8 @@ Regras obrigatórias:
 - Retorne apenas JSON válido sem markdown ou explicações`;
 
 async function extractFromGroq(text: string): Promise<ExtractedProperty[]> {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-  if (!apiKey) throw new Error("VITE_GROQ_API_KEY não configurado no .env.local");
+  const apiKey = import.meta.env.GROQ_API_KEY || import.meta.env.VITE_GROQ_API_KEY;
+  if (!apiKey) throw new Error("GROQ_API_KEY não configurado no .env.local");
 
   const res = await fetch(GROQ_URL, {
     method: "POST",
