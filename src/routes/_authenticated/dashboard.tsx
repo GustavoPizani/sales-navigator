@@ -575,7 +575,6 @@ function BrokerDashboard({ user }: { user: any }) {
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState<"graficos" | "atendimentos">("graficos");
 
   const { data: atendimentos = [] } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
@@ -615,12 +614,7 @@ function BrokerDashboard({ user }: { user: any }) {
         <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="flex-1 min-w-[220px]" />
       </div>
 
-      <div className="px-4 py-3 flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-border bg-white z-10 flex-shrink-0">
-        <button onClick={() => setActiveTab("graficos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "graficos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Gráficos</button>
-        <button onClick={() => setActiveTab("atendimentos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Atendimentos</button>
-      </div>
-
-      <div className={`px-4 pt-4 pb-4 flex-1 ${activeTab === "atendimentos" ? "flex flex-col overflow-hidden space-y-4" : "overflow-y-auto space-y-6"}`}>
+      <div className="px-4 pt-4 pb-4 flex-1 flex flex-col overflow-hidden space-y-4">
         <div className="grid grid-cols-2 gap-3 flex-shrink-0">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} />
@@ -629,27 +623,23 @@ function BrokerDashboard({ user }: { user: any }) {
           <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} /></div>
         </div>
 
-        {activeTab === "atendimentos" && (
-          <>
-            <div className="flex items-center justify-between flex-shrink-0">
-              <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-              <button onClick={() => { setInsertPreFill(null); setInsertOpen(true); }} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
-                <Plus size={14} strokeWidth={2.5} /> Inserir
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-xl border border-border shadow-sm">
-              <AtendimentosTable 
-                atendimentos={atendimentos} 
-                isAdmin={false} 
-                onRowClick={(a) => setEditingAtendimento(a)} 
-                onRowContextMenu={(e: any, a: any) => {
-                  e.preventDefault();
-                  setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
-                }}
-              />
-            </div>
-          </>
-        )}
+        <div className="flex items-center justify-between flex-shrink-0">
+          <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
+          <button onClick={() => { setInsertPreFill(null); setInsertOpen(true); }} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
+            <Plus size={14} strokeWidth={2.5} /> Inserir
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-xl border border-border shadow-sm">
+          <AtendimentosTable 
+            atendimentos={atendimentos} 
+            isAdmin={false} 
+            onRowClick={(a) => setEditingAtendimento(a)} 
+            onRowContextMenu={(e: any, a: any) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
+            }}
+          />
+        </div>
       </div>
 
       {contextMenu && (
