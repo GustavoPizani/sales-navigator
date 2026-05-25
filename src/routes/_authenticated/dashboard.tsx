@@ -716,10 +716,12 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
   const projectsQ = useQuery({
     queryKey: ["projects-active"],
     queryFn: async () => {
-      const { data } = await supabase.from("projects").select("id,name").eq("is_active", true).order("name");
-      return (data ?? []) as { id: string; name: string }[];
+      const { data } = await supabase.from("projects").select("id,name,tem_plantao").eq("is_active", true).order("name");
+      return (data ?? []) as { id: string; name: string; tem_plantao?: boolean }[];
     },
   });
+
+  const selectedProjectObj = (projectsQ.data ?? []).find(p => p.name === produto);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -791,6 +793,12 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
                 <span className="text-sm font-medium text-[var(--navy)]">{atendimento.setor}</span>
               </div>
             )}
+            {selectedProjectObj?.tem_plantao && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-xs text-muted-foreground font-medium">Plantão</span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Tem Plantão</span>
+              </div>
+            )}
           </div>
 
           <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="Nome do cliente *" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} />
@@ -802,22 +810,22 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
 
           <div className="grid grid-cols-2 gap-2">
             <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="ID do cliente" value={idCliente} onChange={(e) => setIdCliente(e.target.value)} />
-            <select disabled={!isAdmin} className={`${fieldCls} text-[var(--navy)] disabled:opacity-70 disabled:cursor-not-allowed`} value={produto} onChange={(e) => setProduto(e.target.value)}>
+            <select className={`${fieldCls} text-[var(--navy)]`} value={produto} onChange={(e) => setProduto(e.target.value)}>
               <option value="">Produto...</option>
               {(projectsQ.data ?? []).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
             </select>
           </div>
 
-          <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="Ocorrência" value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} />
+          <input className={fieldCls} placeholder="Ocorrência" value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} />
 
           <div className="grid grid-cols-2 gap-2">
-            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border ${!isAdmin ? "cursor-not-allowed opacity-70" : "cursor-pointer"} select-none ${visita ? "bg-blue-50 border-blue-200" : "bg-[var(--surface)] border-border"}`}>
+            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer select-none ${visita ? "bg-blue-50 border-blue-200" : "bg-[var(--surface)] border-border"}`}>
               <span className="text-sm font-medium text-[var(--navy)]">Visita</span>
-              <input type="checkbox" disabled={!isAdmin} checked={visita} onChange={(e) => setVisita(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
+              <input type="checkbox" checked={visita} onChange={(e) => setVisita(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
             </label>
-            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border ${!isAdmin ? "cursor-not-allowed opacity-70" : "cursor-pointer"} select-none ${venda ? "bg-green-50 border-green-200" : "bg-[var(--surface)] border-border"}`}>
+            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer select-none ${venda ? "bg-green-50 border-green-200" : "bg-[var(--surface)] border-border"}`}>
               <span className="text-sm font-medium text-[var(--navy)]">Venda</span>
-              <input type="checkbox" disabled={!isAdmin} checked={venda} onChange={(e) => setVenda(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
+              <input type="checkbox" checked={venda} onChange={(e) => setVenda(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
             </label>
           </div>
 
@@ -825,8 +833,8 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
             <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Temperatura</label>
             <div className="grid grid-cols-3 gap-2">
               {TEMPERATURAS.map((t) => (
-                <button key={t} type="button" disabled={!isAdmin} onClick={() => setTemperatura(temperatura === t ? "" : t)}
-                  className={`h-10 rounded-xl text-sm font-semibold transition-colors disabled:opacity-70 disabled:cursor-not-allowed ${temperatura === t ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}>
+                <button key={t} type="button" onClick={() => setTemperatura(temperatura === t ? "" : t)}
+                  className={`h-10 rounded-xl text-sm font-semibold transition-colors ${temperatura === t ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}>
                   {t}
                 </button>
               ))}
@@ -835,13 +843,13 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
 
           <div>
             <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Status</label>
-            <select disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select className={fieldCls} value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Selecione...</option>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
 
-          <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="Valor (R$)" value={valor} onChange={(e) => setValor(e.target.value)} />
+          <input className={fieldCls} placeholder="Valor (R$)" value={valor} onChange={(e) => setValor(e.target.value)} />
         </div>
 
         <div className="px-5 pb-5 pt-3 border-t border-border flex gap-2 flex-shrink-0 items-center">
@@ -869,12 +877,10 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
             </button>
           )}
           <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancelar</button>
-          {isAdmin && (
-            <button onClick={() => save.mutate()} disabled={save.isPending}
-              className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50">
-              {save.isPending ? "Salvando..." : "Salvar"}
-            </button>
-          )}
+          <button onClick={() => save.mutate()} disabled={save.isPending}
+            className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50">
+            {save.isPending ? "Salvando..." : "Salvar"}
+          </button>
         </div>
       </div>
     </div>
