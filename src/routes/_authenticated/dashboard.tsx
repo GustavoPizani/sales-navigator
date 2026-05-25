@@ -594,8 +594,7 @@ function BrokerDashboard({ user }: { user: any }) {
   const dbData = useDashboardData(atendimentos);
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--surface)] pb-nav overflow-hidden">
-      <div className="flex-shrink-0">
+    <div className="pb-nav bg-[var(--surface)] min-h-screen">
         <AppHeader 
           title="Dashboard" 
           right={<NotificationBell user={user} onSelect={(appt) => {
@@ -609,13 +608,12 @@ function BrokerDashboard({ user }: { user: any }) {
             setInsertOpen(true);
           }} />} 
         />
-      </div>
-      <div className="bg-white px-4 py-3 border-b border-border z-20 shadow-sm flex items-center gap-3 flex-wrap flex-shrink-0">
+      <div className="bg-white px-4 py-3 border-b border-border sticky top-[56px] z-20 shadow-sm flex items-center gap-3 flex-wrap">
         <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="flex-1 min-w-[220px]" />
       </div>
 
-      <div className="px-4 pt-4 pb-4 flex-1 flex flex-col overflow-hidden space-y-4">
-        <div className="grid grid-cols-2 gap-3 flex-shrink-0">
+      <div className="px-4 pt-4 pb-8 space-y-6">
+        <div className="grid grid-cols-2 gap-3">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} />
@@ -623,22 +621,24 @@ function BrokerDashboard({ user }: { user: any }) {
           <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} /></div>
         </div>
 
-        <div className="flex items-center justify-between flex-shrink-0">
-          <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-          <button onClick={() => { setInsertPreFill(null); setInsertOpen(true); }} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
-            <Plus size={14} strokeWidth={2.5} /> Inserir
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-xl border border-border shadow-sm">
-          <AtendimentosTable 
-            atendimentos={atendimentos} 
-            isAdmin={false} 
-            onRowClick={(a) => setEditingAtendimento(a)} 
-            onRowContextMenu={(e: any, a: any) => {
-              e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
-            }}
-          />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
+            <button onClick={() => { setInsertPreFill(null); setInsertOpen(true); }} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
+              <Plus size={14} strokeWidth={2.5} /> Inserir
+            </button>
+          </div>
+          <div className="bg-white rounded-xl border border-border shadow-sm">
+            <AtendimentosTable 
+              atendimentos={atendimentos} 
+              isAdmin={false} 
+              onRowClick={(a) => setEditingAtendimento(a)} 
+              onRowContextMenu={(e: any, a: any) => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
+              }}
+            />
+          </div>
         </div>
       </div>
 
