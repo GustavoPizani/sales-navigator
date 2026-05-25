@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { addDays, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -119,6 +119,193 @@ function matchProjectName(produto: string, projects: { name: string }[]): string
     if (score > best.score) best = { score, name: p.name };
   }
   return best.name;
+}
+
+const SHIFT_PERIODS = [
+  { val: "Manhã", start: "09:00", end: "14:00" },
+  { val: "Tarde", start: "14:00", end: "19:00" },
+  { val: "Noite", start: "19:00", end: "23:00" },
+];
+
+function GenerateShiftLinkButton({ currentWeekStart }: { currentWeekStart: Date }) {
+  const { user } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+  const [modality, setModality] = useState<"online" | "salao">("online");
+  
+  // Define a próxima semana como padrão
+  const nextWeekMonday = startOfWeek(addDays(new Date(), 7), { weekStartsOn: 1 });
+  const [weekStart, setWeekStart] = useState<Date>(nextWeekMonday);
+  
+  const [slots, setSlots] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
+  const [generatedLink, setGeneratedLink] = useState("");
+
+  const projectsQ = useQuery({
+    queryKey: ["projects-active"],
+    queryFn: async () => {
+      const { data } = await supabase.from("projects").select("id,name").eq("is_active", true).order("name");
+      return (data ?? []) as { id: string; name: string }[];
+    },
+  });
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    try {
+      // Gera um token único
+      const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      
+      // 1. Salva a configuração (cabeçalho)
+      const { data: config, error: cfgErr } = await supabase.from("shift_configs").insert({
+        manager_id: user!.id,
+        week_start_date: format(weekStart, "yyyy-MM-dd"),
+        modality,
+        project_id: null,
+        link_token: token,
+      }).select().single();
+      
+      if (cfgErr) throw cfgErr;
+
+      // 2. Prepara e salva as vagas de cada dia/período
+      const toInsert = [];
+      for (let d = 0; d < 7; d++) {
+        for (const p of SHIFT_PERIODS) {
+          if (modality === "salao" && p.val === "Noite") continue; // Remove o turno da Noite no plantão
+          const cap = modality === "salao" ? 999 : (slots[`${d}_${p.val}`] || 0); // Libera vagas ilimitadas para o Salão
+          if (cap > 0) {
+            toInsert.push({
+              config_id: config.id,
+              date: format(addDays(weekStart, d), "yyyy-MM-dd"),
+              period: p.val,
+              capacity: cap,
+              start_time: p.start,
+              end_time: p.end
+            });
+          }
+        }
+      }
+
+      if (toInsert.length > 0) {
+        const { error: slotErr } = await supabase.from("shift_slots").insert(toInsert);
+        if (slotErr) throw slotErr;
+      } else {
+        toast.error("Você precisa definir pelo menos uma vaga em algum turno.");
+        return;
+      }
+
+      const link = `${window.location.origin}/schedule/claim/${token}`;
+      setGeneratedLink(link);
+      toast.success("Link gerado com sucesso!");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao gerar escala.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(generatedLink);
+    toast.success("Link copiado!");
+  };
+
+  const resetAndClose = () => {
+    setIsOpen(false);
+    setGeneratedLink("");
+    setSlots({});
+  };
+
+  return (
+    <>
+      <button onClick={() => setIsOpen(true)} className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm cursor-pointer hover:bg-gray-50 transition-colors">
+        <LinkIcon size={16} strokeWidth={2.5} />
+        <span className="hidden sm:inline">Configurar Escala</span>
+      </button>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-[var(--surface)] flex-shrink-0">
+              <h3 className="font-bold text-[var(--navy)] text-lg">Configurar Nova Escala</h3>
+              <button onClick={resetAndClose} className="text-muted-foreground hover:text-[var(--navy)]"><X size={20} /></button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              {generatedLink ? (
+                <div className="flex flex-col items-center justify-center text-center py-8 space-y-4">
+                  <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-2">
+                    <CheckCircle2 size={32} />
+                  </div>
+                  <h4 className="text-xl font-bold text-[var(--navy)]">Escala liberada!</h4>
+                  <p className="text-sm text-muted-foreground max-w-md">Copie o link abaixo e envie no grupo dos corretores. Assim que acessarem, poderão escolher seus horários dentro das vagas definidas.</p>
+                  
+                  <div className="flex items-center gap-2 w-full max-w-lg mt-4 bg-[var(--surface)] p-2 rounded-xl border border-border">
+                    <input type="text" readOnly value={generatedLink} className="flex-1 bg-transparent text-sm text-[var(--navy)] outline-none px-2" />
+                    <button onClick={copyLink} className="flex items-center gap-2 h-10 px-4 bg-[var(--navy)] text-white rounded-lg font-semibold text-sm hover:opacity-90">
+                      <Copy size={16} /> Copiar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1.5">Semana (Início Segunda)</label>
+                      <input type="date" value={format(weekStart, "yyyy-MM-dd")} onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(new Date(e.target.value + "T00:00:00"), { weekStartsOn: 1 })) }} className="w-full h-11 px-3 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)]" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1.5">Modalidade</label>
+                      <select value={modality} onChange={(e) => setModality(e.target.value as any)} className="w-full h-11 px-3 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)]">
+                        <option value="online">Online / Central</option>
+                        <option value="salao">Salão / Plantão Físico</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {modality === "online" && (
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground uppercase block mb-2">Definir Vagas Disponíveis</label>
+                      <div className="border border-border rounded-xl overflow-hidden bg-white">
+                        <table className="w-full text-sm text-left border-collapse">
+                          <thead className="bg-[var(--surface)] text-[var(--navy)] text-xs uppercase">
+                            <tr>
+                              <th className="px-3 py-3 border-b border-border">Dia da Semana</th>
+                              {SHIFT_PERIODS.map(p => <th key={p.val} className="px-3 py-3 border-b border-border text-center">{p.val}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {Array.from({ length: 7 }).map((_, d) => (
+                              <tr key={d} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 whitespace-nowrap capitalize font-medium text-[var(--navy)]">
+                                  {format(addDays(weekStart, d), 'EEEE, dd/MM', { locale: ptBR })}
+                                </td>
+                                {SHIFT_PERIODS.map(p => (
+                                  <td key={p.val} className="px-3 py-2 text-center">
+                                    <input type="number" min="0" max="999" placeholder="0" value={slots[`${d}_${p.val}`] || ''} onChange={e => { const val = parseInt(e.target.value); setSlots(prev => ({ ...prev, [`${d}_${p.val}`]: isNaN(val) ? 0 : val })); }} className="w-14 h-9 text-center rounded-lg border border-border focus:border-[var(--gold)] focus:outline-none bg-[var(--surface)] text-[var(--navy)] mx-auto block" />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            
+            {!generatedLink && (
+              <div className="px-5 py-4 border-t border-border bg-[var(--surface)] flex gap-2 flex-shrink-0">
+                <button onClick={resetAndClose} className="flex-1 h-11 rounded-xl bg-white border border-border text-[var(--navy)] font-medium">Cancelar</button>
+                <button onClick={handleConfirm} disabled={saving} className="flex-1 h-11 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 flex justify-center items-center gap-2">
+                  {saving ? <><Loader2 size={16} className="animate-spin" /> Gerando...</> : "Gerar Link da Escala"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function ImportScheduleButton({ brokers, currentWeekStart, onImported }: { brokers: any[]; currentWeekStart: Date; onImported: (d: Date) => void }) {
@@ -387,7 +574,10 @@ function SchedulePage() {
             <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-2 rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
           </div>
           {isAdmin && (
-            <ImportScheduleButton brokers={brokersQ.data ?? []} currentWeekStart={weekStart} onImported={setWeekStart} />
+            <div className="flex gap-2">
+              <GenerateShiftLinkButton currentWeekStart={weekStart} />
+              <ImportScheduleButton brokers={brokersQ.data ?? []} currentWeekStart={weekStart} onImported={setWeekStart} />
+            </div>
           )}
         </div>
 

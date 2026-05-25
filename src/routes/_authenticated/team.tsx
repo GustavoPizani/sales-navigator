@@ -1,7 +1,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Phone, MessageCircle, Mail, MoreVertical, ChevronDown, ChevronRight, Check, Trash2, Copy, Link } from "lucide-react";
+import { Plus, Phone, MessageCircle, Mail, MoreVertical, ChevronDown, ChevronRight, Check, Trash2, Copy, Link, KeyRound } from "lucide-react";
 import toast from "react-hot-toast";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Collapsible from "@radix-ui/react-collapsible";
@@ -69,6 +69,7 @@ function AdminTeamView() {
   });
 
   const [confirmDelete, setConfirmDelete] = useState<Profile | null>(null);
+  const [resetPasswordProfile, setResetPasswordProfile] = useState<Profile | null>(null);
 
   const active = (brokersQ.data ?? []).filter((b) => b.is_active);
   const inactive = (brokersQ.data ?? []).filter((b) => !b.is_active);
@@ -99,6 +100,7 @@ function AdminTeamView() {
             onEdit={() => setEditing(broker)}
             onToggleActive={() => toggleActive.mutate({ id: broker.id, is_active: broker.is_active })}
             onDelete={() => setConfirmDelete(broker)}
+            onResetPassword={() => setResetPasswordProfile(broker)}
           />
         ))}
 
@@ -116,6 +118,7 @@ function AdminTeamView() {
                   onEdit={() => setEditing(broker)}
                   onToggleActive={() => toggleActive.mutate({ id: broker.id, is_active: broker.is_active })}
                   onDelete={() => setConfirmDelete(broker)}
+                  onResetPassword={() => setResetPasswordProfile(broker)}
                 />
               ))}
             </Collapsible.Content>
@@ -130,6 +133,11 @@ function AdminTeamView() {
         open={!!confirmDelete}
         onCancel={() => setConfirmDelete(null)}
         onConfirm={() => { deleteProfile.mutate(confirmDelete!.id); setConfirmDelete(null); }}
+      />
+      <ResetPasswordModal
+        profile={resetPasswordProfile}
+        open={!!resetPasswordProfile}
+        onCancel={() => setResetPasswordProfile(null)}
       />
     </div>
   );
@@ -307,11 +315,13 @@ function BrokerCard({
   onEdit,
   onToggleActive,
   onDelete,
+  onResetPassword,
 }: {
   broker: Profile;
   onEdit: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
+  onResetPassword: () => void;
 }) {
   const phoneDigits = broker.phone?.replace(/\D/g, "");
 
@@ -391,6 +401,12 @@ function BrokerCard({
               Editar
             </DropdownMenu.Item>
             <DropdownMenu.Item
+              className="px-4 py-2.5 text-sm font-medium text-[var(--navy)] cursor-pointer hover:bg-[var(--surface)] outline-none select-none rounded-lg mx-1 flex items-center gap-2"
+              onSelect={onResetPassword}
+            >
+              <KeyRound size={14} /> Redefinir Senha
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
               className={`px-4 py-2.5 text-sm font-medium cursor-pointer outline-none select-none rounded-lg mx-1 ${
                 broker.is_active ? "text-orange-600 hover:bg-orange-50" : "text-green-700 hover:bg-green-50"
               }`}
@@ -408,6 +424,90 @@ function BrokerCard({
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+    </div>
+  );
+}
+
+function ResetPasswordModal({
+  profile,
+  open,
+  onCancel,
+}: {
+  profile: Profile | null;
+  open: boolean;
+  onCancel: () => void;
+}) {
+  const [tempPassword, setTempPassword] = useState("");
+  const [success, setSuccess] = useState(false);
+  
+  useEffect(() => {
+    if (open) {
+      setTempPassword("Setin@" + Math.floor(100000 + Math.random() * 900000));
+      setSuccess(false);
+    }
+  }, [open]);
+
+  const m = useMutation({
+    mutationFn: async () => {
+      if (!profile) return;
+      
+      const { error } = await supabase.rpc('admin_reset_password', { 
+        p_user_id: profile.id, 
+        p_new_password: tempPassword 
+      });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setSuccess(true);
+      toast.success("Senha redefinida com sucesso!");
+    },
+    onError: (e: any) => toast.error(e.message || "Erro ao redefinir senha"),
+  });
+
+  if (!open || !profile) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end" onClick={onCancel}>
+      <div className="bg-white w-full rounded-t-2xl p-5 safe-bottom" onClick={(e) => e.stopPropagation()}>
+        {success ? (
+          <div className="flex flex-col items-center text-center gap-3 py-4">
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+              <Check size={32} className="text-green-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-[var(--navy)]">Senha redefinida!</h3>
+            <p className="text-sm text-muted-foreground">A nova senha temporária de {profile.full_name} é:</p>
+            <input type="text" readOnly value={tempPassword} className="w-full h-12 px-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 font-mono font-bold text-lg text-center tracking-wider select-all cursor-copy mt-2" title="Clique para selecionar e copiar" />
+            <p className="text-[11px] text-muted-foreground mt-2">Ele(a) deverá cadastrar uma nova senha ao fazer login.</p>
+            <div className="w-full mt-4 space-y-2">
+               <button onClick={() => {
+                 const msg = `Olá ${profile.full_name}! Sua senha foi redefinida.\n\nAcesso: ${window.location.origin}\nNova senha temporária: ${tempPassword}\n\nVocê precisará criar uma nova senha ao fazer login.`;
+                 navigator.clipboard.writeText(msg);
+                 toast.success("Mensagem copiada!");
+               }} className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold flex items-center justify-center gap-2">
+                 <Copy size={18} /> Copiar Mensagem
+               </button>
+               <button onClick={onCancel} className="w-full h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Fechar</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center text-center gap-2 py-2">
+            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mb-1">
+              <KeyRound size={22} className="text-blue-600" />
+            </div>
+            <h3 className="text-base font-bold text-[var(--navy)]">Redefinir senha de {profile.full_name}?</h3>
+            <p className="text-sm text-muted-foreground">Isto irá gerar uma nova senha temporária. O usuário precisará usar esta senha para acessar e será forçado a trocá-la no primeiro login.</p>
+            <div className="w-full mt-4">
+              <p className="text-xs text-muted-foreground font-medium mb-2 text-center">Nova Senha Temporária</p>
+              <input type="text" readOnly value={tempPassword} className="w-full h-12 px-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 font-mono font-bold text-lg text-center tracking-wider select-all cursor-copy" title="Clique para selecionar e copiar" />
+            </div>
+            <div className="flex gap-2 w-full mt-6">
+              <button onClick={onCancel} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium text-sm">Cancelar</button>
+              <button onClick={() => m.mutate()} disabled={m.isPending} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-bold text-sm disabled:opacity-50">{m.isPending ? "Redefinindo..." : "Confirmar"}</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

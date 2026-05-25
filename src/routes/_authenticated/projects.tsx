@@ -22,6 +22,7 @@ type Project = {
   city: string;
   description: string | null;
   is_active: boolean;
+  tem_plantao?: boolean;
   manager_id: string;
 };
 
@@ -317,6 +318,11 @@ function ProjectCard({
               {rich?.entrega && (
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${entregaBadge(rich.entrega)}`}>
                   {rich.entrega}
+                </span>
+              )}
+              {project.tem_plantao && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                  Plantão
                 </span>
               )}
             </div>
@@ -711,6 +717,7 @@ function ProjectForm({
   const [estrutura, setEstrutura] = useState(rich?.estrutura ?? "");
   const [typologies, setTypologies] = useState<Typology[]>(rich?.typologies ?? []);
   const [active, setActive] = useState(project?.is_active ?? true);
+  const [temPlantao, setTemPlantao] = useState(project?.tem_plantao ?? false);
 
   const addTypology = () =>
     setTypologies((prev) => [...prev, { type: "", area: 0, vagas: 0 }]);
@@ -736,6 +743,7 @@ function ProjectForm({
         city,
         description: JSON.stringify(desc),
         is_active: active,
+        tem_plantao: temPlantao,
         manager_id: managerId,
       };
       if (project) {
@@ -858,15 +866,26 @@ function ProjectForm({
           </div>
 
           {/* Active toggle */}
-          <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border">
-            <span className="text-sm font-medium text-[var(--navy)]">Ativo</span>
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={(e) => setActive(e.target.checked)}
-              className="w-5 h-5 accent-[var(--gold)]"
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
+              <span className="text-sm font-medium text-[var(--navy)]">Ativo</span>
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={(e) => setActive(e.target.checked)}
+                className="w-5 h-5 accent-[var(--gold)] cursor-pointer"
+              />
+            </label>
+            <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
+              <span className="text-sm font-medium text-[var(--navy)]">Tem Plantão</span>
+              <input
+                type="checkbox"
+                checked={temPlantao}
+                onChange={(e) => setTemPlantao(e.target.checked)}
+                className="w-5 h-5 accent-[var(--gold)] cursor-pointer"
+              />
+            </label>
+          </div>
         </div>
 
         {/* Footer */}

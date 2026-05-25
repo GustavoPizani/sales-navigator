@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 
 const STATUS_HEX: Record<string, string> = {
   "Prospect": "#6B7280",
+  "Em Tratativa": "#0891B2",
   "Proposta em Análise": "#2563EB",
   "Proposta Aprovada": "#4F46E5",
   "Contrato Gerado": "#D97706",
@@ -16,6 +17,7 @@ export const formatBRL = (val: number) => new Intl.NumberFormat("pt-BR", { style
 
 export const statusColors = {
   "Prospect": "bg-gray-100 text-gray-700",
+  "Em Tratativa": "bg-cyan-100 text-cyan-700",
   "Proposta em Análise": "bg-blue-100 text-blue-700",
   "Proposta Aprovada": "bg-indigo-100 text-indigo-700",
   "Contrato Gerado": "bg-amber-100 text-amber-700",
@@ -98,7 +100,7 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
         </ChartCard>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Tratativas no período">
+        <ChartCard title="Contratos Gerados no período">
           <ResponsiveContainer width="100%" height={350}>
             <BarChart data={dbData.chart4Data} layout="vertical" margin={{ top: 0, right: 80, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
@@ -125,7 +127,7 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
   );
 }
 
-export function StatusChart({ data }: { data: { name: string; count: number }[] }) {
+export function StatusChart({ data }: { data: any[] }) {
   const filtered = data.filter((d) => d.count > 0);
   if (filtered.length === 0) return null;
   return (
@@ -135,7 +137,23 @@ export function StatusChart({ data }: { data: { name: string; count: number }[] 
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
           <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} allowDecimals={false} />
           <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#6B7280" }} width={145} />
-          <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} formatter={(v: any) => [`${v} atendimento(s)`, "Qtd."]} />
+          <Tooltip 
+            cursor={{ fill: "rgba(0,0,0,0.04)" }} 
+            content={({ active, payload, label }: any) => {
+              if (active && payload && payload.length) {
+                return (
+                  <div className="bg-white p-3 rounded-lg shadow-md border border-border">
+                    <p className="font-semibold text-sm text-[var(--navy)] mb-1">{label}</p>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <p>Atendimentos: <span className="font-medium text-[var(--navy)]">{payload[0].value}</span></p>
+                      {payload[0].payload.Valor && <p>Valor Total: <span className="font-medium text-[var(--navy)]">{payload[0].payload.Valor}</span></p>}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            }}
+          />
           <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={22}>
             {filtered.map((entry) => (
               <Cell key={entry.name} fill={STATUS_HEX[entry.name] ?? "#6B7280"} />

@@ -26,14 +26,13 @@ export function useDashboardFilters() {
 
 export function useDashboardData(atendimentos: any[]) {
   return useMemo(() => {
-    const tratativasStatus = ["Prospect", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado"];
     let emTratativasSum = 0;
     let volumeVendasSum = 0;
 
     const monthlyData: Record<string, any> = {};
 
     atendimentos.forEach((a) => {
-      if (tratativasStatus.includes(a.status)) emTratativasSum += Number(a.valor) || 0;
+      if (a.status === "Em Tratativa") emTratativasSum += Number(a.valor) || 0;
       if (a.status === "Contrato Assinado") volumeVendasSum += Number(a.valor) || 0;
 
       const m = a.data.slice(0, 7); // yyyy-MM
@@ -51,7 +50,7 @@ export function useDashboardData(atendimentos: any[]) {
       if (a.setor === "Online") monthlyData[m].Online++;
       else if (a.setor === "Salão") monthlyData[m].Salão++;
 
-      if (tratativasStatus.includes(a.status)) monthlyData[m].tratativasVal += Number(a.valor) || 0;
+      if (a.status === "Contrato Gerado") monthlyData[m].tratativasVal += Number(a.valor) || 0;
       if (a.status === "Contrato Assinado") monthlyData[m].vendasVal += Number(a.valor) || 0;
     });
 

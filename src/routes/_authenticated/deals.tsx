@@ -16,6 +16,7 @@ export const Route = createFileRoute("/_authenticated/deals")({
 
 const statusColors = {
   "Prospect": "bg-gray-100 text-gray-700",
+  "Em Tratativa": "bg-cyan-100 text-cyan-700",
   "Proposta em Análise": "bg-blue-100 text-blue-700",
   "Proposta Aprovada": "bg-indigo-100 text-indigo-700",
   "Contrato Gerado": "bg-amber-100 text-amber-700",
@@ -99,6 +100,7 @@ function DealsPage() {
           >
             <option value="all">Todos os Status</option>
             <option value="Prospect">Prospect</option>
+            <option value="Em Tratativa">Em Tratativa</option>
             <option value="Proposta em Análise">Proposta em Análise</option>
             <option value="Proposta Aprovada">Proposta Aprovada</option>
             <option value="Contrato Gerado">Contrato Gerado</option>
@@ -514,6 +516,7 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
               onChange={(e) => setStatus(e.target.value)}
             >
               <option value="Prospect">Prospect</option>
+              <option value="Em Tratativa">Em Tratativa</option>
               <option value="Proposta em Análise">Proposta em Análise</option>
               <option value="Proposta Aprovada">Proposta Aprovada</option>
               <option value="Contrato Gerado">Contrato Gerado</option>

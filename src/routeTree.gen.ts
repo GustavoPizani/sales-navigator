@@ -21,6 +21,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedAppointmentsRouteImport } from './routes/_authenticated/appointments'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
+import { Route as AuthenticatedScheduleClaimTokenRouteImport } from './routes/_authenticated/schedule_.claim.$token'
 import { Route as AuthenticatedDashboardCorretorIdRouteImport } from './routes/_authenticated/dashboard/corretor/$id'
 
 const LoginRoute = LoginRouteImport.update({
@@ -84,6 +85,12 @@ const AuthenticatedSettingsProfileRoute =
     path: '/settings/profile',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedScheduleClaimTokenRoute =
+  AuthenticatedScheduleClaimTokenRouteImport.update({
+    id: '/schedule_/claim/$token',
+    path: '/schedule/claim/$token',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedDashboardCorretorIdRoute =
   AuthenticatedDashboardCorretorIdRouteImport.update({
     id: '/corretor/$id',
@@ -104,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/team': typeof AuthenticatedTeamRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
+  '/schedule/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -118,6 +126,7 @@ export interface FileRoutesByTo {
   '/team': typeof AuthenticatedTeamRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
+  '/schedule/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,6 +143,7 @@ export interface FileRoutesById {
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/_authenticated/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
+  '/_authenticated/schedule_/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/settings/profile'
     | '/dashboard/corretor/$id'
+    | '/schedule/claim/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/settings/profile'
     | '/dashboard/corretor/$id'
+    | '/schedule/claim/$token'
   id:
     | '__root__'
     | '/'
@@ -179,6 +191,7 @@ export interface FileRouteTypes {
     | '/_authenticated/team'
     | '/_authenticated/settings/profile'
     | '/_authenticated/dashboard/corretor/$id'
+    | '/_authenticated/schedule_/claim/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -274,6 +287,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/schedule_/claim/$token': {
+      id: '/_authenticated/schedule_/claim/$token'
+      path: '/schedule/claim/$token'
+      fullPath: '/schedule/claim/$token'
+      preLoaderRoute: typeof AuthenticatedScheduleClaimTokenRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/dashboard/corretor/$id': {
       id: '/_authenticated/dashboard/corretor/$id'
       path: '/corretor/$id'
@@ -308,6 +328,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
+  AuthenticatedScheduleClaimTokenRoute: typeof AuthenticatedScheduleClaimTokenRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -319,6 +340,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
+  AuthenticatedScheduleClaimTokenRoute: AuthenticatedScheduleClaimTokenRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

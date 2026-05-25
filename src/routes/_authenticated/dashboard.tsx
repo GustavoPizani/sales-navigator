@@ -16,7 +16,7 @@ import { DashboardCharts, AtendimentosTable, KpiCard as OriginalKpiCard, MiniAva
 import { BarChart, Bar, Tooltip, ResponsiveContainer } from "recharts";
 import { AppointmentForm } from "./appointments";
 
-const STATUSES = ["Prospect", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado", "Contrato Assinado", "Cancelada"];
+const STATUSES = ["Prospect", "Em Tratativa", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado", "Contrato Assinado", "Cancelada"];
 
 function normalizeStr(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
@@ -241,15 +241,20 @@ function AdminDashboard({ user }: { user: any }) {
   const [insertOpen, setInsertOpen] = useState(false);
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
+  const [brokerSearch, setBrokerSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"graficos" | "corretores" | "atendimentos">("graficos");
 
   const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
   const teamBrokerIds = (brokersQ.data ?? []).map((b) => b.id);
 
+  const filteredBrokers = useMemo(() => {
+    return (brokersQ.data ?? []).filter(b => b.full_name.toLowerCase().includes(brokerSearch.toLowerCase()));
+  }, [brokersQ.data, brokerSearch]);
+
   const { data: atendimentos = [], isPending } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, user?.id, teamBrokerIds.join(",")],
     queryFn: async () => {
-      // Specific broker selected — no need for team filter
       if (filters.appliedBrokerId !== "all") {
         const { data, error } = await supabase
           .from("atendimentos")
@@ -261,8 +266,6 @@ function AdminDashboard({ user }: { user: any }) {
         return data ?? [];
       }
 
-      // Admin "all" mode: filter ONLY to this manager's team
-      // Guard: if no team brokers loaded yet, return empty to avoid showing all data
       if (teamBrokerIds.length === 0) return [];
 
       const { data, error } = await supabase
@@ -289,7 +292,15 @@ function AdminDashboard({ user }: { user: any }) {
   });
 
   const statusCounts = useMemo(() =>
-    STATUSES.map((s) => ({ name: s, count: atendimentos.filter((a) => a.status === s).length })),
+    STATUSES.map((s) => {
+      const filtered = atendimentos.filter((a) => a.status === s);
+      const totalValor = filtered.reduce((acc, a) => acc + (Number(a.valor) || 0), 0);
+      return { 
+        name: s, 
+        count: filtered.length,
+        Valor: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValor)
+      };
+    }),
     [atendimentos]
   );
 
@@ -313,7 +324,10 @@ function AdminDashboard({ user }: { user: any }) {
     const map: Record<string, any> = {};
     
     (brokersQ.data ?? []).forEach(b => {
-      map[b.id] = { broker: b, total: 0, visitas: 0, vendas: 0, tratativas: 0, volume: 0, monthly: {} };
+      map[b.id] = { 
+        broker: b, total: 0, visitas: 0, vendas: 0, tratativas: 0, volume: 0, monthly: {},
+        statusCounts: Object.fromEntries(STATUSES.map(s => [s, 0]))
+      };
     });
 
     atendimentos.forEach(a => {
@@ -322,7 +336,10 @@ function AdminDashboard({ user }: { user: any }) {
       b.total++;
       if (a.visita) b.visitas++;
       if (a.venda) b.vendas++;
-      const isTratativa = ["Prospect", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado"].includes(a.status ?? "");
+      if (a.status && STATUSES.includes(a.status)) {
+        b.statusCounts[a.status]++;
+      }
+      const isTratativa = a.status === "Em Tratativa";
       if (isTratativa) b.tratativas += Number(a.valor) || 0;
       if (a.status === "Contrato Assinado") b.volume += Number(a.valor) || 0;
       b.monthly[a.data.slice(0, 7)] = (b.monthly[a.data.slice(0, 7)] || 0) + 1;
@@ -375,23 +392,25 @@ function AdminDashboard({ user }: { user: any }) {
   };
 
   return (
-    <div className="pb-nav bg-[var(--surface)] min-h-screen">
-      <AppHeader 
-        title="Dashboard" 
-        right={<NotificationBell user={user} onSelect={(appt) => {
-          setInsertPreFill({
-            appointment_id: appt.id,
-            nome_cliente: appt.client_name || "",
-            email: appt.client_email || "",
-            id_cliente: appt.client_id || "",
-            broker_id: user.id
-          });
-          setInsertOpen(true);
-        }} />} 
-      />
+    <div className="h-screen flex flex-col bg-[var(--surface)] pb-nav overflow-hidden">
+      <div className="flex-shrink-0">
+        <AppHeader 
+          title="Dashboard" 
+          right={<NotificationBell user={user} onSelect={(appt) => {
+            setInsertPreFill({
+              appointment_id: appt.id,
+              nome_cliente: appt.client_name || "",
+              email: appt.client_email || "",
+              id_cliente: appt.client_id || "",
+              broker_id: user.id
+            });
+            setInsertOpen(true);
+          }} />} 
+        />
+      </div>
 
       {/* FILTER BAR */}
-      <div className="bg-white px-4 py-3 border-b border-border sticky top-0 z-20 shadow-sm flex items-center gap-3 flex-wrap">
+      <div className="bg-white px-4 py-3 border-b border-border z-20 shadow-sm flex items-center gap-3 flex-wrap flex-shrink-0">
         <DateRangePicker
           startDate={filters.startDate}
           endDate={filters.endDate}
@@ -409,13 +428,25 @@ function AdminDashboard({ user }: { user: any }) {
             {isDropdownOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setIsDropdownOpen(false)} />
-                <div className="absolute top-[44px] left-0 w-full bg-white border border-border rounded-lg shadow-xl z-40 max-h-[280px] overflow-y-auto py-1">
-                  <button onClick={() => { filters.setBrokerId("all"); setIsDropdownOpen(false); }} className={`w-full text-left px-3 py-2 text-sm hover:bg-[var(--surface)] ${filters.brokerId === "all" ? "bg-[var(--surface)] font-semibold" : ""}`}>Todos os corretores</button>
-                  {(brokersQ.data ?? []).map(b => (
-                    <button key={b.id} onClick={() => { filters.setBrokerId(b.id); setIsDropdownOpen(false); }} className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[var(--surface)] ${filters.brokerId === b.id ? "bg-[var(--surface)] font-semibold" : ""}`}>
-                      <MiniAvatar name={b.full_name} color={b.color} /><span className="truncate">{b.full_name}</span>
-                    </button>
-                  ))}
+                <div className="absolute top-[44px] left-0 w-full bg-white border border-border rounded-lg shadow-xl z-40 max-h-[320px] overflow-hidden flex flex-col py-1">
+                  <div className="p-2 border-b border-border flex-shrink-0">
+                    <input 
+                      type="text" 
+                      placeholder="Buscar corretor..." 
+                      className="w-full h-9 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm outline-none focus:border-[var(--gold)]"
+                      value={brokerSearch}
+                      onChange={(e) => setBrokerSearch(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="overflow-y-auto flex-1 py-1">
+                    <button onClick={() => { filters.setBrokerId("all"); setIsDropdownOpen(false); }} className={`w-full text-left px-3 py-2 text-sm hover:bg-[var(--surface)] ${filters.brokerId === "all" ? "bg-[var(--surface)] font-semibold" : ""}`}>Todos os corretores</button>
+                    {filteredBrokers.map(b => (
+                      <button key={b.id} onClick={() => { filters.setBrokerId(b.id); setIsDropdownOpen(false); }} className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[var(--surface)] ${filters.brokerId === b.id ? "bg-[var(--surface)] font-semibold" : ""}`}>
+                        <MiniAvatar name={b.full_name} color={b.color} /><span className="truncate">{b.full_name}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </>
             )}
@@ -423,8 +454,14 @@ function AdminDashboard({ user }: { user: any }) {
         )}
       </div>
 
-      <div className="px-4 pt-4 pb-8 space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="px-4 py-3 flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-border bg-white z-10 flex-shrink-0">
+        <button onClick={() => setActiveTab("graficos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "graficos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Gráficos</button>
+        <button onClick={() => setActiveTab("corretores")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "corretores" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Desempenho por Corretor</button>
+        <button onClick={() => setActiveTab("atendimentos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Atendimentos</button>
+      </div>
+
+      <div className={`px-4 pt-4 pb-4 flex-1 ${activeTab === "atendimentos" ? "flex flex-col overflow-hidden space-y-4" : "overflow-y-auto space-y-6"}`}>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} />
@@ -432,44 +469,56 @@ function AdminDashboard({ user }: { user: any }) {
           <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} />
         </div>
 
-        <DashboardCharts dbData={dbData} />
+        {activeTab === "graficos" && (
+          <>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <StatusChart data={statusCounts} />
-          <VisitsByProductChart data={visitsByProduct} />
-        </div>
+            <DashboardCharts dbData={dbData} />
 
-        {isAdmin && brokerPerformance.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold text-[var(--navy)]">Desempenho por Corretor</h2>
-            <div className={`grid gap-4 ${filters.appliedBrokerId !== 'all' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-              {brokerPerformance.filter(b => filters.appliedBrokerId === 'all' || b.broker.id === filters.appliedBrokerId).map(bp => (
-                <BrokerPerformanceCard key={bp.broker.id} bp={bp} />
-              ))}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <StatusChart data={statusCounts} />
+              <VisitsByProductChart data={visitsByProduct} />
             </div>
+          </>
+        )}
+
+        {activeTab === "corretores" && (
+          <div className="space-y-4">
+            {brokerPerformance.length === 0 ? (
+              <p className="text-muted-foreground text-sm">Nenhum corretor encontrado no período.</p>
+            ) : (
+              <div className={`grid gap-4 ${filters.appliedBrokerId !== 'all' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+                {brokerPerformance.filter(b => filters.appliedBrokerId === 'all' || b.broker.id === filters.appliedBrokerId).map(bp => (
+                  <BrokerPerformanceCard key={bp.broker.id} bp={bp} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-            <div className="flex items-center gap-2">
-              <button onClick={handleExport} className="h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors">
-                <Download size={14} /> Exportar Planilha
-              </button>
-              <CsvImportButton brokers={brokersQ.data ?? []} />
+        {activeTab === "atendimentos" && (
+          <>
+            <div className="flex items-center justify-between flex-shrink-0">
+              <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
+              <div className="flex items-center gap-2">
+                <button onClick={handleExport} className="h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors">
+                  <Download size={14} /> Exportar Planilha
+                </button>
+                <CsvImportButton brokers={brokersQ.data ?? []} />
+              </div>
             </div>
-          </div>
-          <AtendimentosTable 
-            atendimentos={atendimentos} 
-            isAdmin={isAdmin} 
-            onRowClick={(a) => setEditingAtendimento(a)} 
-            onRowContextMenu={(e: any, a: any) => {
-              e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
-            }}
-          />
-        </div>
+            <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-xl border border-border shadow-sm">
+              <AtendimentosTable 
+                atendimentos={atendimentos} 
+                isAdmin={isAdmin} 
+                onRowClick={(a) => setEditingAtendimento(a)} 
+                onRowContextMenu={(e: any, a: any) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {contextMenu && (
@@ -526,6 +575,7 @@ function BrokerDashboard({ user }: { user: any }) {
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
+  const [activeTab, setActiveTab] = useState<"graficos" | "atendimentos">("graficos");
 
   const { data: atendimentos = [] } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
@@ -545,26 +595,33 @@ function BrokerDashboard({ user }: { user: any }) {
   const dbData = useDashboardData(atendimentos);
 
   return (
-    <div className="pb-nav bg-[var(--surface)] min-h-screen">
-      <AppHeader 
-        title="Dashboard" 
-        right={<NotificationBell user={user} onSelect={(appt) => {
-          setInsertPreFill({
-            appointment_id: appt.id,
-            nome_cliente: appt.client_name || "",
-            email: appt.client_email || "",
-            id_cliente: appt.client_id || "",
-            broker_id: user.id
-          });
-          setInsertOpen(true);
-        }} />} 
-      />
-      <div className="bg-white px-4 py-3 border-b border-border sticky top-0 z-20 shadow-sm flex items-center gap-3 flex-wrap">
+    <div className="h-screen flex flex-col bg-[var(--surface)] pb-nav overflow-hidden">
+      <div className="flex-shrink-0">
+        <AppHeader 
+          title="Dashboard" 
+          right={<NotificationBell user={user} onSelect={(appt) => {
+            setInsertPreFill({
+              appointment_id: appt.id,
+              nome_cliente: appt.client_name || "",
+              email: appt.client_email || "",
+              id_cliente: appt.client_id || "",
+              broker_id: user.id
+            });
+            setInsertOpen(true);
+          }} />} 
+        />
+      </div>
+      <div className="bg-white px-4 py-3 border-b border-border z-20 shadow-sm flex items-center gap-3 flex-wrap flex-shrink-0">
         <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="flex-1 min-w-[220px]" />
       </div>
 
-      <div className="px-4 pt-4 pb-8 space-y-6">
-        <div className="grid grid-cols-2 gap-3">
+      <div className="px-4 py-3 flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-border bg-white z-10 flex-shrink-0">
+        <button onClick={() => setActiveTab("graficos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "graficos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Gráficos</button>
+        <button onClick={() => setActiveTab("atendimentos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Atendimentos</button>
+      </div>
+
+      <div className={`px-4 pt-4 pb-4 flex-1 ${activeTab === "atendimentos" ? "flex flex-col overflow-hidden space-y-4" : "overflow-y-auto space-y-6"}`}>
+        <div className="grid grid-cols-2 gap-3 flex-shrink-0">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} />
@@ -572,23 +629,27 @@ function BrokerDashboard({ user }: { user: any }) {
           <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} /></div>
         </div>
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-            <button onClick={() => { setInsertPreFill(null); setInsertOpen(true); }} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
-              <Plus size={14} strokeWidth={2.5} /> Inserir
-            </button>
-          </div>
-          <AtendimentosTable 
-            atendimentos={atendimentos} 
-            isAdmin={false} 
-            onRowClick={(a) => setEditingAtendimento(a)} 
-            onRowContextMenu={(e: any, a: any) => {
-              e.preventDefault();
-              setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
-            }}
-          />
-        </div>
+        {activeTab === "atendimentos" && (
+          <>
+            <div className="flex items-center justify-between flex-shrink-0">
+              <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
+              <button onClick={() => { setInsertPreFill(null); setInsertOpen(true); }} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
+                <Plus size={14} strokeWidth={2.5} /> Inserir
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-xl border border-border shadow-sm">
+              <AtendimentosTable 
+                atendimentos={atendimentos} 
+                isAdmin={false} 
+                onRowClick={(a) => setEditingAtendimento(a)} 
+                onRowContextMenu={(e: any, a: any) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {contextMenu && (
@@ -640,6 +701,10 @@ function BrokerDashboard({ user }: { user: any }) {
 function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendimento: any; onClose: () => void; onScheduleVisit?: () => void }) {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
+  const [nomeCliente, setNomeCliente] = useState(atendimento.nome_cliente ?? "");
+  const [telefone, setTelefone] = useState(atendimento.telefone ?? "");
+  const [email, setEmail] = useState(atendimento.email ?? "");
+  const [idCliente, setIdCliente] = useState(atendimento.id_cliente ?? "");
   const [produto, setProduto] = useState(atendimento.produto ?? "");
   const [ocorrencia, setOcorrencia] = useState(atendimento.ocorrencia ?? "");
   const [visita, setVisita] = useState(atendimento.visita ?? false);
@@ -661,6 +726,10 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
       const { error } = await supabase
         .from("atendimentos")
         .update({
+          nome_cliente: nomeCliente || null,
+          telefone: telefone || null,
+          email: email || null,
+          id_cliente: idCliente || null,
           produto: produto || null,
           ocorrencia: ocorrencia || null,
           visita,
@@ -705,7 +774,7 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
           <div>
             <h3 className="text-base font-semibold text-[var(--navy)]">Visualizar Cliente</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{atendimento.nome_cliente}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{nomeCliente || "Cliente não identificado"}</p>
           </div>
           <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
         </div>
@@ -716,24 +785,6 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
               <span className="text-xs text-muted-foreground font-medium">Data</span>
               <span className="text-sm font-medium text-[var(--navy)]">{atendimento.data ? format(new Date(atendimento.data + "T00:00:00"), "dd/MM/yyyy", { locale: ptBR }) : ""}</span>
             </div>
-            {atendimento.telefone && (
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-xs text-muted-foreground font-medium">Telefone</span>
-                <span className="text-sm font-medium text-[var(--navy)]">{atendimento.telefone}</span>
-              </div>
-            )}
-            {atendimento.email && (
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-xs text-muted-foreground font-medium">E-mail</span>
-                <span className="text-sm font-medium text-[var(--navy)]">{atendimento.email}</span>
-              </div>
-            )}
-            {atendimento.id_cliente && (
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-xs text-muted-foreground font-medium">ID Cliente</span>
-                <span className="text-sm font-medium text-[var(--navy)]">{atendimento.id_cliente}</span>
-              </div>
-            )}
             {atendimento.setor && (
               <div className="flex justify-between items-center mt-2">
                 <span className="text-xs text-muted-foreground font-medium">Setor</span>
@@ -742,20 +793,31 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
             )}
           </div>
 
-          <select className={`${fieldCls} text-[var(--navy)]`} value={produto} onChange={(e) => setProduto(e.target.value)}>
-            <option value="">Produto...</option>
-            {(projectsQ.data ?? []).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-          </select>
-          <input className={fieldCls} placeholder="Ocorrência" value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} />
+          <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="Nome do cliente *" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} />
 
           <div className="grid grid-cols-2 gap-2">
-            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer select-none ${visita ? "bg-blue-50 border-blue-200" : "bg-[var(--surface)] border-border"}`}>
+            <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="Telefone" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
+            <input disabled={!isAdmin} type="email" className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="ID do cliente" value={idCliente} onChange={(e) => setIdCliente(e.target.value)} />
+            <select disabled={!isAdmin} className={`${fieldCls} text-[var(--navy)] disabled:opacity-70 disabled:cursor-not-allowed`} value={produto} onChange={(e) => setProduto(e.target.value)}>
+              <option value="">Produto...</option>
+              {(projectsQ.data ?? []).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
+
+          <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="Ocorrência" value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} />
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border ${!isAdmin ? "cursor-not-allowed opacity-70" : "cursor-pointer"} select-none ${visita ? "bg-blue-50 border-blue-200" : "bg-[var(--surface)] border-border"}`}>
               <span className="text-sm font-medium text-[var(--navy)]">Visita</span>
-              <input type="checkbox" checked={visita} onChange={(e) => setVisita(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
+              <input type="checkbox" disabled={!isAdmin} checked={visita} onChange={(e) => setVisita(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
             </label>
-            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer select-none ${venda ? "bg-green-50 border-green-200" : "bg-[var(--surface)] border-border"}`}>
+            <label className={`flex items-center justify-between px-4 py-3 rounded-xl border ${!isAdmin ? "cursor-not-allowed opacity-70" : "cursor-pointer"} select-none ${venda ? "bg-green-50 border-green-200" : "bg-[var(--surface)] border-border"}`}>
               <span className="text-sm font-medium text-[var(--navy)]">Venda</span>
-              <input type="checkbox" checked={venda} onChange={(e) => setVenda(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
+              <input type="checkbox" disabled={!isAdmin} checked={venda} onChange={(e) => setVenda(e.target.checked)} className="w-5 h-5 accent-[var(--gold)]" />
             </label>
           </div>
 
@@ -763,8 +825,8 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
             <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Temperatura</label>
             <div className="grid grid-cols-3 gap-2">
               {TEMPERATURAS.map((t) => (
-                <button key={t} onClick={() => setTemperatura(temperatura === t ? "" : t)}
-                  className={`h-10 rounded-xl text-sm font-semibold transition-colors ${temperatura === t ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}>
+                <button key={t} type="button" disabled={!isAdmin} onClick={() => setTemperatura(temperatura === t ? "" : t)}
+                  className={`h-10 rounded-xl text-sm font-semibold transition-colors disabled:opacity-70 disabled:cursor-not-allowed ${temperatura === t ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}>
                   {t}
                 </button>
               ))}
@@ -773,13 +835,13 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
 
           <div>
             <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Status</label>
-            <select className={fieldCls} value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Selecione...</option>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
 
-          <input className={fieldCls} placeholder="Valor (R$)" value={valor} onChange={(e) => setValor(e.target.value)} />
+          <input disabled={!isAdmin} className={`${fieldCls} disabled:opacity-70 disabled:cursor-not-allowed`} placeholder="Valor (R$)" value={valor} onChange={(e) => setValor(e.target.value)} />
         </div>
 
         <div className="px-5 pb-5 pt-3 border-t border-border flex gap-2 flex-shrink-0 items-center">
@@ -807,10 +869,12 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendi
             </button>
           )}
           <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancelar</button>
-          <button onClick={() => save.mutate()} disabled={save.isPending}
-            className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50">
-            {save.isPending ? "Salvando..." : "Salvar"}
-          </button>
+          {isAdmin && (
+            <button onClick={() => save.mutate()} disabled={save.isPending}
+              className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50">
+              {save.isPending ? "Salvando..." : "Salvar"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1027,7 +1091,7 @@ export function AtendimentoForm({ userId, onClose, preFill }: { userId: string; 
 
 function BrokerPerformanceCard({ bp }: { bp: any }) {
   return (
-    <Link to="/dashboard/corretor/$id" params={{ id: bp.broker.id }} className="bg-white p-4 rounded-2xl shadow-sm border border-border block hover:border-[var(--gold)] transition-colors group">
+    <Link to="/dashboard/corretor/$id" params={{ id: bp.broker.id }} className="bg-white p-4 rounded-2xl shadow-sm border border-border block hover:border-[var(--gold)] transition-colors group h-full flex flex-col">
       <div className="flex items-center gap-3 mb-4">
         <MiniAvatar name={bp.broker.full_name} color={bp.broker.color} />
         <div>
@@ -1035,16 +1099,24 @@ function BrokerPerformanceCard({ bp }: { bp: any }) {
           <div className="text-xs text-muted-foreground">Corretor</div>
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-2 text-center mb-3">
+      <div className="grid grid-cols-4 gap-2 text-center mb-4 pb-4 border-b border-gray-100">
         <div><div className="text-[10px] text-muted-foreground uppercase">Atend.</div><div className="font-bold text-[var(--navy)]">{bp.total}</div></div>
         <div><div className="text-[10px] text-muted-foreground uppercase">Visitas</div><div className="font-bold text-[var(--navy)]">{bp.visitas}</div></div>
         <div><div className="text-[10px] text-muted-foreground uppercase">Vendas</div><div className="font-bold text-[var(--navy)]">{bp.vendas}</div></div>
         <div><div className="text-[10px] text-muted-foreground uppercase">Conv.</div><div className="font-bold text-[var(--navy)]">{bp.conversao.toFixed(1)}%</div></div>
       </div>
-      <div className="h-1.5 w-full bg-gray-100 rounded-full mb-4 overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(bp.conversao, 100)}%`, backgroundColor: bp.broker.color }} />
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-4 text-xs">
+        {STATUSES.map(s => (
+          <div key={s} className="flex items-center justify-between">
+            <span className="text-muted-foreground truncate mr-2" title={s}>{s}</span>
+            <span className="font-semibold text-[var(--navy)]">{bp.statusCounts[s]}</span>
+          </div>
+        ))}
       </div>
-      <div className="space-y-1 mb-4 text-sm">
+      <div className="space-y-1 mt-auto text-sm">
+        <div className="h-1.5 w-full bg-gray-100 rounded-full mb-3 mt-1 overflow-hidden">
+          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(bp.conversao, 100)}%`, backgroundColor: bp.broker.color }} />
+        </div>
         <div className="flex justify-between"><span className="text-muted-foreground">Em Tratativas:</span><span className="font-semibold text-[var(--navy)]">{formatBRL(bp.tratativas)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Volume Vendido:</span><span className="font-semibold text-[var(--navy)]">{formatBRL(bp.volume)}</span></div>
       </div>
@@ -1114,6 +1186,7 @@ function normalizeStatus(s: string): string {
   if (!s) return "";
   const clean = s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (clean === "prospect") return "Prospect";
+  if (clean === "em tratativa" || clean.includes("tratativa")) return "Em Tratativa";
   if (clean === "proposta em analise" || clean.includes("analise")) return "Proposta em Análise";
   if (clean === "proposta aprovada" || clean.includes("aprovada")) return "Proposta Aprovada";
   if (clean === "contrato gerado" || clean.includes("gerado")) return "Contrato Gerado";
