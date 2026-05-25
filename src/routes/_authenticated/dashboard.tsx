@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronDown, Plus, Upload, X, Trash2, Calendar, Bell } from "lucide-react";
+import { ChevronDown, Plus, Upload, X, Trash2, Calendar, Bell, Download } from "lucide-react";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Link, useNavigate } from "@tanstack/react-router";
 import toast from "react-hot-toast";
@@ -337,6 +337,43 @@ function AdminDashboard({ user }: { user: any }) {
 
   const selectedBroker = filters.brokerId === "all" ? null : brokersQ.data?.find(b => b.id === filters.brokerId);
 
+  const handleExport = () => {
+    if (atendimentos.length === 0) {
+      toast.error("Nenhum atendimento para exportar.");
+      return;
+    }
+
+    const headers = [
+      "Data", "Corretor", "Nome do Cliente", "Telefone", "E-mail", "ID do Cliente", "Produto",
+      "Ocorrência", "Setor", "Visita", "Venda", "Temperatura", "Status", "Valor"
+    ];
+
+    const rows = atendimentos.map(a => {
+      const corretor = (a.profiles as any)?.full_name || "";
+      const dateStr = a.data ? format(new Date(a.data + "T00:00:00"), "dd/MM/yyyy") : "";
+      return [
+        dateStr, corretor, a.nome_cliente || "", a.telefone || "", a.email || "",
+        a.id_cliente || "", a.produto || "", a.ocorrencia || "", a.setor || "",
+        a.visita ? "Sim" : "Não", a.venda ? "Sim" : "Não", a.temperatura || "",
+        a.status || "", a.valor || 0
+      ];
+    });
+
+    const csvContent = [
+      headers.join(";"),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
+    ].join("\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `atendimentos_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="pb-nav bg-[var(--surface)] min-h-screen">
       <AppHeader 
@@ -416,7 +453,12 @@ function AdminDashboard({ user }: { user: any }) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-            <CsvImportButton brokers={brokersQ.data ?? []} />
+            <div className="flex items-center gap-2">
+              <button onClick={handleExport} className="h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors">
+                <Download size={14} /> Exportar Planilha
+              </button>
+              <CsvImportButton brokers={brokersQ.data ?? []} />
+            </div>
           </div>
           <AtendimentosTable 
             atendimentos={atendimentos} 
@@ -457,7 +499,20 @@ function AdminDashboard({ user }: { user: any }) {
         </>
       )}
 
-      {editingAtendimento && <AtendimentoEditForm atendimento={editingAtendimento} onClose={() => setEditingAtendimento(null)} />}
+      {editingAtendimento && (
+        <AtendimentoEditForm 
+          atendimento={editingAtendimento} 
+          onClose={() => setEditingAtendimento(null)}
+          onScheduleVisit={() => {
+            setNewAppointmentData({
+              client_name: editingAtendimento.nome_cliente,
+              client_id: editingAtendimento.id_cliente,
+              client_email: editingAtendimento.email,
+            });
+            setEditingAtendimento(null);
+          }} 
+        />
+      )}
       {insertOpen && <AtendimentoForm userId={user?.id} onClose={() => { setInsertOpen(false); setInsertPreFill(null); }} preFill={insertPreFill} />}
       {newAppointmentData && <AppointmentForm appt={null} preFill={newAppointmentData} onClose={() => setNewAppointmentData(null)} />}
     </div>
@@ -563,13 +618,26 @@ function BrokerDashboard({ user }: { user: any }) {
         </>
       )}
       {insertOpen && <AtendimentoForm userId={user?.id} onClose={() => { setInsertOpen(false); setInsertPreFill(null); }} preFill={insertPreFill} />}
-      {editingAtendimento && <AtendimentoEditForm atendimento={editingAtendimento} onClose={() => setEditingAtendimento(null)} />}
+      {editingAtendimento && (
+        <AtendimentoEditForm 
+          atendimento={editingAtendimento} 
+          onClose={() => setEditingAtendimento(null)}
+          onScheduleVisit={() => {
+            setNewAppointmentData({
+              client_name: editingAtendimento.nome_cliente,
+              client_id: editingAtendimento.id_cliente,
+              client_email: editingAtendimento.email,
+            });
+            setEditingAtendimento(null);
+          }} 
+        />
+      )}
       {newAppointmentData && <AppointmentForm appt={null} preFill={newAppointmentData} onClose={() => setNewAppointmentData(null)} />}
     </div>
   );
 }
 
-function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClose: () => void }) {
+function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit }: { atendimento: any; onClose: () => void; onScheduleVisit?: () => void }) {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [produto, setProduto] = useState(atendimento.produto ?? "");
@@ -579,6 +647,14 @@ function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClo
   const [temperatura, setTemperatura] = useState(atendimento.temperatura ?? "");
   const [status, setStatus] = useState(atendimento.status ?? "");
   const [valor, setValor] = useState(atendimento.valor ? String(atendimento.valor) : "");
+
+  const projectsQ = useQuery({
+    queryKey: ["projects-active"],
+    queryFn: async () => {
+      const { data } = await supabase.from("projects").select("id,name").eq("is_active", true).order("name");
+      return (data ?? []) as { id: string; name: string }[];
+    },
+  });
 
   const save = useMutation({
     mutationFn: async () => {
@@ -628,14 +704,48 @@ function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClo
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
           <div>
-            <h3 className="text-base font-semibold text-[var(--navy)]">Editar Atendimento</h3>
+            <h3 className="text-base font-semibold text-[var(--navy)]">Visualizar Cliente</h3>
             <p className="text-xs text-muted-foreground mt-0.5">{atendimento.nome_cliente}</p>
           </div>
           <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          <input className={fieldCls} placeholder="Produto" value={produto} onChange={(e) => setProduto(e.target.value)} />
+          <div className="p-4 rounded-xl bg-gray-50 border border-border space-y-2 mb-2">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-muted-foreground font-medium">Data</span>
+              <span className="text-sm font-medium text-[var(--navy)]">{atendimento.data ? format(new Date(atendimento.data + "T00:00:00"), "dd/MM/yyyy", { locale: ptBR }) : ""}</span>
+            </div>
+            {atendimento.telefone && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-xs text-muted-foreground font-medium">Telefone</span>
+                <span className="text-sm font-medium text-[var(--navy)]">{atendimento.telefone}</span>
+              </div>
+            )}
+            {atendimento.email && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-xs text-muted-foreground font-medium">E-mail</span>
+                <span className="text-sm font-medium text-[var(--navy)]">{atendimento.email}</span>
+              </div>
+            )}
+            {atendimento.id_cliente && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-xs text-muted-foreground font-medium">ID Cliente</span>
+                <span className="text-sm font-medium text-[var(--navy)]">{atendimento.id_cliente}</span>
+              </div>
+            )}
+            {atendimento.setor && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-xs text-muted-foreground font-medium">Setor</span>
+                <span className="text-sm font-medium text-[var(--navy)]">{atendimento.setor}</span>
+              </div>
+            )}
+          </div>
+
+          <select className={`${fieldCls} text-[var(--navy)]`} value={produto} onChange={(e) => setProduto(e.target.value)}>
+            <option value="">Produto...</option>
+            {(projectsQ.data ?? []).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+          </select>
           <input className={fieldCls} placeholder="Ocorrência" value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} />
 
           <div className="grid grid-cols-2 gap-2">
@@ -681,8 +791,19 @@ function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClo
                 }
               }}
               className="h-12 w-12 flex-shrink-0 rounded-xl bg-red-50 text-red-600 flex items-center justify-center"
+              title="Excluir"
             >
               <Trash2 size={20} />
+            </button>
+          )}
+          {onScheduleVisit && (
+            <button
+              type="button"
+              onClick={onScheduleVisit}
+              className="h-12 w-12 flex-shrink-0 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"
+              title="Agendar nova visita"
+            >
+              <Calendar size={20} />
             </button>
           )}
           <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancelar</button>
@@ -696,7 +817,7 @@ function AtendimentoEditForm({ atendimento, onClose }: { atendimento: any; onClo
   );
 }
 
-function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose: () => void, preFill?: any }) {
+export function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose: () => void, preFill?: any }) {
   const qc = useQueryClient();
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const targetUserId = preFill?.broker_id || userId;
@@ -715,6 +836,14 @@ function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose
   const [temperatura, setTemperatura] = useState("");
   const [status, setStatus] = useState("");
   const [valor, setValor] = useState("");
+
+  const projectsQ = useQuery({
+    queryKey: ["projects-active"],
+    queryFn: async () => {
+      const { data } = await supabase.from("projects").select("id,name").eq("is_active", true).order("name");
+      return (data ?? []) as { id: string; name: string }[];
+    },
+  });
 
   const apptsQ = useQuery({
     queryKey: ["broker-past-appts", targetUserId],
@@ -773,8 +902,14 @@ function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose
       };
 
       if (idCliente) {
-        const { data: existing } = await supabase.from("atendimentos").select("id").eq("id_cliente", idCliente).limit(1).maybeSingle();
-        if (existing) {
+        const { data: existing } = await supabase.from("atendimentos")
+          .select("id, venda, status")
+          .eq("id_cliente", idCliente)
+          .order("id", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+          
+        if (existing && !existing.venda && existing.status !== "Contrato Assinado") {
           const { error } = await supabase.from("atendimentos").update(payload).eq("id", existing.id);
           if (error) throw error;
           return;
@@ -824,7 +959,10 @@ function AtendimentoForm({ userId, onClose, preFill }: { userId: string; onClose
 
           <div className="grid grid-cols-2 gap-2">
             <input className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border text-sm" placeholder="ID do cliente" value={idCliente} onChange={(e) => setIdCliente(e.target.value)} />
-            <input className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border text-sm" placeholder="Produto" value={produto} onChange={(e) => setProduto(e.target.value)} />
+            <select className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)]" value={produto} onChange={(e) => setProduto(e.target.value)}>
+              <option value="">Produto...</option>
+              {(projectsQ.data ?? []).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
           </div>
 
           <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm" placeholder="Ocorrência" value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} />

@@ -295,8 +295,14 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
         if (error) throw error;
       } else {
         if (idCliente) {
-          const { data: existing } = await supabase.from("atendimentos").select("id").eq("id_cliente", idCliente).limit(1).maybeSingle();
-          if (existing) {
+          const { data: existing } = await supabase.from("atendimentos")
+            .select("id, venda, status")
+            .eq("id_cliente", idCliente)
+            .order("id", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+            
+          if (existing && !existing.venda && existing.status !== "Contrato Assinado") {
             const { error } = await supabase.from("atendimentos").update(payload).eq("id", existing.id);
             if (error) throw error;
             return;
@@ -334,7 +340,7 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-[var(--navy)]">{deal ? "Editar" : "Novo"} atendimento</h3>
+          <h3 className="text-lg font-semibold text-[var(--navy)]">{deal ? "Visualizar Cliente" : "Novo atendimento"}</h3>
           <button onClick={onClose} className="text-muted-foreground">
             Fechar
           </button>
@@ -352,7 +358,8 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
             <input
               type="date"
               required
-              className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border"
+              disabled={!!deal}
+              className={`w-full h-12 px-3 rounded-xl border border-border ${deal ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-[var(--surface)]"}`}
               value={data}
               onChange={(e) => setData(e.target.value)}
             />
@@ -362,7 +369,8 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Nome do Cliente *</label>
             <input
               required
-              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+              disabled={!!deal}
+              className={`w-full h-12 px-4 rounded-xl border border-border ${deal ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-[var(--surface)]"}`}
               value={nomeCliente}
               onChange={(e) => setNomeCliente(e.target.value)}
             />
@@ -371,7 +379,8 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">ID do Cliente</label>
             <input
-              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+              disabled={!!deal}
+              className={`w-full h-12 px-4 rounded-xl border border-border ${deal ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-[var(--surface)]"}`}
               value={idCliente}
               onChange={(e) => setIdCliente(e.target.value)}
             />
@@ -381,7 +390,8 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Telefone</label>
             <input
               type="tel"
-              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+              disabled={!!deal}
+              className={`w-full h-12 px-4 rounded-xl border border-border ${deal ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-[var(--surface)]"}`}
               placeholder="(00) 00000-0000"
               value={telefone}
               onChange={(e) => setTelefone(maskPhone(e.target.value))}
@@ -392,7 +402,8 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
             <label className="text-xs font-medium text-muted-foreground mb-1 block">E-mail</label>
             <input
               type="email"
-              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+              disabled={!!deal}
+              className={`w-full h-12 px-4 rounded-xl border border-border ${deal ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-[var(--surface)]"}`}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -400,30 +411,21 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
 
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Produto</label>
-            <input
-              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+            <select
+              className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border text-[var(--navy)]"
               value={produto}
               onChange={(e) => setProduto(e.target.value)}
-            />
-            {projectsQ.data && projectsQ.data.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {projectsQ.data.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setProduto(p.name)}
-                    className="text-[10px] font-medium bg-[var(--surface)] border border-border px-2 py-1 rounded-full text-muted-foreground hover:bg-[var(--gold)] hover:text-[var(--navy)] transition-colors"
-                  >
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-            )}
+            >
+              <option value="">Selecione o produto...</option>
+              {(projectsQ.data ?? []).map((p) => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
           </div>
 
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Setor *</label>
-            <div className="flex gap-1 bg-[var(--surface)] p-1 rounded-xl border border-border">
+            <div className={`flex gap-1 p-1 rounded-xl border border-border ${deal ? "bg-gray-50 pointer-events-none opacity-70" : "bg-[var(--surface)]"}`}>
               {["Online", "Salão"].map((opt) => (
                 <button
                   key={opt}

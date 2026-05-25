@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
+import { AtendimentoForm } from "./dashboard";
 
 export const Route = createFileRoute("/_authenticated/appointments")({
   component: AppointmentsPage,
@@ -97,6 +98,12 @@ function AppointmentsPage() {
 export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null; onClose: () => void; preFill?: Partial<Appt> }) {
   const { user, isAdmin, isDirector, profile } = useAuth();
   const qc = useQueryClient();
+  const isManager = isAdmin || isDirector;
+  const isOwner = appt?.owner_id === user?.id;
+  const readOnly = !!appt && !isOwner && isManager;
+
+  const [markingVisit, setMarkingVisit] = useState(false);
+
   const [type, setType] = useState<Appt["type"]>(appt?.type ?? "visit");
   const [date, setDate] = useState(appt?.date ?? format(new Date(), "yyyy-MM-dd"));
   const [startT, setStartT] = useState(appt?.start_time.slice(0, 5) ?? "10:00");
@@ -109,8 +116,6 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
   const [clientEmail, setClientEmail] = useState(appt?.client_email ?? preFill?.client_email ?? "");
   const [description, setDescription] = useState(appt?.description ?? "");
   const [savedLink, setSavedLink] = useState<string | null>(appt?.google_calendar_link ?? null);
-
-  const isManager = isAdmin || isDirector;
 
   const projectsQ = useQuery({
     queryKey: ["projects-active"],
@@ -182,8 +187,14 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
     onSuccess: (link) => {
       qc.invalidateQueries({ queryKey: ["my-appts"] });
       qc.invalidateQueries({ queryKey: ["team-appts"] });
-      setSavedLink(link);
-      toast.success("Agendamento salvo");
+      if (!appt) {
+        window.open(link, "_blank");
+        toast.success("Agendamento criado!");
+        onClose();
+      } else {
+        setSavedLink(link);
+        toast.success("Agendamento salvo");
+      }
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -202,42 +213,59 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
     },
   });
 
+  if (markingVisit && appt) {
+    return (
+      <AtendimentoForm 
+        userId={user!.id} 
+        onClose={onClose} 
+        preFill={{
+            appointment_id: appt.id,
+            nome_cliente: appt.client_name || "",
+            email: appt.client_email || "",
+            id_cliente: appt.client_id || "",
+            broker_id: appt.owner_id,
+            produto: selectedProject?.name || "",
+        }} 
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto" onClick={onClose}>
       <div className="bg-white w-full min-h-screen sm:min-h-0 sm:max-w-md sm:mx-auto sm:mt-8 sm:rounded-2xl p-5 safe-top safe-bottom" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-[var(--navy)]">{appt ? "Editar" : "Novo"} agendamento</h3>
+          <h3 className="text-lg font-semibold text-[var(--navy)]">{!appt ? "Novo agendamento" : readOnly ? "Visualizar Agendamento" : "Editar agendamento"}</h3>
           <button onClick={onClose} className="text-muted-foreground">Fechar</button>
         </div>
         <div className="space-y-3">
-          <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Título" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <input type="date" className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input disabled={readOnly} className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Título" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input disabled={readOnly} type="date" className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" value={date} onChange={(e) => setDate(e.target.value)} />
           <div className="grid grid-cols-2 gap-2">
-            <input type="time" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={startT} onChange={(e) => setStartT(e.target.value)} />
-            <input type="time" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={endT} onChange={(e) => setEndT(e.target.value)} />
+            <input disabled={readOnly} type="time" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" value={startT} onChange={(e) => setStartT(e.target.value)} />
+            <input disabled={readOnly} type="time" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" value={endT} onChange={(e) => setEndT(e.target.value)} />
           </div>
 
-          <select className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <select disabled={readOnly} className="w-full h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
             <option value="">Selecione o imóvel… (opcional)</option>
             {(projectsQ.data ?? []).map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
           </select>
 
           {showProjectLocation ? (
-            <div className="px-4 py-3 rounded-xl bg-[var(--surface)] border border-border text-sm">
+            <div className={`px-4 py-3 rounded-xl bg-[var(--surface)] border border-border text-sm ${readOnly ? "opacity-60" : ""}`}>
               <p className="text-xs text-muted-foreground">Local (do imóvel)</p>
               <p className="text-[var(--navy)]">{location}</p>
             </div>
           ) : (
-            <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Local" value={customLoc} onChange={(e) => setCustomLoc(e.target.value)} />
+            <input disabled={readOnly} className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Local" value={customLoc} onChange={(e) => setCustomLoc(e.target.value)} />
           )}
 
-          <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="Nome do cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+          <input disabled={readOnly} className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Nome do cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} />
           <div className="grid grid-cols-2 gap-2">
-            <input className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="ID do cliente" value={clientId} onChange={(e) => setClientId(e.target.value)} />
-            <input type="email" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border" placeholder="E-mail do cliente" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
+            <input disabled={readOnly} className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="ID do cliente" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+            <input disabled={readOnly} type="email" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="E-mail do cliente" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
           </div>
 
-          <textarea className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border min-h-[80px]" placeholder="Descrição (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <textarea disabled={readOnly} className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border min-h-[80px] disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Descrição (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} />
 
           {!isManager && adminQ.data && (
             conflictQ.data ? (
@@ -258,10 +286,24 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
             </div>
           )}
 
-          <div className="flex gap-2 pt-2">
-            {appt && <button onClick={() => del.mutate()} className="h-12 px-4 rounded-xl bg-red-50 text-red-600 font-medium">Excluir</button>}
-            <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancelar</button>
-            <button onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-60">Salvar</button>
+          {appt && !readOnly && (
+            <button 
+              type="button"
+              onClick={() => setMarkingVisit(true)}
+              className="w-full h-12 rounded-xl bg-green-50 border border-green-200 text-green-700 font-bold mb-2 flex items-center justify-center gap-2"
+            >
+              <Check size={18} /> Marcar como visita realizada
+            </button>
+          )}
+
+          <div className="flex gap-2 pt-2 border-t border-border">
+            {appt && !readOnly && <button onClick={() => del.mutate()} className="h-12 px-4 rounded-xl bg-red-50 text-red-600 font-medium">Excluir</button>}
+            <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">
+              {readOnly ? "Fechar" : "Cancelar"}
+            </button>
+            {!readOnly && (
+              <button onClick={() => save.mutate()} disabled={save.isPending} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-60">Salvar</button>
+            )}
           </div>
         </div>
       </div>
