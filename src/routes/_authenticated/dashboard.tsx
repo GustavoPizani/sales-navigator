@@ -460,7 +460,7 @@ function AdminDashboard({ user }: { user: any }) {
         <button onClick={() => setActiveTab("atendimentos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Atendimentos</button>
       </div>
 
-      <div className={`px-4 pt-4 pb-4 flex-1 ${activeTab === "atendimentos" ? "flex flex-col overflow-hidden space-y-4" : "overflow-y-auto space-y-6"}`}>
+      <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} />
@@ -496,28 +496,28 @@ function AdminDashboard({ user }: { user: any }) {
         )}
 
         {activeTab === "atendimentos" && (
-          <>
-            <div className="flex items-center justify-between flex-shrink-0">
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button onClick={handleExport} className="h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors">
                   <Download size={14} /> Exportar Planilha
                 </button>
                 <CsvImportButton brokers={brokersQ.data ?? []} />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-xl border border-border shadow-sm">
-              <AtendimentosTable 
-                atendimentos={atendimentos} 
-                isAdmin={isAdmin} 
-                onRowClick={(a) => setEditingAtendimento(a)} 
+            <div className="bg-white rounded-xl border border-border shadow-sm">
+              <AtendimentosTable
+                atendimentos={atendimentos}
+                isAdmin={isAdmin}
+                onRowClick={(a) => setEditingAtendimento(a)}
                 onRowContextMenu={(e: any, a: any) => {
                   e.preventDefault();
                   setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
                 }}
               />
             </div>
-          </>
+          </div>
         )}
       </div>
 
