@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { addDays, format, startOfWeek } from "date-fns";
+import { addDays, differenceInDays, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/_authenticated/schedule")({
 
 type Shift = {
   id: string; broker_id: string; manager_id: string; date: string;
-  start_time: string; end_time: string; notes: string | null;
+  start_time: string; end_time: string; notes: string | null; slot_id: string | null;
 };
 
 // ─── Groq ────────────────────────────────────────────────────────────────────
@@ -129,74 +129,109 @@ const SHIFT_PERIODS = [
 
 function GenerateShiftLinkButton({ currentWeekStart }: { currentWeekStart: Date }) {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [modality, setModality] = useState<"online" | "salao">("online");
-  
-  // Define a próxima semana como padrão
   const nextWeekMonday = startOfWeek(addDays(new Date(), 7), { weekStartsOn: 1 });
   const [weekStart, setWeekStart] = useState<Date>(nextWeekMonday);
-  
   const [slots, setSlots] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [generatedLink, setGeneratedLink] = useState("");
+  const [existingConfigId, setExistingConfigId] = useState<string | null>(null);
 
-  const projectsQ = useQuery({
-    queryKey: ["projects-active"],
+  // Busca config existente para a semana selecionada
+  const existingQ = useQuery({
+    queryKey: ["shift-config-week", format(weekStart, "yyyy-MM-dd"), user?.id],
+    enabled: isOpen && !!user,
     queryFn: async () => {
-      const { data } = await supabase.from("projects").select("id,name").eq("is_active", true).order("name");
-      return (data ?? []) as { id: string; name: string }[];
+      const { data } = await supabase
+        .from("shift_configs")
+        .select("id, modality, link_token")
+        .eq("manager_id", user!.id)
+        .eq("week_start_date", format(weekStart, "yyyy-MM-dd"))
+        .maybeSingle();
+      if (!data) return null;
+      const { data: slotsData } = await supabase
+        .from("shift_slots")
+        .select("date, period, capacity")
+        .eq("config_id", data.id);
+      return { ...data, shift_slots: slotsData ?? [] };
     },
   });
+
+  // Preenche formulário quando encontra config existente
+  useEffect(() => {
+    if (!isOpen) return;
+    if (existingQ.data) {
+      const cfg = existingQ.data;
+      setModality(cfg.modality as "online" | "salao");
+      setExistingConfigId(cfg.id);
+      setGeneratedLink(`${window.location.origin}/schedule/claim/${cfg.link_token}`);
+      const populated: Record<string, number> = {};
+      for (const s of cfg.shift_slots) {
+        const d = differenceInDays(parseISO(s.date), weekStart);
+        populated[`${d}_${s.period}`] = s.capacity;
+      }
+      setSlots(populated);
+    } else if (!existingQ.isLoading) {
+      setExistingConfigId(null);
+      setGeneratedLink("");
+      setSlots({});
+    }
+  }, [existingQ.data, existingQ.isLoading, isOpen]);
+
+  const buildSlots = (configId: string) => {
+    const toInsert = [];
+    for (let d = 0; d < 7; d++) {
+      for (const p of SHIFT_PERIODS) {
+        if (modality === "salao" && p.val === "Noite") continue;
+        const cap = modality === "salao" ? 999 : (slots[`${d}_${p.val}`] || 0);
+        if (cap > 0) {
+          toInsert.push({ config_id: configId, date: format(addDays(weekStart, d), "yyyy-MM-dd"), period: p.val, capacity: cap, start_time: p.start, end_time: p.end });
+        }
+      }
+    }
+    return toInsert;
+  };
 
   const handleConfirm = async () => {
     setSaving(true);
     try {
-      // Gera um token único
-      const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      
-      // 1. Salva a configuração (cabeçalho)
-      const { data: config, error: cfgErr } = await supabase.from("shift_configs").insert({
-        manager_id: user!.id,
-        week_start_date: format(weekStart, "yyyy-MM-dd"),
-        modality,
-        project_id: null,
-        link_token: token,
-      }).select().single();
-      
-      if (cfgErr) throw cfgErr;
+      let configId = existingConfigId;
+      let token = existingQ.data?.link_token ?? "";
 
-      // 2. Prepara e salva as vagas de cada dia/período
-      const toInsert = [];
-      for (let d = 0; d < 7; d++) {
-        for (const p of SHIFT_PERIODS) {
-          if (modality === "salao" && p.val === "Noite") continue; // Remove o turno da Noite no plantão
-          const cap = modality === "salao" ? 999 : (slots[`${d}_${p.val}`] || 0); // Libera vagas ilimitadas para o Salão
-          if (cap > 0) {
-            toInsert.push({
-              config_id: config.id,
-              date: format(addDays(weekStart, d), "yyyy-MM-dd"),
-              period: p.val,
-              capacity: cap,
-              start_time: p.start,
-              end_time: p.end
-            });
-          }
-        }
+      if (existingConfigId) {
+        // Atualiza config existente: deleta slots antigos e recria
+        await supabase.from("shift_slots").delete().eq("config_id", existingConfigId);
+        await supabase.from("shift_configs").update({ modality }).eq("id", existingConfigId);
+      } else {
+        // Cria nova config
+        token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+        const { data: cfg, error: cfgErr } = await supabase.from("shift_configs").insert({
+          manager_id: user!.id,
+          week_start_date: format(weekStart, "yyyy-MM-dd"),
+          modality,
+          project_id: null,
+          link_token: token,
+        }).select().single();
+        if (cfgErr) throw cfgErr;
+        configId = cfg.id;
       }
 
-      if (toInsert.length > 0) {
-        const { error: slotErr } = await supabase.from("shift_slots").insert(toInsert);
-        if (slotErr) throw slotErr;
-      } else {
-        toast.error("Você precisa definir pelo menos uma vaga em algum turno.");
+      const toInsert = buildSlots(configId!);
+      if (toInsert.length === 0) {
+        toast.error("Defina pelo menos uma vaga em algum turno.");
         return;
       }
+      const { error: slotErr } = await supabase.from("shift_slots").insert(toInsert);
+      if (slotErr) throw slotErr;
 
       const link = `${window.location.origin}/schedule/claim/${token}`;
       setGeneratedLink(link);
-      toast.success("Link gerado com sucesso!");
+      qc.invalidateQueries({ queryKey: ["shift-config-week"] });
+      toast.success(existingConfigId ? "Escala atualizada!" : "Link gerado com sucesso!");
     } catch (err: any) {
-      toast.error(err.message || "Erro ao gerar escala.");
+      toast.error(err.message || "Erro ao salvar escala.");
     } finally {
       setSaving(false);
     }
@@ -211,6 +246,7 @@ function GenerateShiftLinkButton({ currentWeekStart }: { currentWeekStart: Date 
     setIsOpen(false);
     setGeneratedLink("");
     setSlots({});
+    setExistingConfigId(null);
   };
 
   return (
@@ -224,7 +260,7 @@ function GenerateShiftLinkButton({ currentWeekStart }: { currentWeekStart: Date 
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-[var(--surface)] flex-shrink-0">
-              <h3 className="font-bold text-[var(--navy)] text-lg">Configurar Nova Escala</h3>
+              <h3 className="font-bold text-[var(--navy)] text-lg">{existingConfigId ? "Editar Escala" : "Configurar Nova Escala"}</h3>
               <button onClick={resetAndClose} className="text-muted-foreground hover:text-[var(--navy)]"><X size={20} /></button>
             </div>
             
@@ -293,14 +329,12 @@ function GenerateShiftLinkButton({ currentWeekStart }: { currentWeekStart: Date 
               )}
             </div>
             
-            {!generatedLink && (
-              <div className="px-5 py-4 border-t border-border bg-[var(--surface)] flex gap-2 flex-shrink-0">
-                <button onClick={resetAndClose} className="flex-1 h-11 rounded-xl bg-white border border-border text-[var(--navy)] font-medium">Cancelar</button>
-                <button onClick={handleConfirm} disabled={saving} className="flex-1 h-11 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 flex justify-center items-center gap-2">
-                  {saving ? <><Loader2 size={16} className="animate-spin" /> Gerando...</> : "Gerar Link da Escala"}
-                </button>
-              </div>
-            )}
+            <div className="px-5 py-4 border-t border-border bg-[var(--surface)] flex gap-2 flex-shrink-0">
+              <button onClick={resetAndClose} className="flex-1 h-11 rounded-xl bg-white border border-border text-[var(--navy)] font-medium">Cancelar</button>
+              <button onClick={handleConfirm} disabled={saving} className="flex-1 h-11 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 flex justify-center items-center gap-2">
+                {saving ? <><Loader2 size={16} className="animate-spin" /> Salvando...</> : existingConfigId ? "Salvar Alterações" : "Gerar Link da Escala"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -604,10 +638,13 @@ function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
               <p className="text-sm text-muted-foreground mt-1">Sem turno</p>
             ) : (
               my.map((s) => (
-                <p key={s.id} className="font-semibold text-[var(--navy)] mt-1">
-                  {derivePeriod(s.start_time) === "manha" ? "Manhã" : (derivePeriod(s.start_time) === "tarde" ? "Tarde" : "Noite")}
-                  {s.notes && <span className="block text-xs text-muted-foreground font-normal">{s.notes}</span>}
-                </p>
+                <div key={s.id} className="mt-1.5">
+                  <p className="font-semibold text-[var(--navy)]">
+                    {derivePeriod(s.start_time) === "manha" ? "Manhã" : (derivePeriod(s.start_time) === "tarde" ? "Tarde" : "Noite")}
+                    <span className="font-normal text-muted-foreground text-xs ml-1.5">({s.start_time.slice(0,5)} – {s.end_time.slice(0,5)})</span>
+                  </p>
+                  <p className="text-xs text-[var(--gold)] font-semibold mt-0.5">{s.notes || "Central Online"}</p>
+                </div>
               ))
             )}
           </div>
@@ -659,7 +696,7 @@ function AdminGrid({ days, brokers, shifts }: { days: Date[]; brokers: any[]; sh
                             }}>
                             <span className="text-center leading-tight">
                               <span className="block font-bold">{derivePeriod(s.start_time) === "manha" ? "M" : (derivePeriod(s.start_time) === "tarde" ? "T" : "N")}</span>
-                              {s.notes && <span className="block truncate max-w-[48px] text-[9px] opacity-90">{s.notes}</span>}
+                              <span className="block truncate max-w-[48px] text-[9px] opacity-90">{s.notes || "Online"}</span>
                             </span>
                           </button>
                         ))}

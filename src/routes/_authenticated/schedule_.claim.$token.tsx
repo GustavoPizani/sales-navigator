@@ -91,9 +91,8 @@ function ClaimShiftPage() {
 
       if (error) throw error;
       
-      if (configQ.data?.modality === 'salao') {
-        await supabase.from("shifts").update({ notes: selectedProject }).eq("slot_id", slotId).eq("broker_id", user!.id);
-      }
+      const notesValue = configQ.data?.modality === 'salao' ? selectedProject : 'Central Online';
+      await supabase.from("shifts").update({ notes: notesValue }).eq("slot_id", slotId).eq("broker_id", user!.id);
 
       toast.success("Plantão garantido com sucesso!");
       qc.invalidateQueries({ queryKey: ["shift-config-claim"] });
@@ -175,7 +174,7 @@ function ClaimShiftPage() {
                   return (
                     <button key={slot.id} onClick={() => handleClaim(slot.id)} disabled={isLoading || !!claimingId} className="w-full flex items-center justify-between p-4 rounded-xl border border-border bg-white text-[var(--navy)] font-semibold hover:border-[var(--gold)] transition-colors shadow-sm disabled:opacity-50">
                       <span className="capitalize">{slot.period} <span className="font-normal text-muted-foreground ml-1">({slot.start_time.slice(0,5)} às {slot.end_time.slice(0,5)})</span></span>
-                      <div className="flex items-center gap-1.5 text-[var(--gold)]">{isLoading ? <Loader2 size={18} className="animate-spin" /> : <><span className="text-[10px] uppercase font-bold tracking-wide">{config.modality === 'salao' ? 'Disponível' : `${remaining} vaga${remaining !== 1 && 's'}`}</span><ChevronRight size={18} /></>}</div>
+                      <div className="flex items-center gap-1.5 text-[var(--gold)]">{isLoading ? <Loader2 size={18} className="animate-spin" /> : <><span className="text-[10px] uppercase font-bold tracking-wide">{config.modality === 'salao' ? 'Disponível' : `${remaining} vaga${remaining !== 1 ? 's' : ''} disponível${remaining !== 1 ? 'is' : ''}`}</span><ChevronRight size={18} /></>}</div>
                     </button>
                   );
                 })}

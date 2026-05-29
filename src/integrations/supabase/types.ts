@@ -151,6 +151,69 @@ export type Database = {
           },
         ]
       }
+      shift_configs: {
+        Row: {
+          id: string
+          created_at: string
+          manager_id: string
+          week_start_date: string
+          modality: string
+          project_id: string | null
+          link_token: string
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          manager_id: string
+          week_start_date: string
+          modality?: string
+          project_id?: string | null
+          link_token: string
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          manager_id?: string
+          week_start_date?: string
+          modality?: string
+          project_id?: string | null
+          link_token?: string
+        }
+        Relationships: []
+      }
+      shift_slots: {
+        Row: {
+          id: string
+          created_at: string
+          config_id: string
+          date: string
+          period: string
+          capacity: number
+          start_time: string
+          end_time: string
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          config_id: string
+          date: string
+          period: string
+          capacity?: number
+          start_time: string
+          end_time: string
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          config_id?: string
+          date?: string
+          period?: string
+          capacity?: number
+          start_time?: string
+          end_time?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           color: string
@@ -205,6 +268,7 @@ export type Database = {
           is_active: boolean
           manager_id: string
           name: string
+          tem_plantao: boolean | null
         }
         Insert: {
           address: string
@@ -215,6 +279,7 @@ export type Database = {
           is_active?: boolean
           manager_id: string
           name: string
+          tem_plantao?: boolean | null
         }
         Update: {
           address?: string
@@ -225,6 +290,7 @@ export type Database = {
           is_active?: boolean
           manager_id?: string
           name?: string
+          tem_plantao?: boolean | null
         }
         Relationships: [
           {
@@ -245,6 +311,7 @@ export type Database = {
           id: string
           manager_id: string
           notes: string | null
+          slot_id: string | null
           start_time: string
         }
         Insert: {
@@ -255,6 +322,7 @@ export type Database = {
           id?: string
           manager_id: string
           notes?: string | null
+          slot_id?: string | null
           start_time: string
         }
         Update: {
@@ -265,6 +333,7 @@ export type Database = {
           id?: string
           manager_id?: string
           notes?: string | null
+          slot_id?: string | null
           start_time?: string
         }
         Relationships: [
