@@ -10,18 +10,20 @@ const STATUS_HEX: Record<string, string> = {
   "Proposta Aprovada": "#4F46E5",
   "Contrato Gerado": "#D97706",
   "Contrato Assinado": "#16A34A",
+  "Venda Pendente": "#F59E0B",
   "Cancelada": "#DC2626",
 };
 
 export const formatBRL = (val: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
-export const statusColors = {
+export const statusColors: Record<string, string> = {
   "Prospect": "bg-gray-100 text-gray-700",
   "Em Tratativa": "bg-cyan-100 text-cyan-700",
   "Proposta em Análise": "bg-blue-100 text-blue-700",
   "Proposta Aprovada": "bg-indigo-100 text-indigo-700",
   "Contrato Gerado": "bg-amber-100 text-amber-700",
   "Contrato Assinado": "bg-green-100 text-green-700",
+  "Venda Pendente": "bg-yellow-100 text-yellow-700",
   "Cancelada": "bg-red-100 text-red-700",
 };
 

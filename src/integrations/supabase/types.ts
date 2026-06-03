@@ -82,6 +82,66 @@ export type Database = {
           }
         ]
       }
+      vendas: {
+        Row: {
+          id: string
+          created_at: string
+          atendimento_id: string
+          broker_id: string
+          data_venda: string
+          produto: string | null
+          unidade: string | null
+          valor: number | null
+          status: string
+          approved_by: string | null
+          approved_at: string | null
+          rejected_reason: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          atendimento_id: string
+          broker_id: string
+          data_venda: string
+          produto?: string | null
+          unidade?: string | null
+          valor?: number | null
+          status?: string
+          approved_by?: string | null
+          approved_at?: string | null
+          rejected_reason?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          atendimento_id?: string
+          broker_id?: string
+          data_venda?: string
+          produto?: string | null
+          unidade?: string | null
+          valor?: number | null
+          status?: string
+          approved_by?: string | null
+          approved_at?: string | null
+          rejected_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendas_atendimento_id_fkey"
+            columns: ["atendimento_id"]
+            isOneToOne: false
+            referencedRelation: "atendimentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendas_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       appointments: {
         Row: {
           client_email: string | null

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Plus, ExternalLink, AlertTriangle, Check } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -53,33 +54,92 @@ const typeLabels: Record<Appt["type"], string> = {
 };
 
 function AppointmentsPage() {
-  const { user } = useAuth();
+  const { user, isAdmin, isDirector } = useAuth();
+  const isManager = isAdmin || isDirector;
   const [editing, setEditing] = useState<Appt | "new" | null>(null);
+  const [brokerFilter, setBrokerFilter] = useState<string>("all");
+
+  const brokersQ = useQuery({
+    queryKey: ["team-broker-profiles", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("id, full_name")
+        .eq("manager_id", user!.id).order("full_name");
+      return (data ?? []) as { id: string; full_name: string }[];
+    },
+    enabled: !!user && isManager,
+  });
+
   const apptsQ = useQuery({
-    queryKey: ["my-appts", user?.id],
+    queryKey: ["my-appts", user?.id, isManager, brokerFilter],
     queryFn: async () => {
       const today = format(new Date(), "yyyy-MM-dd");
-      const { data, error } = await supabase.from("appointments").select("*")
-        .eq("owner_id", user!.id).gte("date", today).order("date").order("start_time");
+      let q = supabase.from("appointments")
+        .select("*, profiles!owner_id(full_name)")
+        .gte("date", today).order("date").order("start_time");
+
+      if (isManager) {
+        const teamIds = (brokersQ.data ?? []).map((b) => b.id);
+        const ids = brokerFilter !== "all" ? [brokerFilter] : [user!.id, ...teamIds];
+        if (ids.length === 0) return [];
+        q = q.in("owner_id", ids);
+      } else {
+        q = q.eq("owner_id", user!.id);
+      }
+
+      const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []) as Appt[];
+      return (data ?? []) as unknown as (Appt & { profiles?: { full_name: string } | null })[];
     },
-    enabled: !!user,
+    enabled: !!user && (!isManager || brokersQ.isFetched),
   });
+
   return (
     <div className="pb-nav">
-      <AppHeader title="Meus Agendamentos" />
-      <div className="px-4 pt-4 space-y-2">
-        {(apptsQ.data ?? []).length === 0 && (
+      <AppHeader title={isManager ? "Agendamentos da Equipe" : "Meus Agendamentos"} />
+
+      {isManager && (brokersQ.data ?? []).length > 0 && (
+        <div className="px-4 pt-3 pb-1">
+          <select
+            className="w-full h-10 px-3 rounded-xl bg-white border border-border text-sm text-[var(--navy)]"
+            value={brokerFilter}
+            onChange={(e) => setBrokerFilter(e.target.value)}
+          >
+            <option value="all">Todos da equipe</option>
+            <option value={user!.id}>Meus agendamentos</option>
+            {(brokersQ.data ?? []).map((b) => (
+              <option key={b.id} value={b.id}>{b.full_name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="px-4 pt-3 space-y-2">
+        {apptsQ.isPending && [1,2,3,4].map(i => (
+          <div key={i} className="bg-white rounded-xl p-3 border border-border space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+          </div>
+        ))}
+        {!apptsQ.isPending && (apptsQ.data ?? []).length === 0 && (
           <p className="text-center text-muted-foreground py-12 text-sm">Nenhum agendamento futuro.</p>
         )}
-        {(apptsQ.data ?? []).map((a) => (
+        {!apptsQ.isPending && (apptsQ.data ?? []).map((a) => (
           <button key={a.id} onClick={() => setEditing(a)} className="w-full text-left bg-white rounded-xl p-3 border border-border">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-[var(--navy)] truncate">{a.title}</p>
-                <p className="text-xs text-muted-foreground">{format(new Date(a.date + "T00:00:00"), "EEE, d 'de' MMM", { locale: ptBR })} · {a.start_time.slice(0,5)}–{a.end_time.slice(0,5)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {format(new Date(a.date + "T00:00:00"), "EEE, d 'de' MMM", { locale: ptBR })} · {a.start_time.slice(0,5)}–{a.end_time.slice(0,5)}
+                </p>
                 {a.client_name && <p className="text-xs text-muted-foreground mt-0.5">Cliente: {a.client_name}</p>}
+                {isManager && a.profiles && (
+                  <p className="text-xs text-[var(--gold)] font-medium mt-0.5">{(a.profiles as any).full_name}</p>
+                )}
               </div>
               <span className="text-[10px] uppercase tracking-wide px-2 py-1 rounded-full bg-[var(--gold)]/20 text-[var(--navy)] font-semibold">{typeLabels[a.type]}</span>
             </div>
@@ -100,7 +160,7 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
   const qc = useQueryClient();
   const isManager = isAdmin || isDirector;
   const isOwner = appt?.owner_id === user?.id;
-  const readOnly = !!appt && !isOwner && isManager;
+  const readOnly = !!appt && !isOwner && !isManager;
 
   const [markingVisit, setMarkingVisit] = useState(false);
 
@@ -167,12 +227,14 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
         emails: [clientEmail, !isManager ? adminQ.data?.email : undefined].filter((x): x is string => !!x),
       });
       const payload = {
-        owner_id: user!.id, title: finalTitle, date, start_time: startT, end_time: endT,
+        owner_id: appt?.owner_id ?? user!.id,
+        title: finalTitle, date, start_time: startT, end_time: endT,
         project_id: selectedProject?.id ?? null,
         custom_location: showProjectLocation ? null : (customLoc || null),
         description: description || null, client_name: clientName || null,
         client_email: clientEmail || null, client_id: clientId || null,
-        type, include_manager: !isManager,
+        type,
+        include_manager: appt ? appt.include_manager : !isManager,
         google_calendar_link: link,
       };
       if (appt) {

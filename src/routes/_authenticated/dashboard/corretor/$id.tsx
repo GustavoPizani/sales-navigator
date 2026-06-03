@@ -39,7 +39,22 @@ function BrokerDashboardPage() {
     },
   });
 
-  const dbData = useDashboardData(atendimentos);
+  const { data: vendas = [] } = useQuery({
+    queryKey: ["dashboard-vendas", filters.appliedStartDate, filters.appliedEndDate, id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vendas")
+        .select("*")
+        .eq("broker_id", id)
+        .eq("status", "approved")
+        .gte("data_venda", filters.appliedStartDate)
+        .lte("data_venda", filters.appliedEndDate);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const dbData = useDashboardData(atendimentos, vendas);
 
   if (!isAdmin) return <div className="p-8 text-center text-red-500">Acesso negado.</div>;
 
