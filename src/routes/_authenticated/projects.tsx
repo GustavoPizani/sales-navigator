@@ -1,9 +1,10 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, MapPin, Edit2, EyeOff, Eye, Sparkles, Upload, X,
-  Loader2, CheckSquare, Square, ChevronDown,
+  Loader2, CheckSquare, Square, ChevronDown, Files, Download,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,6 +55,20 @@ type ExtractedProperty = {
   typologies: Typology[];
 };
 
+type ClassifiedFile = {
+  file: File;
+  projectId: string | null;
+  projectName: string;
+  type: "tabela" | "book";
+};
+
+type ConflictInfo = {
+  projectId: string;
+  projectName: string;
+  type: "tabela" | "book";
+  existingFiles: string[];
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function parseDesc(desc: string | null): RichDesc | null {
   if (!desc) return null;
@@ -74,6 +89,19 @@ function entregaBadge(entrega?: string) {
 
 function normalizeProjectName(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function sanitizeStorageKey(filename: string): string {
+  const ext = filename.includes(".") ? "." + filename.split(".").pop() : "";
+  const base = filename.slice(0, filename.length - ext.length);
+  return (
+    base
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-zA-Z0-9._\-]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "") + ext
+  );
 }
 
 function findExistingProject(
@@ -170,7 +198,55 @@ async function extractFromGroq(text: string): Promise<ExtractedProperty[]> {
   return Array.isArray(parsed) ? parsed : (parsed.properties ?? []);
 }
 
-// ─── PDF text extraction (pdfjs-dist dynamic import) ─────────────────────────
+async function classifyFilenamesWithGroq(
+  files: File[],
+  projects: { id: string; name: string }[]
+): Promise<ClassifiedFile[]> {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+  if (!apiKey) throw new Error("VITE_GROQ_API_KEY não configurado");
+
+  const res = await fetch(GROQ_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: "Você classifica arquivos de documentos imobiliários. Retorne apenas JSON válido, sem markdown.",
+        },
+        {
+          role: "user",
+          content: `Projetos imobiliários existentes:\n${projects.map(p => `- "${p.name}" (ID: ${p.id})`).join("\n")}\n\nArquivos para classificar:\n${files.map((f, i) => `${i + 1}. ${f.name}`).join("\n")}\n\nPara cada arquivo identifique:\n1. O projeto ao qual pertence (busca fuzzy pelo nome no arquivo)\n2. Se é "tabela" (planilha/tabela de preços/tabelão) ou "book" (apresentação/book do produto/material de venda)\n\nRetorne:\n{\n  "files": [\n    {\n      "filename": "nome_exato.pdf",\n      "project_id": "uuid-do-projeto-ou-null",\n      "project_name": "Nome do Projeto",\n      "type": "tabela"\n    }\n  ]\n}`,
+        },
+      ],
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Erro ${res.status} na API Groq`);
+
+  const data: any = await res.json();
+  const parsed = JSON.parse(data.choices[0].message.content);
+  const classified: any[] = parsed.files ?? [];
+
+  return files.map(file => {
+    const match = classified.find((c: any) => c.filename === file.name);
+    const validProject = projects.find(p => p.id === match?.project_id);
+    return {
+      file,
+      projectId: validProject?.id ?? null,
+      projectName: validProject?.name ?? "Não identificado",
+      type: (match?.type === "book" ? "book" : "tabela") as "tabela" | "book",
+    };
+  });
+}
+
+// ─── PDF text extraction ─────────────────────────────────────────────────────
 async function extractPDFText(file: File): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
   pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -190,10 +266,10 @@ async function extractPDFText(file: File): Promise<string> {
 // ─── Main page ───────────────────────────────────────────────────────────────
 function ProjectsPage() {
   const { isAdmin, user } = useAuth();
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
   const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState<Project | "new" | null>(null);
   const [importing, setImporting] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
   const qc = useQueryClient();
 
   const projectsQ = useQuery({
@@ -224,29 +300,40 @@ function ProjectsPage() {
       <AppHeader
         title="Imóveis"
         right={
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setImporting(true)}
-              className="text-white/70 p-2"
-              title="Importar do Tabelão com IA"
-            >
-              <Sparkles size={18} />
-            </button>
-            <button
-              onClick={() => setShowAll(!showAll)}
-              className="text-white/70 p-2"
-              aria-label="Mostrar inativos"
-            >
-              {showAll ? <Eye size={18} /> : <EyeOff size={18} />}
-            </button>
-          </div>
+          isAdmin ? (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setUploadingDocs(true)}
+                className="text-white/70 p-2"
+                title="Upload de Tabela/Book"
+              >
+                <Files size={18} />
+              </button>
+              <button
+                onClick={() => setImporting(true)}
+                className="text-white/70 p-2"
+                title="Importar do Tabelão com IA"
+              >
+                <Sparkles size={18} />
+              </button>
+              <button
+                onClick={() => setShowAll(!showAll)}
+                className="text-white/70 p-2"
+                aria-label="Mostrar inativos"
+              >
+                {showAll ? <Eye size={18} /> : <EyeOff size={18} />}
+              </button>
+            </div>
+          ) : null
         }
       />
 
       <div className="px-4 pt-4 space-y-2">
         {(projectsQ.data ?? []).length === 0 && (
           <p className="text-center text-muted-foreground py-12 text-sm">
-            Nenhum imóvel. Toque ✨ para importar do tabelão ou + para adicionar manualmente.
+            {isAdmin
+              ? "Nenhum imóvel. Toque ✨ para importar do tabelão ou + para adicionar manualmente."
+              : "Nenhum imóvel disponível no momento."}
           </p>
         )}
         {(projectsQ.data ?? []).map((p) => (
@@ -254,18 +341,20 @@ function ProjectsPage() {
             key={p.id}
             project={p}
             visits={countsQ.data?.[p.id] ?? 0}
-            onEdit={() => setEditing(p)}
+            onEdit={isAdmin ? () => setEditing(p) : undefined}
           />
         ))}
       </div>
 
-      <button
-        onClick={() => setEditing("new")}
-        className="fixed right-4 bottom-24 z-30 w-14 h-14 rounded-full bg-[var(--gold)] text-[var(--navy)] shadow-lg flex items-center justify-center"
-        aria-label="Adicionar imóvel"
-      >
-        <Plus size={28} strokeWidth={2.5} />
-      </button>
+      {isAdmin && (
+        <button
+          onClick={() => setEditing("new")}
+          className="fixed right-4 bottom-24 z-30 w-14 h-14 rounded-full bg-[var(--gold)] text-[var(--navy)] shadow-lg flex items-center justify-center"
+          aria-label="Adicionar imóvel"
+        >
+          <Plus size={28} strokeWidth={2.5} />
+        </button>
+      )}
 
       {editing && (
         <ProjectForm
@@ -285,11 +374,20 @@ function ProjectsPage() {
           }}
         />
       )}
+
+      {uploadingDocs && (
+        <DocsUploadModal
+          onClose={() => setUploadingDocs(false)}
+          onUploaded={(projectIds) => {
+            projectIds.forEach(id => qc.invalidateQueries({ queryKey: ["project-docs", id] }));
+          }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Project card (rich display) ─────────────────────────────────────────────
+// ─── Project card ─────────────────────────────────────────────────────────────
 function ProjectCard({
   project,
   visits,
@@ -297,11 +395,46 @@ function ProjectCard({
 }: {
   project: Project;
   visits: number;
-  onEdit: () => void;
+  onEdit?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [viewingDoc, setViewingDoc] = useState<{ url: string; name: string } | null>(null);
   const rich = parseDesc(project.description);
   const typologies = rich?.typologies ?? [];
+
+  const docsQ = useQuery({
+    queryKey: ["project-docs", project.id],
+    queryFn: async () => {
+      const [{ data: tabelaList }, { data: bookList }] = await Promise.all([
+        supabase.storage.from("project-docs").list(`${project.id}/tabela`, { limit: 20 }),
+        supabase.storage.from("project-docs").list(`${project.id}/book`, { limit: 20 }),
+      ]);
+
+      const sign = async (path: string) => {
+        const { data } = await supabase.storage.from("project-docs").createSignedUrl(path, 3600);
+        return data?.signedUrl ?? null;
+      };
+
+      const tabelas = await Promise.all(
+        (tabelaList ?? []).map(async (f) => ({
+          name: f.name,
+          url: await sign(`${project.id}/tabela/${f.name}`),
+        }))
+      );
+      const books = await Promise.all(
+        (bookList ?? []).map(async (f) => ({
+          name: f.name,
+          url: await sign(`${project.id}/book/${f.name}`),
+        }))
+      );
+      return { tabelas, books };
+    },
+    enabled: expanded,
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const hasDocs =
+    (docsQ.data?.tabelas.length ?? 0) > 0 || (docsQ.data?.books.length ?? 0) > 0;
 
   return (
     <div className={`bg-white rounded-xl border border-border ${!project.is_active ? "opacity-60" : ""}`}>
@@ -343,55 +476,695 @@ function ProjectCard({
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
-            {typologies.length > 0 && (
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="p-2 text-muted-foreground"
-                aria-label="Ver tipologias"
-              >
-                <ChevronDown
-                  size={16}
-                  className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-                />
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="p-2 text-muted-foreground"
+              aria-label="Expandir detalhes"
+            >
+              <ChevronDown
+                size={16}
+                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+              />
+            </button>
+            {onEdit && (
+              <button onClick={onEdit} className="p-2 text-muted-foreground">
+                <Edit2 size={16} />
               </button>
             )}
-            <button onClick={onEdit} className="p-2 text-muted-foreground">
-              <Edit2 size={16} />
-            </button>
           </div>
         </div>
       </div>
 
-      {expanded && typologies.length > 0 && (
-        <div className="border-t border-border px-4 pb-3 pt-2 space-y-1.5">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Tipologias
-          </p>
-          {typologies.map((t, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between text-xs py-2 px-3 bg-[var(--surface)] rounded-lg"
-            >
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="font-medium text-[var(--navy)]">{t.type}</span>
-                <span className="text-muted-foreground">{t.area}m²</span>
-                <span className="text-muted-foreground">{t.vagas} vg</span>
-                {t.unid_ref && (
-                  <span className="text-muted-foreground">un. {t.unid_ref}</span>
-                )}
-              </div>
-              {t.valor_cheio && (
-                <span className="font-semibold text-[var(--navy)] flex-shrink-0">
-                  {fmtBRL(t.valor_cheio)}
-                </span>
+      {expanded && (
+        <div className="border-t border-border px-4 pb-3 pt-2 space-y-3">
+          {typologies.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Tipologias
+              </p>
+              {typologies.map((t, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between text-xs py-2 px-3 bg-[var(--surface)] rounded-lg"
+                >
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-medium text-[var(--navy)]">{t.type}</span>
+                    <span className="text-muted-foreground">{t.area}m²</span>
+                    <span className="text-muted-foreground">{t.vagas} vg</span>
+                    {t.unid_ref && (
+                      <span className="text-muted-foreground">un. {t.unid_ref}</span>
+                    )}
+                  </div>
+                  {t.valor_cheio && (
+                    <span className="font-semibold text-[var(--navy)] flex-shrink-0">
+                      {fmtBRL(t.valor_cheio)}
+                    </span>
+                  )}
+                </div>
+              ))}
+              {rich?.estrutura && (
+                <p className="text-[10px] text-muted-foreground pt-1 italic">{rich.estrutura}</p>
               )}
             </div>
-          ))}
-          {rich?.estrutura && (
-            <p className="text-[10px] text-muted-foreground pt-1 italic">{rich.estrutura}</p>
+          )}
+
+          {docsQ.isLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+              <Loader2 size={12} className="animate-spin" /> Carregando documentos...
+            </div>
+          )}
+
+          {docsQ.data && hasDocs && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Documentos
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {docsQ.data.tabelas.map((doc, idx) =>
+                  doc.url ? (
+                    <button
+                      key={idx}
+                      onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
+                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+                    >
+                      <Eye size={12} />
+                      {docsQ.data.tabelas.length > 1 ? `Tabela ${idx + 1}` : "Tabela"}
+                    </button>
+                  ) : null
+                )}
+                {docsQ.data.books.map((doc, idx) =>
+                  doc.url ? (
+                    <button
+                      key={idx}
+                      onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
+                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
+                    >
+                      <Eye size={12} />
+                      {docsQ.data.books.length > 1 ? `Book ${idx + 1}` : "Book"}
+                    </button>
+                  ) : null
+                )}
+              </div>
+            </div>
+          )}
+
+          {docsQ.data && !hasDocs && typologies.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-2">Sem informações adicionais.</p>
           )}
         </div>
       )}
+
+      {viewingDoc && (
+        <PdfViewerModal
+          url={viewingDoc.url}
+          name={viewingDoc.name}
+          onClose={() => setViewingDoc(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── PDF viewer modal ─────────────────────────────────────────────────────────
+function PdfViewerModal({
+  url,
+  name,
+  onClose,
+}: {
+  url: string;
+  name: string;
+  onClose: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [page, setPage] = useState(1);
+  const [numPages, setNumPages] = useState(0);
+  const [loadingPdf, setLoadingPdf] = useState(true);
+  const [rendering, setRendering] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingPdf(true);
+    setPage(1);
+    (async () => {
+      try {
+        const pdfjsLib = await import("pdfjs-dist");
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+        const doc = await pdfjsLib.getDocument(url).promise;
+        if (!cancelled) {
+          setPdfDoc(doc);
+          setNumPages(doc.numPages);
+          setLoadingPdf(false);
+        }
+      } catch {
+        if (!cancelled) setLoadingPdf(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+
+  useEffect(() => {
+    if (!pdfDoc || !canvasRef.current) return;
+    let cancelled = false;
+    setRendering(true);
+    (async () => {
+      try {
+        const pdfPage = await pdfDoc.getPage(page);
+        if (cancelled) return;
+        const canvas = canvasRef.current!;
+        const dpr = window.devicePixelRatio || 1;
+        const displayWidth = Math.min(window.innerWidth - 16, 820);
+        const baseViewport = pdfPage.getViewport({ scale: 1 });
+        const scale = (displayWidth / baseViewport.width) * dpr;
+        const viewport = pdfPage.getViewport({ scale });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = `${displayWidth}px`;
+        canvas.style.height = `${viewport.height / dpr}px`;
+        const ctx = canvas.getContext("2d")!;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+        if (!cancelled) setRendering(false);
+      } catch {
+        if (!cancelled) setRendering(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pdfDoc, page]);
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black flex flex-col" onClick={onClose}>
+      {/* Header */}
+      <div
+        className="flex items-center gap-3 px-4 py-3 bg-[var(--navy)] flex-shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button onClick={onClose} className="text-white/70 p-1 flex-shrink-0">
+          <X size={20} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white truncate">{name}</p>
+          {numPages > 0 && (
+            <p className="text-xs text-white/50">{page} de {numPages} páginas</p>
+          )}
+        </div>
+        <a
+          href={url}
+          download
+          onClick={(e) => e.stopPropagation()}
+          className="text-white/70 p-1 flex-shrink-0"
+          title="Baixar PDF"
+        >
+          <Download size={20} />
+        </a>
+      </div>
+
+      {/* Canvas */}
+      <div
+        className="flex-1 overflow-auto flex items-start justify-center p-2 bg-gray-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {loadingPdf ? (
+          <div className="flex items-center justify-center h-full w-full">
+            <Loader2 size={36} className="animate-spin text-white/60" />
+          </div>
+        ) : (
+          <div className="relative inline-block">
+            <canvas ref={canvasRef} className="rounded shadow-2xl" />
+            {rendering && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded">
+                <Loader2 size={24} className="animate-spin text-white" />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Page navigation */}
+      {numPages > 1 && (
+        <div
+          className="flex items-center justify-center gap-4 px-4 py-3 bg-[var(--navy)] flex-shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="p-2 rounded-lg bg-white/10 text-white disabled:opacity-30"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <span className="text-white text-sm font-medium min-w-[80px] text-center">
+            {page} / {numPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(numPages, p + 1))}
+            disabled={page === numPages}
+            className="p-2 rounded-lg bg-white/10 text-white disabled:opacity-30"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Docs upload modal ────────────────────────────────────────────────────────
+function DocsUploadModal({
+  onClose,
+  onUploaded,
+}: {
+  onClose: () => void;
+  onUploaded: (projectIds: string[]) => void;
+}) {
+  type TabelaEntry = { projectId: string; projectName: string; files: string[] };
+
+  const [step, setStep] = useState<"select" | "classify" | "conflict" | "uploading" | "delete-confirm">("select");
+  const [files, setFiles] = useState<File[]>([]);
+  const [classified, setClassified] = useState<ClassifiedFile[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
+  const [allTabelas, setAllTabelas] = useState<TabelaEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []);
+    if (selected.length) setFiles(prev => [...prev, ...selected]);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const removeFile = (index: number) => setFiles(prev => prev.filter((_, i) => i !== index));
+
+  const loadDeleteConfirm = async () => {
+    setLoading(true);
+    try {
+      const { data: projs } = await supabase.from("projects").select("id, name").order("name");
+      const list = (projs ?? []) as { id: string; name: string }[];
+      const entries: TabelaEntry[] = [];
+      for (const p of list) {
+        const { data } = await supabase.storage
+          .from("project-docs")
+          .list(`${p.id}/tabela`, { limit: 50 });
+        if (data && data.length > 0) {
+          entries.push({ projectId: p.id, projectName: p.name, files: data.map(f => f.name) });
+        }
+      }
+      setAllTabelas(entries);
+      setStep("delete-confirm");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmDeleteTabelas = async () => {
+    setLoading(true);
+    try {
+      const paths = allTabelas.flatMap(e =>
+        e.files.map(f => `${e.projectId}/tabela/${f}`)
+      );
+      if (!paths.length) { toast("Nenhuma tabela encontrada para excluir"); onClose(); return; }
+      const { error } = await supabase.storage.from("project-docs").remove(paths);
+      if (error) throw error;
+      toast.success(`${paths.length} tabela(s) excluída(s)`);
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const analyze = async () => {
+    if (!files.length) { toast.error("Selecione pelo menos um arquivo"); return; }
+    setLoading(true);
+    try {
+      const { data: existingProjects } = await supabase
+        .from("projects")
+        .select("id, name")
+        .order("name");
+      const projs = (existingProjects ?? []) as { id: string; name: string }[];
+      setProjects(projs);
+      const result = await classifyFilenamesWithGroq(files, projs);
+      setClassified(result);
+      setStep("classify");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateClassified = (index: number, updates: Partial<Omit<ClassifiedFile, "file">>) => {
+    setClassified(prev => prev.map((cf, i) => i === index ? { ...cf, ...updates } : cf));
+  };
+
+  const checkConflicts = async () => {
+    const toUpload = classified.filter(cf => cf.projectId);
+    if (!toUpload.length) { toast.error("Nenhum arquivo com projeto identificado"); return; }
+
+    setLoading(true);
+    try {
+      const checked = new Set<string>();
+      const found: ConflictInfo[] = [];
+
+      for (const cf of toUpload) {
+        const key = `${cf.projectId}/${cf.type}`;
+        if (checked.has(key)) continue;
+        checked.add(key);
+
+        const { data } = await supabase.storage
+          .from("project-docs")
+          .list(`${cf.projectId}/${cf.type}`, { limit: 20 });
+
+        if (data && data.length > 0) {
+          found.push({
+            projectId: cf.projectId!,
+            projectName: cf.projectName,
+            type: cf.type,
+            existingFiles: data.map(f => f.name),
+          });
+        }
+      }
+
+      if (found.length > 0) {
+        setConflicts(found);
+        setStep("conflict");
+      } else {
+        await doUpload("add");
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doUpload = async (mode: "replace" | "add") => {
+    const toUpload = classified.filter(cf => cf.projectId);
+    setStep("uploading");
+    const uploadedIds = new Set<string>();
+    try {
+      if (mode === "replace") {
+        for (const conflict of conflicts) {
+          const paths = conflict.existingFiles.map(
+            f => `${conflict.projectId}/${conflict.type}/${f}`
+          );
+          if (paths.length) await supabase.storage.from("project-docs").remove(paths);
+        }
+      }
+
+      for (const cf of toUpload) {
+        if (!cf.projectId) continue;
+        const path = `${cf.projectId}/${cf.type}/${sanitizeStorageKey(cf.file.name)}`;
+        const { error } = await supabase.storage
+          .from("project-docs")
+          .upload(path, cf.file, { upsert: true });
+        if (error) throw error;
+        uploadedIds.add(cf.projectId);
+      }
+
+      toast.success(`${toUpload.length} arquivo(s) enviado(s) com sucesso`);
+      onUploaded(Array.from(uploadedIds));
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message);
+      setStep("classify");
+    }
+  };
+
+  const identifiedCount = classified.filter(c => c.projectId).length;
+
+  const stepTitle: Record<typeof step, string> = {
+    select: "Upload de Documentos",
+    classify: "Revisar Classificação",
+    conflict: "Documentos Existentes",
+    uploading: "Enviando...",
+    "delete-confirm": "Excluir Tabelas",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex flex-col" onClick={onClose}>
+      <div
+        className="bg-white mt-auto rounded-t-2xl flex flex-col"
+        style={{ maxHeight: "92vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
+          <div>
+            <h3 className="font-semibold text-[var(--navy)] flex items-center gap-2">
+              <Files size={18} className="text-[var(--gold)]" />
+              {stepTitle[step]}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {step === "select" && "Tabelas e books por imóvel"}
+              {step === "classify" && `${identifiedCount}/${classified.length} identificados pela IA`}
+              {step === "conflict" && `${conflicts.length} imóvel(is) já com documentos salvos`}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+          {step === "select" && (
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Selecione as tabelas e books. A IA vai identificar automaticamente a qual imóvel cada arquivo pertence.
+              </p>
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="w-full h-12 rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2 text-sm text-muted-foreground hover:border-[var(--gold)] hover:text-[var(--gold)] transition-colors"
+              >
+                <Upload size={16} /> Selecionar arquivos PDF
+              </button>
+              <input ref={fileRef} type="file" accept=".pdf" multiple className="hidden" onChange={handleFileChange} />
+              {files.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    {files.length} arquivo(s)
+                  </p>
+                  {files.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 py-2 px-3 bg-[var(--surface)] rounded-lg">
+                      <Files size={13} className="text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm flex-1 min-w-0 truncate">{f.name}</span>
+                      <button onClick={() => removeFile(i)} className="p-0.5 text-muted-foreground flex-shrink-0">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === "classify" && (
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Revise os projetos e tipos identificados. Corrija caso necessário antes de enviar.
+              </p>
+              {classified.map((cf, i) => (
+                <div key={i} className="border border-border rounded-xl p-3 space-y-2">
+                  <p className="text-sm font-medium text-[var(--navy)] truncate">{cf.file.name}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-1">Projeto</label>
+                      <select
+                        className="w-full h-9 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm"
+                        value={cf.projectId ?? ""}
+                        onChange={(e) => {
+                          const proj = projects.find(p => p.id === e.target.value);
+                          updateClassified(i, {
+                            projectId: e.target.value || null,
+                            projectName: proj?.name ?? "Não identificado",
+                          });
+                        }}
+                      >
+                        <option value="">Não identificado</option>
+                        {projects.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-1">Tipo</label>
+                      <select
+                        className="w-full h-9 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm"
+                        value={cf.type}
+                        onChange={(e) => updateClassified(i, { type: e.target.value as "tabela" | "book" })}
+                      >
+                        <option value="tabela">Tabela</option>
+                        <option value="book">Book</option>
+                      </select>
+                    </div>
+                  </div>
+                  {cf.projectId ? (
+                    <p className="text-[10px] text-green-600 font-medium">✓ {cf.projectName}</p>
+                  ) : (
+                    <p className="text-[10px] text-amber-600 font-medium">⚠ Não identificado — será ignorado no envio</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {step === "conflict" && (
+            <div className="px-5 py-4 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Os imóveis abaixo já possuem documentos salvos do mesmo tipo. O que deseja fazer?
+              </p>
+              <div className="space-y-2">
+                {conflicts.map((c, i) => (
+                  <div key={i} className="flex items-center gap-3 py-2.5 px-3 bg-amber-50 border border-amber-200 rounded-xl">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[var(--navy)] truncate">{c.projectName}</p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        {c.existingFiles.length} arquivo(s) de {c.type} já salvo(s)
+                      </p>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                      c.type === "tabela" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                    }`}>
+                      {c.type === "tabela" ? "Tabela" : "Book"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="pt-1 space-y-1.5">
+                <p className="text-xs text-muted-foreground">
+                  <strong>Substituir:</strong> remove os arquivos existentes e salva os novos.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <strong>Acrescentar:</strong> mantém os existentes e adiciona os novos junto.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {step === "delete-confirm" && (
+            <div className="px-5 py-4 space-y-4">
+              {loading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                  <Loader2 size={16} className="animate-spin" /> Buscando tabelas salvas...
+                </div>
+              ) : allTabelas.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Nenhuma tabela encontrada no bucket.</p>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    As tabelas abaixo serão excluídas permanentemente de todos os imóveis:
+                  </p>
+                  <div className="space-y-2">
+                    {allTabelas.map((e, i) => (
+                      <div key={i} className="flex items-center gap-3 py-2.5 px-3 bg-red-50 border border-red-200 rounded-xl">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[var(--navy)] truncate">{e.projectName}</p>
+                          <p className="text-xs text-red-600 mt-0.5">
+                            {e.files.length} tabela(s): {e.files.join(", ")}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-red-600 font-medium">
+                    Total: {allTabelas.reduce((n, e) => n + e.files.length, 0)} arquivo(s) serão excluídos.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {step === "uploading" && (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 size={32} className="animate-spin text-[var(--navy)]" />
+              <p className="text-sm text-muted-foreground">Enviando arquivos...</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5 pt-3 border-t border-border flex-shrink-0">
+          {step === "select" && (
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={analyze}
+                disabled={!files.length || loading}
+                className="w-full h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <><Loader2 size={18} className="animate-spin" /> Classificando com IA...</>
+                ) : (
+                  <><Sparkles size={18} /> Classificar com IA</>
+                )}
+              </button>
+              <button
+                onClick={loadDeleteConfirm}
+                disabled={loading}
+                className="w-full h-10 rounded-xl border border-red-200 text-red-500 text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"
+              >
+                {loading ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                Excluir todas as tabelas salvas
+              </button>
+            </div>
+          )}
+          {step === "classify" && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setStep("select")}
+                className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={checkConflicts}
+                disabled={!identifiedCount || loading}
+                className="flex-1 h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+                {loading ? "Verificando..." : `Enviar (${identifiedCount})`}
+              </button>
+            </div>
+          )}
+          {step === "conflict" && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => doUpload("add")}
+                className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-semibold border border-border"
+              >
+                Acrescentar
+              </button>
+              <button
+                onClick={() => doUpload("replace")}
+                className="flex-1 h-12 rounded-xl bg-red-500 text-white font-semibold"
+              >
+                Substituir
+              </button>
+            </div>
+          )}
+          {step === "delete-confirm" && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setStep("select")}
+                className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteTabelas}
+                disabled={loading || allTabelas.length === 0}
+                className="flex-1 h-12 rounded-xl bg-red-500 text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+                {loading ? "Excluindo..." : `Excluir tudo`}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -534,7 +1307,6 @@ function ImportModal({
         style={{ maxHeight: "92vh" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
           <div>
             <h3 className="font-semibold text-[var(--navy)] flex items-center gap-2">
@@ -550,14 +1322,12 @@ function ImportModal({
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto">
           {step === "input" ? (
             <div className="px-5 py-4 space-y-3">
               <p className="text-sm text-muted-foreground">
                 Carregue o PDF do tabelão ou cole o texto abaixo. A IA extrai todos os imóveis automaticamente.
               </p>
-
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={loading}
@@ -624,16 +1394,13 @@ function ImportModal({
                             </span>
                           )}
                         </div>
-
                         {p.diferencial && (
                           <p className="text-xs text-[var(--gold)] mt-0.5">{p.diferencial}</p>
                         )}
-
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                           <MapPin size={10} />
                           {p.neighborhood} · {p.address}
                         </p>
-
                         {p.typologies?.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1.5">
                             {p.typologies.map((t, j) => (
@@ -656,7 +1423,6 @@ function ImportModal({
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-5 pb-5 pt-3 border-t border-border flex-shrink-0">
           {step === "input" ? (
             <button
@@ -694,7 +1460,7 @@ function ImportModal({
   );
 }
 
-// ─── Project form (manual edit + typologies editor) ───────────────────────────
+// ─── Project form ─────────────────────────────────────────────────────────────
 const INPUT = "w-full h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm";
 
 function ProjectForm({
@@ -771,7 +1537,6 @@ function ProjectForm({
         style={{ maxHeight: "92vh" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
           <h3 className="text-lg font-semibold text-[var(--navy)]">
             {project ? "Editar" : "Novo"} imóvel
@@ -779,9 +1544,7 @@ function ProjectForm({
           <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
         </div>
 
-        {/* Body — scrollable */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {/* Basic info */}
           <div className="space-y-2">
             <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Informações básicas</label>
             <input className={INPUT} placeholder="Nome do imóvel *" value={name} onChange={(e) => setName(e.target.value)} />
@@ -794,7 +1557,6 @@ function ProjectForm({
             <input className={INPUT} placeholder="Estrutura de atendimento" value={estrutura} onChange={(e) => setEstrutura(e.target.value)} />
           </div>
 
-          {/* Typologies */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Tipologias</label>
@@ -805,11 +1567,9 @@ function ProjectForm({
                 <Plus size={12} /> Adicionar
               </button>
             </div>
-
             {typologies.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-3">Nenhuma tipologia. Clique em Adicionar.</p>
             )}
-
             {typologies.map((t, i) => (
               <div key={i} className="border border-border rounded-xl p-3 space-y-2 bg-[var(--surface)]/40">
                 <div className="flex items-center gap-2">
@@ -865,7 +1625,6 @@ function ProjectForm({
             ))}
           </div>
 
-          {/* Active toggle */}
           <div className="grid grid-cols-2 gap-2">
             <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
               <span className="text-sm font-medium text-[var(--navy)]">Ativo</span>
@@ -888,7 +1647,6 @@ function ProjectForm({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-5 pb-5 pt-3 border-t border-border flex-shrink-0 flex gap-2">
           <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">
             Cancelar

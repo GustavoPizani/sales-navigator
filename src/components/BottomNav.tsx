@@ -21,6 +21,7 @@ const brokerTabs = [
   { to: "/dashboard", label: "Dashboard", icon: BarChart },
   { to: "/schedule", label: "Minha Escala", icon: Calendar },
   { to: "/appointments", label: "Agendamentos", icon: ClipboardList },
+  { to: "/projects", label: "Imóveis", icon: Building2 },
 ] as const;
 
 export function BottomNav() {
