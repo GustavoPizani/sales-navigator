@@ -145,6 +145,7 @@ export type Database = {
       appointments: {
         Row: {
           client_email: string | null
+          client_id: string | null
           client_name: string | null
           created_at: string
           custom_location: string | null
@@ -162,6 +163,7 @@ export type Database = {
         }
         Insert: {
           client_email?: string | null
+          client_id?: string | null
           client_name?: string | null
           created_at?: string
           custom_location?: string | null
@@ -179,6 +181,7 @@ export type Database = {
         }
         Update: {
           client_email?: string | null
+          client_id?: string | null
           client_name?: string | null
           created_at?: string
           custom_location?: string | null

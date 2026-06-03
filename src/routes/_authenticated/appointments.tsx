@@ -188,7 +188,7 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
     queryKey: ["admin-profile", profile?.manager_id],
     enabled: !!profile?.manager_id && !isManager,
     queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("id,full_name,email").eq("id", profile!.manager_id).limit(1).maybeSingle();
+      const { data } = await supabase.from("profiles").select("id,full_name,email").eq("id", profile!.manager_id!).limit(1).maybeSingle();
       return data;
     },
   });
@@ -273,6 +273,7 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
       toast.success("Excluído");
       onClose();
     },
+    onError: (e: any) => toast.error(e.message),
   });
 
   if (markingVisit && appt) {
