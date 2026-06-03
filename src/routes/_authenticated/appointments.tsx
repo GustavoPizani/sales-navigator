@@ -238,8 +238,10 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
         google_calendar_link: link,
       };
       if (appt) {
-        const { error } = await supabase.from("appointments").update(payload).eq("id", appt.id);
+        const { data: updated, error } = await supabase.from("appointments").update(payload).eq("id", appt.id).select("id");
+        console.log("[APPT UPDATE] id:", appt.id, "| rows returned:", updated, "| error:", error);
         if (error) throw error;
+        if (!updated?.length) throw new Error(`Sem permissão para editar (RLS bloqueou). id=${appt.id}`);
       } else {
         const { error } = await supabase.from("appointments").insert(payload);
         if (error) throw error;
@@ -258,14 +260,19 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
         toast.success("Agendamento salvo");
       }
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      console.error("[APPT SAVE ERROR]", e);
+      toast.error(e.message);
+    },
   });
 
   const del = useMutation({
     mutationFn: async () => {
       if (!appt) return;
-      const { error } = await supabase.from("appointments").delete().eq("id", appt.id);
+      const { data: deleted, error } = await supabase.from("appointments").delete().eq("id", appt.id).select("id");
+      console.log("[APPT DELETE] id:", appt.id, "| rows returned:", deleted, "| error:", error);
       if (error) throw error;
+      if (!deleted?.length) throw new Error(`Sem permissão para excluir (RLS bloqueou). id=${appt.id}`);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-appts"] });
@@ -273,7 +280,10 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
       toast.success("Excluído");
       onClose();
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      console.error("[APPT DELETE ERROR]", e);
+      toast.error(e.message);
+    },
   });
 
   if (markingVisit && appt) {

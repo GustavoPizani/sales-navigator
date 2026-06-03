@@ -1170,14 +1170,16 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
 
       if (idCliente) {
         const { data: existing } = await supabase.from("atendimentos")
-          .select("id, venda, status")
+          .select("id, venda, status, data")
           .eq("id_cliente", idCliente)
+          .eq("broker_id", targetUserId)
           .order("id", { ascending: false })
           .limit(1)
           .maybeSingle();
-          
+
         if (existing && !existing.venda && existing.status !== "Contrato Assinado") {
-          const { error } = await supabase.from("atendimentos").update(payload).eq("id", existing.id);
+          // Preserve the original date so it doesn't move outside the dashboard filter
+          const { error } = await supabase.from("atendimentos").update({ ...payload, data: existing.data }).eq("id", existing.id);
           if (error) throw error;
           return;
         }
