@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, MapPin, Edit2, EyeOff, Eye, Sparkles, Upload, X,
   Loader2, CheckSquare, Square, ChevronDown, Files, Download,
-  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -244,6 +243,97 @@ async function classifyFilenamesWithGroq(
       type: (match?.type === "book" ? "book" : "tabela") as "tabela" | "book",
     };
   });
+}
+
+// ─── Typology update: extract all raw units + select best per type/area ──────
+type RawUnit = {
+  type: string;
+  area: number;
+  vagas: number;
+  preco_m2?: number;
+  valor_cheio?: number;
+  unid_ref?: string;
+};
+
+async function extractRawUnitsFromGroq(text: string): Promise<RawUnit[]> {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+  if (!apiKey) throw new Error("VITE_GROQ_API_KEY não configurado");
+
+  const res = await fetch(GROQ_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: `Você extrai unidades individuais de um tabelão imobiliário brasileiro.
+Retorne CADA linha/unidade separada, mesmo que sejam do mesmo tipo e metragem. NÃO agrupe.
+Converta valores monetários: remova R$, pontos e vírgulas (ex: "R$ 1.250.000,00" → 1250000).
+Converta áreas: vírgula para ponto (ex: "65,33" → 65.33).
+Retorne JSON:
+{ "units": [{ "type": "2 dorms", "area": 65.33, "vagas": 2, "preco_m2": 12000, "valor_cheio": 780000, "unid_ref": "204" }] }
+Retorne apenas JSON válido, sem markdown.`,
+        },
+        { role: "user", content: text },
+      ],
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Erro ${res.status} na API Groq`);
+  const data: any = await res.json();
+  const parsed = JSON.parse(data.choices[0].message.content);
+  return (parsed.units ?? []) as RawUnit[];
+}
+
+function selectTypologiesFromUnits(
+  rawUnits: RawUnit[],
+  existingTypologies: Typology[]
+): Typology[] {
+  // Group units by normalized (type, area) key
+  const groups = new Map<string, RawUnit[]>();
+  for (const unit of rawUnits) {
+    const key = `${unit.type.toLowerCase().trim()}|${Math.round(unit.area * 10)}`;
+    const g = groups.get(key) ?? [];
+    g.push(unit);
+    groups.set(key, g);
+  }
+
+  const result: Typology[] = [];
+  for (const [, units] of groups) {
+    if (!units.length) continue;
+
+    // Collect unid_refs already visible for this area range
+    const existingRefs = new Set(
+      existingTypologies
+        .filter(t => Math.abs(t.area - units[0].area) < 1)
+        .map(t => t.unid_ref)
+        .filter(Boolean)
+    );
+
+    // Prefer the unit already referenced; otherwise pick the cheapest
+    const preferred = units.find(u => u.unid_ref && existingRefs.has(u.unid_ref));
+    const cheapest = units.reduce((a, b) =>
+      (a.valor_cheio ?? Infinity) <= (b.valor_cheio ?? Infinity) ? a : b
+    );
+
+    const chosen = preferred ?? cheapest;
+    result.push({
+      type: chosen.type,
+      area: chosen.area,
+      vagas: chosen.vagas,
+      preco_m2: chosen.preco_m2,
+      valor_cheio: chosen.valor_cheio,
+      unid_ref: chosen.unid_ref,
+    });
+  }
+
+  return result;
 }
 
 // ─── PDF text extraction ─────────────────────────────────────────────────────
@@ -595,17 +685,17 @@ function PdfViewerModal({
   name: string;
   onClose: () => void;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [page, setPage] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const [loadingPdf, setLoadingPdf] = useState(true);
-  const [rendering, setRendering] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoadingPdf(true);
-    setPage(1);
+    setPdfDoc(null);
+    setNumPages(0);
+    canvasRefs.current = [];
     (async () => {
       try {
         const pdfjsLib = await import("pdfjs-dist");
@@ -625,36 +715,40 @@ function PdfViewerModal({
   }, [url]);
 
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current) return;
+    if (!pdfDoc || numPages === 0) return;
     let cancelled = false;
-    setRendering(true);
     (async () => {
-      try {
-        const pdfPage = await pdfDoc.getPage(page);
-        if (cancelled) return;
-        const canvas = canvasRef.current!;
-        const dpr = window.devicePixelRatio || 1;
-        const displayWidth = Math.min(window.innerWidth - 16, 820);
-        const baseViewport = pdfPage.getViewport({ scale: 1 });
-        const scale = (displayWidth / baseViewport.width) * dpr;
-        const viewport = pdfPage.getViewport({ scale });
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        canvas.style.width = `${displayWidth}px`;
-        canvas.style.height = `${viewport.height / dpr}px`;
-        const ctx = canvas.getContext("2d")!;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        await pdfPage.render({ canvasContext: ctx, viewport }).promise;
-        if (!cancelled) setRendering(false);
-      } catch {
-        if (!cancelled) setRendering(false);
+      for (let i = 1; i <= numPages; i++) {
+        if (cancelled) break;
+        const canvas = canvasRefs.current[i - 1];
+        if (!canvas) continue;
+        try {
+          const pdfPage = await pdfDoc.getPage(i);
+          if (cancelled) break;
+          const dpr = window.devicePixelRatio || 1;
+          const displayWidth = Math.min(window.innerWidth - 16, 820);
+          const baseViewport = pdfPage.getViewport({ scale: 1 });
+          const scale = (displayWidth / baseViewport.width) * dpr;
+          const viewport = pdfPage.getViewport({ scale });
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = `${displayWidth}px`;
+          canvas.style.height = `${viewport.height / dpr}px`;
+          const ctx = canvas.getContext("2d")!;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+        } catch { /* skip failed page */ }
       }
     })();
     return () => { cancelled = true; };
-  }, [pdfDoc, page]);
+  }, [pdfDoc, numPages]);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black flex flex-col" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[60] bg-black flex flex-col"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+      onClick={onClose}
+    >
       {/* Header */}
       <div
         className="flex items-center gap-3 px-4 py-3 bg-[var(--navy)] flex-shrink-0"
@@ -666,7 +760,7 @@ function PdfViewerModal({
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{name}</p>
           {numPages > 0 && (
-            <p className="text-xs text-white/50">{page} de {numPages} páginas</p>
+            <p className="text-xs text-white/50">{numPages} páginas</p>
           )}
         </div>
         <a
@@ -680,9 +774,9 @@ function PdfViewerModal({
         </a>
       </div>
 
-      {/* Canvas */}
+      {/* Cascade pages */}
       <div
-        className="flex-1 overflow-auto flex items-start justify-center p-2 bg-gray-900"
+        className="flex-1 overflow-y-auto flex flex-col items-center gap-3 py-3 px-2 bg-gray-900"
         onClick={(e) => e.stopPropagation()}
       >
         {loadingPdf ? (
@@ -690,42 +784,15 @@ function PdfViewerModal({
             <Loader2 size={36} className="animate-spin text-white/60" />
           </div>
         ) : (
-          <div className="relative inline-block">
-            <canvas ref={canvasRef} className="rounded shadow-2xl" />
-            {rendering && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded">
-                <Loader2 size={24} className="animate-spin text-white" />
-              </div>
-            )}
-          </div>
+          Array.from({ length: numPages }, (_, i) => (
+            <canvas
+              key={i}
+              ref={(el) => { canvasRefs.current[i] = el; }}
+              className="rounded shadow-2xl flex-shrink-0"
+            />
+          ))
         )}
       </div>
-
-      {/* Page navigation */}
-      {numPages > 1 && (
-        <div
-          className="flex items-center justify-center gap-4 px-4 py-3 bg-[var(--navy)] flex-shrink-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="p-2 rounded-lg bg-white/10 text-white disabled:opacity-30"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span className="text-white text-sm font-medium min-w-[80px] text-center">
-            {page} / {numPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(numPages, p + 1))}
-            disabled={page === numPages}
-            className="p-2 rounded-lg bg-white/10 text-white disabled:opacity-30"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -740,7 +807,9 @@ function DocsUploadModal({
 }) {
   type TabelaEntry = { projectId: string; projectName: string; files: string[] };
 
+  const qc = useQueryClient();
   const [step, setStep] = useState<"select" | "classify" | "conflict" | "uploading" | "delete-confirm">("select");
+  const [uploadingMsg, setUploadingMsg] = useState("Enviando arquivos...");
   const [files, setFiles] = useState<File[]>([]);
   const [classified, setClassified] = useState<ClassifiedFile[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
@@ -866,6 +935,7 @@ function DocsUploadModal({
   const doUpload = async (mode: "replace" | "add") => {
     const toUpload = classified.filter(cf => cf.projectId);
     setStep("uploading");
+    setUploadingMsg("Enviando arquivos...");
     const uploadedIds = new Set<string>();
     try {
       if (mode === "replace") {
@@ -887,8 +957,50 @@ function DocsUploadModal({
         uploadedIds.add(cf.projectId);
       }
 
-      toast.success(`${toUpload.length} arquivo(s) enviado(s) com sucesso`);
+      toast.success(`${toUpload.length} arquivo(s) enviado(s)`);
       onUploaded(Array.from(uploadedIds));
+
+      // Extract and update typologies from uploaded tabelas
+      const tabelaFiles = toUpload.filter(cf => cf.type === "tabela" && cf.projectId);
+      if (tabelaFiles.length > 0) {
+        let updatedCount = 0;
+        for (const cf of tabelaFiles) {
+          if (!cf.projectId) continue;
+          setUploadingMsg(`Lendo tipologias: ${cf.projectName}...`);
+          try {
+            const { data: proj } = await supabase
+              .from("projects")
+              .select("description")
+              .eq("id", cf.projectId)
+              .maybeSingle();
+            const currentDesc: Record<string, any> = proj?.description
+              ? JSON.parse(proj.description)
+              : {};
+            const existingTypologies: Typology[] = currentDesc.typologies ?? [];
+
+            const text = await extractPDFText(cf.file);
+            const rawUnits = await extractRawUnitsFromGroq(text);
+
+            if (rawUnits.length > 0) {
+              const typologies = selectTypologiesFromUnits(rawUnits, existingTypologies);
+              if (typologies.length > 0) {
+                await supabase.from("projects").update({
+                  description: JSON.stringify({ ...currentDesc, typologies }),
+                }).eq("id", cf.projectId!);
+                updatedCount++;
+                qc.invalidateQueries({ queryKey: ["projects-all"] });
+                qc.invalidateQueries({ queryKey: ["projects-for-dashboard"] });
+              }
+            }
+          } catch {
+            // Non-blocking — typology update failure doesn't cancel the upload
+          }
+        }
+        if (updatedCount > 0) {
+          toast.success(`Tipologias atualizadas em ${updatedCount} imóvel(is)`);
+        }
+      }
+
       onClose();
     } catch (err: any) {
       toast.error(err.message);
@@ -1081,7 +1193,7 @@ function DocsUploadModal({
           {step === "uploading" && (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <Loader2 size={32} className="animate-spin text-[var(--navy)]" />
-              <p className="text-sm text-muted-foreground">Enviando arquivos...</p>
+              <p className="text-sm text-muted-foreground text-center px-6">{uploadingMsg}</p>
             </div>
           )}
         </div>
