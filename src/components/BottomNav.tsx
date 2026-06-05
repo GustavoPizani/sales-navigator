@@ -1,33 +1,51 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { BarChart, Calendar, CalendarDays, Building2, Users, ClipboardList } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useFeatures } from "@/hooks/useFeatures";
 
-const adminTabs = [
-  { to: "/dashboard", label: "Dashboard", icon: BarChart },
-  { to: "/schedule", label: "Escala", icon: Calendar },
-  { to: "/calendar", label: "Agendamentos", icon: CalendarDays },
-  { to: "/projects", label: "Imóveis", icon: Building2 },
-  { to: "/team", label: "Time", icon: Users },
-] as const;
+type Tab = { to: string; label: string; icon: React.ElementType };
 
-const directorTabs = [
+const adminTabs: Tab[] = [
   { to: "/dashboard", label: "Dashboard", icon: BarChart },
-  { to: "/schedule", label: "Escala", icon: Calendar },
-  { to: "/calendar", label: "Agendamentos", icon: CalendarDays },
-  { to: "/team", label: "Time", icon: Users },
-] as const;
+  { to: "/schedule",   label: "Escala",       icon: Calendar },
+  { to: "/calendar",   label: "Agendamentos",  icon: CalendarDays },
+  { to: "/projects",   label: "Imóveis",       icon: Building2 },
+  { to: "/team",       label: "Time",          icon: Users },
+];
 
-const brokerTabs = [
-  { to: "/dashboard", label: "Dashboard", icon: BarChart },
-  { to: "/schedule", label: "Minha Escala", icon: Calendar },
+const directorTabs: Tab[] = [
+  { to: "/dashboard", label: "Dashboard",    icon: BarChart },
+  { to: "/schedule",   label: "Escala",       icon: Calendar },
+  { to: "/calendar",   label: "Agendamentos", icon: CalendarDays },
+  { to: "/team",       label: "Time",         icon: Users },
+];
+
+const brokerTabs: Tab[] = [
+  { to: "/dashboard",    label: "Dashboard",    icon: BarChart },
+  { to: "/schedule",     label: "Minha Escala", icon: Calendar },
   { to: "/appointments", label: "Agendamentos", icon: ClipboardList },
-  { to: "/projects", label: "Imóveis", icon: Building2 },
-] as const;
+  { to: "/projects",     label: "Imóveis",      icon: Building2 },
+];
+
+function filterTabs(tabs: Tab[], isFeatureEnabled: (k: any) => boolean): Tab[] {
+  return tabs.filter((t) => {
+    if (t.to === "/schedule")     return isFeatureEnabled("schedule");
+    if (t.to === "/calendar")     return isFeatureEnabled("agendamentos");
+    if (t.to === "/appointments") return isFeatureEnabled("agendamentos");
+    if (t.to === "/projects")     return isFeatureEnabled("projects");
+    if (t.to === "/team")         return isFeatureEnabled("team");
+    return true;
+  });
+}
 
 export function BottomNav() {
   const { isAdmin, isDirector } = useAuth();
+  const { isFeatureEnabled } = useFeatures();
   const loc = useLocation();
-  const tabs = isAdmin ? adminTabs : isDirector ? directorTabs : brokerTabs;
+
+  const baseTabs = isAdmin ? adminTabs : isDirector ? directorTabs : brokerTabs;
+  const tabs = filterTabs(baseTabs, isFeatureEnabled);
+
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 bg-[var(--navy)] text-white safe-bottom shadow-[0_-2px_12px_rgba(0,0,0,0.15)]">
       <ul className="flex justify-around items-stretch h-16 px-1">

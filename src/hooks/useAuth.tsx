@@ -12,6 +12,7 @@ export interface Profile {
   color: string;
   is_active: boolean;
   manager_id: string | null;
+  enabled_features: Record<string, boolean> | null;
 }
 
 interface AuthContextValue {

@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar } from "@/components/Avatar";
+import { useFeatures, FEATURE_DEFS, type FeaturesMap } from "@/hooks/useFeatures";
 
 export const Route = createFileRoute("/_authenticated/settings/profile")({
   component: ProfileSettingsPage,
@@ -61,6 +62,99 @@ function PasswordInput({
         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
       >
         {show ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </div>
+  );
+}
+
+function FeatureToggle({
+  label,
+  description,
+  icon: Icon,
+  enabled,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  enabled: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 py-3.5">
+      <div className="w-10 h-10 rounded-xl bg-[var(--surface)] flex items-center justify-center flex-shrink-0">
+        <Icon size={18} className="text-[var(--navy)]" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-[var(--navy)]">{label}</p>
+        <p className="text-xs text-muted-foreground leading-tight">{description}</p>
+      </div>
+      <button
+        onClick={() => onChange(!enabled)}
+        className={`relative w-12 h-6 rounded-full flex-shrink-0 transition-colors duration-200 ${
+          enabled ? "bg-[var(--navy)]" : "bg-gray-200"
+        }`}
+        aria-pressed={enabled}
+      >
+        <span
+          className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+            enabled ? "translate-x-7" : "translate-x-1"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+function ModulesSection() {
+  const { features, saveFeatures } = useFeatures();
+  const [local, setLocal] = useState<FeaturesMap>({ ...features });
+  const [saving, setSaving] = useState(false);
+
+  const hasChanges = FEATURE_DEFS.some((f) => local[f.key] !== features[f.key]);
+
+  const toggle = (key: keyof FeaturesMap, value: boolean) => {
+    setLocal((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await saveFeatures.mutateAsync(local);
+      toast.success("Módulos atualizados!");
+    } catch (e: any) {
+      toast.error(e.message ?? "Erro ao salvar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-border p-5">
+      <div className="mb-1">
+        <h2 className="text-base font-semibold text-[var(--navy)]">Módulos da equipe</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Escolha quais seções ficam visíveis para você e toda a equipe.
+        </p>
+      </div>
+      <div className="divide-y divide-border">
+        {FEATURE_DEFS.map((f) => (
+          <FeatureToggle
+            key={f.key}
+            label={f.label}
+            description={f.description}
+            icon={f.icon}
+            enabled={local[f.key] ?? true}
+            onChange={(v) => toggle(f.key, v)}
+          />
+        ))}
+      </div>
+      <button
+        onClick={save}
+        disabled={!hasChanges || saving}
+        className="mt-4 w-full h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 transition-opacity"
+      >
+        {saving ? "Salvando…" : "Salvar módulos"}
       </button>
     </div>
   );
@@ -273,6 +367,9 @@ function ProfileSettingsPage() {
             </div>
           </SectionCard>
         )}
+
+        {/* ── Módulos (admin only) ── */}
+        {isAdmin && <ModulesSection />}
       </div>
     </div>
   );
