@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, MapPin, Edit2, EyeOff, Eye, Sparkles, Upload, X,
-  Loader2, CheckSquare, Square, ChevronDown, Files, Download,
+  Loader2, CheckSquare, Square, ChevronDown, Files, Download, ZoomIn, ZoomOut,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -689,12 +689,16 @@ function PdfViewerModal({
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [numPages, setNumPages] = useState(0);
   const [loadingPdf, setLoadingPdf] = useState(true);
+  const [zoom, setZoom] = useState(1);
+
+  const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
 
   useEffect(() => {
     let cancelled = false;
     setLoadingPdf(true);
     setPdfDoc(null);
     setNumPages(0);
+    setZoom(1);
     canvasRefs.current = [];
     (async () => {
       try {
@@ -726,7 +730,8 @@ function PdfViewerModal({
           const pdfPage = await pdfDoc.getPage(i);
           if (cancelled) break;
           const dpr = window.devicePixelRatio || 1;
-          const displayWidth = Math.min(window.innerWidth - 16, 820);
+          const baseDisplayWidth = Math.min(window.innerWidth - 16, 820);
+          const displayWidth = baseDisplayWidth * zoom;
           const baseViewport = pdfPage.getViewport({ scale: 1 });
           const scale = (displayWidth / baseViewport.width) * dpr;
           const viewport = pdfPage.getViewport({ scale });
@@ -741,7 +746,7 @@ function PdfViewerModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [pdfDoc, numPages]);
+  }, [pdfDoc, numPages, zoom]);
 
   return (
     <div
@@ -751,7 +756,7 @@ function PdfViewerModal({
     >
       {/* Header */}
       <div
-        className="flex items-center gap-3 px-4 py-3 bg-[var(--navy)] flex-shrink-0"
+        className="flex items-center gap-2 px-4 py-3 bg-[var(--navy)] flex-shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
         <button onClick={onClose} className="text-white/70 p-1 flex-shrink-0">
@@ -763,6 +768,23 @@ function PdfViewerModal({
             <p className="text-xs text-white/50">{numPages} páginas</p>
           )}
         </div>
+        <button
+          onClick={() => setZoom(z => ZOOM_STEPS[Math.max(0, ZOOM_STEPS.indexOf(z) - 1)])}
+          disabled={zoom <= ZOOM_STEPS[0]}
+          className="text-white/70 p-1 flex-shrink-0 disabled:opacity-30"
+          title="Diminuir zoom"
+        >
+          <ZoomOut size={20} />
+        </button>
+        <span className="text-white/60 text-xs w-9 text-center flex-shrink-0">{Math.round(zoom * 100)}%</span>
+        <button
+          onClick={() => setZoom(z => ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(z) + 1)])}
+          disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}
+          className="text-white/70 p-1 flex-shrink-0 disabled:opacity-30"
+          title="Aumentar zoom"
+        >
+          <ZoomIn size={20} />
+        </button>
         <a
           href={url}
           download

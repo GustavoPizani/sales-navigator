@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 import { useDashboardFilters, useDashboardData } from "@/hooks/useDashboard";
-import { DashboardCharts, AtendimentosTable, KpiCard as OriginalKpiCard, MiniAvatar, formatBRL, StatusChart, VisitsByProductChart } from "@/components/DashboardShared";
+import { DashboardCharts, AtendimentosTable, MiniAvatar, formatBRL, StatusChart, VisitsByProductChart } from "@/components/DashboardShared";
 import { BarChart, Bar, Tooltip, ResponsiveContainer } from "recharts";
 import { AppointmentForm } from "./appointments";
 
@@ -40,7 +40,7 @@ function matchProjectName(produto: string, projects: { name: string }[]): string
 const TEMPERATURAS = ["Frio", "Morno", "Quente"] as const;
 const SETORES = ["Online", "Salão"] as const;
 
-function KpiCard({ label, value, isLoading }: { label: string; value: string | number; isLoading?: boolean }) {
+function KpiCard({ label, value, isLoading, onClick }: { label: string; value: string | number; isLoading?: boolean; onClick?: () => void }) {
   const valueStr = String(value);
   const len = valueStr.length;
 
@@ -50,13 +50,68 @@ function KpiCard({ label, value, isLoading }: { label: string; value: string | n
   else if (len > 12) valueClasses = "text-xl sm:text-2xl";
 
   return (
-    <div className="bg-[var(--navy)] rounded-2xl p-4 flex flex-col justify-center items-center shadow-sm text-center min-h-[100px]">
+    <div
+      className={`bg-[var(--navy)] rounded-2xl p-4 flex flex-col justify-center items-center shadow-sm text-center min-h-[100px] transition-all ${onClick ? "cursor-pointer hover:ring-2 hover:ring-[var(--gold)]/60 hover:brightness-110 active:scale-95" : ""}`}
+      onClick={onClick}
+    >
       {isLoading ? (
         <div className="w-20 h-7 rounded-lg bg-white/20 animate-pulse mb-2" />
       ) : (
         <div className={`font-bold text-white mb-1 ${valueClasses}`}>{value}</div>
       )}
       <div className="text-[10px] sm:text-xs font-semibold text-[var(--gold)] uppercase tracking-wide leading-tight">{label}</div>
+      {onClick && <div className="text-[9px] text-white/30 mt-1 uppercase tracking-wide">ver detalhes</div>}
+    </div>
+  );
+}
+
+function KpiDetailModal({
+  title,
+  items,
+  onClose,
+  isAdmin,
+}: {
+  title: string;
+  items: { cliente: string; corretor?: string; unidade: string; valor?: number }[];
+  onClose: () => void;
+  isAdmin?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/60 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div
+        className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80vh] flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+          <h2 className="font-bold text-[var(--navy)] text-base">{title}</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-[var(--navy)] p-1">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {items.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">Nenhum registro no período</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {items.map((item, i) => (
+                <div key={i} className="px-5 py-3">
+                  <div className="font-semibold text-[var(--navy)] text-sm">{item.cliente}</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-0.5">
+                    {isAdmin && item.corretor && (
+                      <span className="text-xs text-muted-foreground">Corretor: <span className="font-medium text-[var(--navy)]">{item.corretor}</span></span>
+                    )}
+                    <span className="text-xs text-muted-foreground">Unidade: <span className="font-medium text-[var(--navy)]">{item.unidade || "—"}</span></span>
+                    {item.valor != null && item.valor > 0 && (
+                      <span className="text-xs text-muted-foreground">Valor: <span className="font-medium text-[var(--navy)]">{formatBRL(item.valor)}</span></span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -344,6 +399,7 @@ function AdminDashboard({ user }: { user: any }) {
   const [brokerSearch, setBrokerSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"graficos" | "corretores" | "atendimentos">("graficos");
   const [registrarVendaAtendimento, setRegistrarVendaAtendimento] = useState<any | null>(null);
+  const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume">(null);
 
   const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
@@ -400,6 +456,43 @@ function AdminDashboard({ user }: { user: any }) {
   });
 
   const dbData = useDashboardData(atendimentos, vendas);
+
+  const atendimentosById = useMemo(() => {
+    const m: Record<string, any> = {};
+    atendimentos.forEach(a => { m[a.id] = a; });
+    return m;
+  }, [atendimentos]);
+
+  const brokersById = useMemo(() => {
+    const m: Record<string, string> = {};
+    (brokersQ.data ?? []).forEach(b => { m[b.id] = b.full_name; });
+    return m;
+  }, [brokersQ.data]);
+
+  const vendasModalItems = useMemo(() =>
+    vendas.map(v => {
+      const atend = atendimentosById[v.atendimento_id];
+      return {
+        cliente: atend?.nome_cliente || "—",
+        corretor: brokersById[v.broker_id] || atend?.profiles?.full_name || "—",
+        unidade: atend?.produto || "—",
+        valor: Number(v.valor) || 0,
+      };
+    }),
+    [vendas, atendimentosById, brokersById]
+  );
+
+  const tratativasModalItems = useMemo(() =>
+    atendimentos
+      .filter(a => a.status === "Em Tratativa")
+      .map(a => ({
+        cliente: a.nome_cliente || "—",
+        corretor: a.profiles?.full_name || brokersById[a.broker_id] || "—",
+        unidade: a.produto || "—",
+        valor: Number(a.valor) || 0,
+      })),
+    [atendimentos, brokersById]
+  );
 
   const projectsQ = useQuery({
     queryKey: ["projects-for-dashboard"],
@@ -585,9 +678,9 @@ function AdminDashboard({ user }: { user: any }) {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} />
-          <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} />
-          <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} isLoading={isPending} />
-          <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} />
+          <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
+          <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
+          <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} />
         </div>
 
         {activeTab === "graficos" && (
@@ -722,6 +815,18 @@ function AdminDashboard({ user }: { user: any }) {
       {insertOpen && <AtendimentoForm userId={user?.id} brokers={brokersQ.data ?? []} onClose={() => { setInsertOpen(false); setInsertPreFill(null); }} preFill={insertPreFill} />}
       {newAppointmentData && <AppointmentForm appt={null} preFill={newAppointmentData} onClose={() => setNewAppointmentData(null)} />}
       {registrarVendaAtendimento && <RegistrarVendaModal atendimento={registrarVendaAtendimento} onClose={() => setRegistrarVendaAtendimento(null)} />}
+      {kpiModal && (
+        <KpiDetailModal
+          isAdmin
+          title={
+            kpiModal === "vendas" ? `Total de Vendas (${vendasModalItems.length})` :
+            kpiModal === "tratativas" ? `Em Tratativas (${tratativasModalItems.length})` :
+            `Volume de Vendas — ${formatBRL(dbData.volumeVendas)}`
+          }
+          items={kpiModal === "tratativas" ? tratativasModalItems : vendasModalItems}
+          onClose={() => setKpiModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -734,6 +839,7 @@ function BrokerDashboard({ user }: { user: any }) {
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
   const [registrarVendaAtendimento, setRegistrarVendaAtendimento] = useState<any | null>(null);
+  const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume">(null);
 
   const { data: atendimentos = [], isPending } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
@@ -768,6 +874,35 @@ function BrokerDashboard({ user }: { user: any }) {
 
   const dbData = useDashboardData(atendimentos, vendas);
 
+  const atendimentosById = useMemo(() => {
+    const m: Record<string, any> = {};
+    atendimentos.forEach(a => { m[a.id] = a; });
+    return m;
+  }, [atendimentos]);
+
+  const vendasModalItems = useMemo(() =>
+    vendas.map(v => {
+      const atend = atendimentosById[v.atendimento_id];
+      return {
+        cliente: atend?.nome_cliente || "—",
+        unidade: atend?.produto || "—",
+        valor: Number(v.valor) || 0,
+      };
+    }),
+    [vendas, atendimentosById]
+  );
+
+  const tratativasModalItems = useMemo(() =>
+    atendimentos
+      .filter(a => a.status === "Em Tratativa")
+      .map(a => ({
+        cliente: a.nome_cliente || "—",
+        unidade: a.produto || "—",
+        valor: Number(a.valor) || 0,
+      })),
+    [atendimentos]
+  );
+
   return (
     <div className="pb-nav bg-[var(--surface)] min-h-screen">
         <AppHeader 
@@ -791,9 +926,9 @@ function BrokerDashboard({ user }: { user: any }) {
         <div className="grid grid-cols-2 gap-3">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} />
-          <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} />
-          <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} isLoading={isPending} />
-          <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} /></div>
+          <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
+          <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
+          <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} /></div>
         </div>
 
         <div className="space-y-3">
@@ -880,6 +1015,17 @@ function BrokerDashboard({ user }: { user: any }) {
       )}
       {newAppointmentData && <AppointmentForm appt={null} preFill={newAppointmentData} onClose={() => setNewAppointmentData(null)} />}
       {registrarVendaAtendimento && <RegistrarVendaModal atendimento={registrarVendaAtendimento} onClose={() => setRegistrarVendaAtendimento(null)} />}
+      {kpiModal && (
+        <KpiDetailModal
+          title={
+            kpiModal === "vendas" ? `Total de Vendas (${vendasModalItems.length})` :
+            kpiModal === "tratativas" ? `Em Tratativas (${tratativasModalItems.length})` :
+            `Volume de Vendas — ${formatBRL(dbData.volumeVendas)}`
+          }
+          items={kpiModal === "tratativas" ? tratativasModalItems : vendasModalItems}
+          onClose={() => setKpiModal(null)}
+        />
+      )}
     </div>
   );
 }
