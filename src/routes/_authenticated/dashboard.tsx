@@ -141,6 +141,15 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
     }
   });
 
+  const [dismissedAppts, setDismissedAppts] = useState<Set<string>>(() => {
+    try {
+      const arr = JSON.parse(localStorage.getItem(`dismissed_appts_${user?.id}`) || "[]");
+      return new Set(arr);
+    } catch {
+      return new Set();
+    }
+  });
+
   const apptsQ = useQuery({
     queryKey: ["broker-past-appts", user?.id],
     queryFn: async () => {
@@ -181,8 +190,8 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
   });
 
   const pendingAppts = useMemo(() =>
-    (apptsQ.data ?? []).filter((a) => !(linkedIdsQ.data ?? []).includes(a.id)),
-    [apptsQ.data, linkedIdsQ.data]
+    (apptsQ.data ?? []).filter((a) => !(linkedIdsQ.data ?? []).includes(a.id) && !dismissedAppts.has(a.id)),
+    [apptsQ.data, linkedIdsQ.data, dismissedAppts]
   );
 
   const getShiftSignature = (s: any) => `${s.date}_${s.start_time}_${s.end_time}_${s.notes || ""}`;
@@ -268,6 +277,19 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
     localStorage.setItem(`seen_shifts_${user.id}`, JSON.stringify(next));
   };
 
+  const handleClearAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextShifts = { ...seenShifts };
+    pendingShifts.forEach(s => { nextShifts[s.id] = getShiftSignature(s); });
+    setSeenShifts(nextShifts);
+    localStorage.setItem(`seen_shifts_${user.id}`, JSON.stringify(nextShifts));
+
+    const nextDismissed = new Set(dismissedAppts);
+    pendingAppts.forEach(a => nextDismissed.add(a.id));
+    setDismissedAppts(nextDismissed);
+    localStorage.setItem(`dismissed_appts_${user.id}`, JSON.stringify([...nextDismissed]));
+  };
+
   return (
     <div className="relative flex-shrink-0">
       <button onClick={() => setOpen(!open)} className="relative p-2 text-white/70 hover:text-white transition-colors">
@@ -285,9 +307,9 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
           <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-border z-50 overflow-hidden flex flex-col max-h-[400px]">
             <div className="px-4 py-3 border-b border-border bg-[var(--surface)] flex justify-between items-center">
               <h3 className="font-semibold text-[var(--navy)] text-sm">Notificações</h3>
-              {pendingShifts.length > 0 && (
-                <button onClick={handleMarkAllShiftsAsRead} className="text-[10px] font-medium text-muted-foreground hover:text-[var(--navy)] underline">
-                  Marcar escalas como lidas
+              {totalPending > 0 && (
+                <button onClick={handleClearAll} className="text-[10px] font-medium text-muted-foreground hover:text-[var(--navy)] underline">
+                  Limpar tudo
                 </button>
               )}
             </div>
