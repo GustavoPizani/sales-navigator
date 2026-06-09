@@ -21,6 +21,7 @@ export type Database = {
           broker_id: string
           appointment_id: string | null
           data: string
+          data_atualizacao: string | null
           nome_cliente: string | null
           id_cliente: string | null
           telefone: string | null
@@ -40,6 +41,7 @@ export type Database = {
           broker_id: string
           appointment_id?: string | null
           data: string
+          data_atualizacao?: string | null
           nome_cliente?: string | null
           id_cliente?: string | null
           telefone?: string | null
@@ -59,6 +61,7 @@ export type Database = {
           broker_id?: string
           appointment_id?: string | null
           data?: string
+          data_atualizacao?: string | null
           nome_cliente?: string | null
           id_cliente?: string | null
           telefone?: string | null

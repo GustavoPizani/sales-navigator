@@ -32,10 +32,11 @@ export function useDashboardData(atendimentos: any[], vendas: any[] = []) {
     atendimentos.forEach((a) => {
       if (a.status === "Em Tratativa") emTratativasSum += Number(a.valor) || 0;
 
-      const m = a.data.slice(0, 7);
+      const refDate = (!a.venda && a.data_atualizacao) ? a.data_atualizacao : a.data;
+      const m = refDate.slice(0, 7);
       if (!monthlyAtend[m]) {
         monthlyAtend[m] = {
-          name: format(parseISO(a.data), "MMM/yy", { locale: ptBR }),
+          name: format(parseISO(refDate), "MMM/yy", { locale: ptBR }),
           sortKey: m,
           Sim1: 0, Não1: 0,
           Online: 0, Salão: 0,

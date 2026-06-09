@@ -412,13 +412,14 @@ function AdminDashboard({ user }: { user: any }) {
   const { data: atendimentos = [], isPending } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, user?.id, teamBrokerIds.join(",")],
     queryFn: async () => {
+      const dateFilter = `and(data.gte.${filters.appliedStartDate},data.lte.${filters.appliedEndDate}),and(data_atualizacao.gte.${filters.appliedStartDate},data_atualizacao.lte.${filters.appliedEndDate},venda.eq.false)`;
+
       if (filters.appliedBrokerId !== "all") {
         const { data, error } = await supabase
           .from("atendimentos")
           .select("*, profiles(full_name, color)")
           .eq("broker_id", filters.appliedBrokerId)
-          .gte("data", filters.appliedStartDate)
-          .lte("data", filters.appliedEndDate);
+          .or(dateFilter);
         if (error) throw error;
         return data ?? [];
       }
@@ -429,8 +430,7 @@ function AdminDashboard({ user }: { user: any }) {
         .from("atendimentos")
         .select("*, profiles(full_name, color)")
         .in("broker_id", teamBrokerIds)
-        .gte("data", filters.appliedStartDate)
-        .lte("data", filters.appliedEndDate);
+        .or(dateFilter);
       if (error) throw error;
       return data ?? [];
     },
@@ -1044,6 +1044,7 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit, onRegistra
   const [temperatura, setTemperatura] = useState(atendimento.temperatura ?? "");
   const [status, setStatus] = useState(atendimento.status ?? "");
   const [valor, setValor] = useState(atendimento.valor ? String(atendimento.valor) : "");
+  const dataAtualizacao = (atendimento.data_atualizacao ?? "") as string;
 
   const projectsQ = useQuery({
     queryKey: ["projects-active"],
@@ -1057,6 +1058,7 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit, onRegistra
 
   const save = useMutation({
     mutationFn: async () => {
+      const isVenda = venda || atendimento.venda;
       const { error } = await supabase
         .from("atendimentos")
         .update({
@@ -1071,6 +1073,7 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit, onRegistra
           temperatura: temperatura || null,
           status: status || null,
           valor: valor ? parseFloat(valor.replace(",", ".")) : null,
+          data_atualizacao: !isVenda ? (dataAtualizacao || format(new Date(), "yyyy-MM-dd")) : null,
         })
         .eq("id", atendimento.id);
       if (error) throw error;
@@ -1116,9 +1119,17 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit, onRegistra
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           <div className="p-4 rounded-xl bg-gray-50 border border-border space-y-2 mb-2">
             <div className="flex justify-between items-center">
-              <span className="text-xs text-muted-foreground font-medium">Data</span>
+              <span className="text-xs text-muted-foreground font-medium">Cadastro</span>
               <span className="text-sm font-medium text-[var(--navy)]">{atendimento.data ? format(new Date(atendimento.data + "T00:00:00"), "dd/MM/yyyy", { locale: ptBR }) : ""}</span>
             </div>
+            {!venda && (
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-muted-foreground font-medium">Atualização</span>
+                <span className="text-sm font-medium text-[var(--navy)]">
+                  {dataAtualizacao ? format(new Date(dataAtualizacao + "T00:00:00"), "dd/MM/yyyy", { locale: ptBR }) : "—"}
+                </span>
+              </div>
+            )}
             {atendimento.setor && (
               <div className="flex justify-between items-center mt-2">
                 <span className="text-xs text-muted-foreground font-medium">Setor</span>
@@ -1324,8 +1335,7 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
           .maybeSingle();
 
         if (existing && !existing.venda && existing.status !== "Contrato Assinado") {
-          // Preserve the original date so it doesn't move outside the dashboard filter
-          const { error } = await supabase.from("atendimentos").update({ ...payload, data: existing.data }).eq("id", existing.id);
+          const { error } = await supabase.from("atendimentos").update({ ...payload, data: existing.data, data_atualizacao: format(new Date(), "yyyy-MM-dd") }).eq("id", existing.id);
           if (error) throw error;
           return;
         }
