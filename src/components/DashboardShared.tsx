@@ -248,6 +248,7 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowCont
 
   const tableCols = [
     { key: "data", label: "Data" },
+    { key: "data_atualizacao", label: "Atualização" },
     { key: "id_cliente", label: "Id do Cliente" },
     { key: "nome_cliente", label: "Nome Cliente" },
     { key: "telefone", label: "Telefone" },
@@ -314,7 +315,7 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowCont
           <tbody>
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={isAdmin ? 14 : 13} className="px-4 py-8 text-center text-muted-foreground">Nenhum atendimento encontrado para o período selecionado.</td>
+                <td colSpan={isAdmin ? 15 : 14} className="px-4 py-8 text-center text-muted-foreground">Nenhum atendimento encontrado para o período selecionado.</td>
               </tr>
             ) : (
               paginated.map((a) => (
@@ -325,6 +326,7 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowCont
                   onContextMenu={(e) => onRowContextMenu?.(e, a)}
                 >
                   <td className="px-4 py-3 whitespace-nowrap">{format(parseISO(a.data), "dd/MM/yyyy")}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{a.data_atualizacao ? format(parseISO(a.data_atualizacao), "dd/MM/yyyy") : "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{a.id_cliente || "—"}</td>
                   <td className="px-4 py-3 font-medium text-[var(--navy)]">{a.nome_cliente}</td>
                   <td className="px-4 py-3 text-muted-foreground whitespace-nowrap min-w-[140px]">{a.telefone || "—"}</td>
@@ -349,7 +351,7 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowCont
           {paginated.length > 0 && (
             <tfoot className="bg-[var(--surface)] text-[var(--navy)] font-bold text-xs border-t-2 border-[var(--navy)]">
               <tr>
-                <td colSpan={7} className="px-4 py-3 text-right uppercase">Totais:</td>
+                <td colSpan={8} className="px-4 py-3 text-right uppercase">Totais:</td>
                 <td className="px-4 py-3 text-center">{footerTotals.visitas}</td>
                 <td className="px-4 py-3 text-center">{footerTotals.vendas}</td>
                 <td colSpan={2}></td>

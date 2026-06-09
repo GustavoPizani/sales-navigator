@@ -410,27 +410,28 @@ function AdminDashboard({ user }: { user: any }) {
   }, [brokersQ.data, brokerSearch]);
 
   const { data: atendimentos = [], isPending } = useQuery({
-    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, user?.id, teamBrokerIds.join(",")],
+    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, filters.filterMode, user?.id, teamBrokerIds.join(",")],
     queryFn: async () => {
-      const dateFilter = `and(data.gte.${filters.appliedStartDate},data.lte.${filters.appliedEndDate}),and(data_atualizacao.gte.${filters.appliedStartDate},data_atualizacao.lte.${filters.appliedEndDate},venda.eq.false)`;
+      const byAtualizacao = filters.filterMode === "atualizacao";
+      const brokerIds = filters.appliedBrokerId !== "all" ? [filters.appliedBrokerId] : teamBrokerIds;
+      if (brokerIds.length === 0) return [];
 
-      if (filters.appliedBrokerId !== "all") {
-        const { data, error } = await supabase
-          .from("atendimentos")
-          .select("*, profiles(full_name, color)")
-          .eq("broker_id", filters.appliedBrokerId)
-          .or(dateFilter);
-        if (error) throw error;
-        return data ?? [];
-      }
-
-      if (teamBrokerIds.length === 0) return [];
-
-      const { data, error } = await supabase
+      let q = supabase
         .from("atendimentos")
         .select("*, profiles(full_name, color)")
-        .in("broker_id", teamBrokerIds)
-        .or(dateFilter);
+        .in("broker_id", brokerIds);
+
+      if (byAtualizacao) {
+        q = q
+          .eq("venda", false)
+          .gte("data_atualizacao", filters.appliedStartDate)
+          .lte("data_atualizacao", filters.appliedEndDate);
+      } else {
+        const dateFilter = `and(data.gte.${filters.appliedStartDate},data.lte.${filters.appliedEndDate}),and(data_atualizacao.gte.${filters.appliedStartDate},data_atualizacao.lte.${filters.appliedEndDate},venda.eq.false)`;
+        q = q.or(dateFilter);
+      }
+
+      const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },
@@ -624,14 +625,15 @@ function AdminDashboard({ user }: { user: any }) {
       </div>
 
       {/* FILTER BAR */}
-      <div className="bg-white px-4 py-3 border-b border-border z-20 shadow-sm flex items-center gap-3 flex-wrap flex-shrink-0">
-        <DateRangePicker
-          startDate={filters.startDate}
-          endDate={filters.endDate}
-          onApply={filters.applyDateRange}
-          className="flex-1 min-w-[220px]"
-        />
-        {isAdmin && (
+      <div className="bg-white px-4 pt-3 pb-2 border-b border-border z-20 shadow-sm flex-shrink-0">
+        <div className="flex items-center gap-3 flex-wrap">
+          <DateRangePicker
+            startDate={filters.startDate}
+            endDate={filters.endDate}
+            onApply={filters.applyDateRange}
+            className="flex-1 min-w-[220px]"
+          />
+          {isAdmin && (
           <div className="relative flex-1 min-w-[180px]">
             <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="w-full h-10 px-3 rounded-lg border border-border text-sm flex items-center justify-between bg-white text-left">
               {selectedBroker ? (
@@ -666,6 +668,24 @@ function AdminDashboard({ user }: { user: any }) {
             )}
           </div>
         )}
+        </div>
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-xs text-muted-foreground font-medium">Data por:</span>
+          <div className="flex h-8 rounded-lg border border-border overflow-hidden text-xs font-medium">
+            <button
+              onClick={() => filters.setFilterMode("cadastro")}
+              className={`px-3 transition-colors ${filters.filterMode === "cadastro" ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground hover:bg-[var(--surface)]"}`}
+            >
+              Cadastro
+            </button>
+            <button
+              onClick={() => filters.setFilterMode("atualizacao")}
+              className={`px-3 transition-colors border-l border-border ${filters.filterMode === "atualizacao" ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground hover:bg-[var(--surface)]"}`}
+            >
+              Atualização
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="px-4 py-3 flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-border bg-white z-10 flex-shrink-0">
@@ -842,14 +862,20 @@ function BrokerDashboard({ user }: { user: any }) {
   const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume">(null);
 
   const { data: atendimentos = [], isPending } = useQuery({
-    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
+    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.filterMode, "broker", user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const byAtualizacao = filters.filterMode === "atualizacao";
+      let q = supabase
         .from("atendimentos")
         .select("*, profiles(full_name, color)")
-        .eq("broker_id", user!.id)
-        .gte("data", filters.appliedStartDate)
-        .lte("data", filters.appliedEndDate);
+        .eq("broker_id", user!.id);
+      if (byAtualizacao) {
+        q = q.eq("venda", false).gte("data_atualizacao", filters.appliedStartDate).lte("data_atualizacao", filters.appliedEndDate);
+      } else {
+        const dateFilter = `and(data.gte.${filters.appliedStartDate},data.lte.${filters.appliedEndDate}),and(data_atualizacao.gte.${filters.appliedStartDate},data_atualizacao.lte.${filters.appliedEndDate},venda.eq.false)`;
+        q = q.or(dateFilter);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },
@@ -918,8 +944,25 @@ function BrokerDashboard({ user }: { user: any }) {
             setInsertOpen(true);
           }} />} 
         />
-      <div className="bg-white px-4 py-3 border-b border-border sticky top-[56px] z-20 shadow-sm flex items-center gap-3 flex-wrap">
-        <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="flex-1 min-w-[220px]" />
+      <div className="bg-white px-4 pt-3 pb-2 border-b border-border sticky top-[56px] z-20 shadow-sm">
+        <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="w-full" />
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-xs text-muted-foreground font-medium">Data por:</span>
+          <div className="flex h-8 rounded-lg border border-border overflow-hidden text-xs font-medium">
+            <button
+              onClick={() => filters.setFilterMode("cadastro")}
+              className={`px-3 transition-colors ${filters.filterMode === "cadastro" ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground hover:bg-[var(--surface)]"}`}
+            >
+              Cadastro
+            </button>
+            <button
+              onClick={() => filters.setFilterMode("atualizacao")}
+              className={`px-3 transition-colors border-l border-border ${filters.filterMode === "atualizacao" ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground hover:bg-[var(--surface)]"}`}
+            >
+              Atualização
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="px-4 pt-4 pb-8 space-y-6">

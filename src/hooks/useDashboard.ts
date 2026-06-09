@@ -6,6 +6,7 @@ export function useDashboardFilters() {
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [brokerId, setBrokerId] = useState("all");
+  const [filterMode, setFilterMode] = useState<"cadastro" | "atualizacao">("cadastro");
 
   const applyDateRange = (start: string, end: string) => {
     setStartDate(start);
@@ -16,6 +17,7 @@ export function useDashboardFilters() {
     startDate, setStartDate,
     endDate, setEndDate,
     brokerId, setBrokerId,
+    filterMode, setFilterMode,
     appliedStartDate: startDate,
     appliedEndDate: endDate,
     appliedBrokerId: brokerId,
