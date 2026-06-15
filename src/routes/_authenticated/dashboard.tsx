@@ -70,11 +70,13 @@ function KpiDetailModal({
   items,
   onClose,
   isAdmin,
+  onItemClick,
 }: {
   title: string;
-  items: { cliente: string; corretor?: string; unidade: string; valor?: number }[];
+  items: { cliente: string; corretor?: string; unidade: string; valor?: number; atendimento?: any }[];
   onClose: () => void;
   isAdmin?: boolean;
+  onItemClick?: (atendimento: any) => void;
 }) {
   return (
     <div className="fixed inset-0 z-[70] bg-black/60 flex items-end sm:items-center justify-center" onClick={onClose}>
@@ -95,7 +97,11 @@ function KpiDetailModal({
           ) : (
             <div className="divide-y divide-border">
               {items.map((item, i) => (
-                <div key={i} className="px-5 py-3">
+                <div
+                  key={i}
+                  className={`px-5 py-3 ${onItemClick && item.atendimento ? "cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors" : ""}`}
+                  onClick={() => onItemClick && item.atendimento && onItemClick(item.atendimento)}
+                >
                   <div className="font-semibold text-[var(--navy)] text-sm">{item.cliente}</div>
                   <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-0.5">
                     {isAdmin && item.corretor && (
@@ -513,6 +519,7 @@ function AdminDashboard({ user }: { user: any }) {
         corretor: a.profiles?.full_name || brokersById[a.broker_id] || "—",
         unidade: a.produto || "—",
         valor: Number(a.valor) || 0,
+        atendimento: a,
       })),
     [atendimentos, brokersById]
   );
@@ -867,6 +874,7 @@ function AdminDashboard({ user }: { user: any }) {
           }
           items={kpiModal === "tratativas" ? tratativasModalItems : vendasModalItems}
           onClose={() => setKpiModal(null)}
+          onItemClick={kpiModal === "tratativas" ? (a) => { setKpiModal(null); setEditingAtendimento(a); } : undefined}
         />
       )}
     </div>
@@ -947,6 +955,7 @@ function BrokerDashboard({ user }: { user: any }) {
         cliente: a.nome_cliente || "—",
         unidade: a.produto || "—",
         valor: Number(a.valor) || 0,
+        atendimento: a,
       })),
     [atendimentos]
   );
@@ -1089,6 +1098,7 @@ function BrokerDashboard({ user }: { user: any }) {
           }
           items={kpiModal === "tratativas" ? tratativasModalItems : vendasModalItems}
           onClose={() => setKpiModal(null)}
+          onItemClick={kpiModal === "tratativas" ? (a) => { setKpiModal(null); setEditingAtendimento(a); } : undefined}
         />
       )}
     </div>
