@@ -495,9 +495,11 @@ function ProjectCard({
   const docsQ = useQuery({
     queryKey: ["project-docs", project.id],
     queryFn: async () => {
-      const [{ data: tabelaList }, { data: bookList }] = await Promise.all([
+      const [{ data: tabelaList }, { data: bookList }, { data: condominioList }, { data: iptuList }] = await Promise.all([
         supabase.storage.from("project-docs").list(`${project.id}/tabela`, { limit: 20 }),
         supabase.storage.from("project-docs").list(`${project.id}/book`, { limit: 20 }),
+        supabase.storage.from("project-docs").list(`${project.id}/condominio`, { limit: 20 }),
+        supabase.storage.from("project-docs").list(`${project.id}/iptu`, { limit: 20 }),
       ]);
 
       const sign = async (path: string) => {
@@ -505,26 +507,27 @@ function ProjectCard({
         return data?.signedUrl ?? null;
       };
 
-      const tabelas = await Promise.all(
-        (tabelaList ?? []).map(async (f) => ({
+      const mapFiles = (list: typeof tabelaList, folder: string) =>
+        Promise.all((list ?? []).map(async (f) => ({
           name: f.name,
-          url: await sign(`${project.id}/tabela/${f.name}`),
-        }))
-      );
-      const books = await Promise.all(
-        (bookList ?? []).map(async (f) => ({
-          name: f.name,
-          url: await sign(`${project.id}/book/${f.name}`),
-        }))
-      );
-      return { tabelas, books };
+          url: await sign(`${project.id}/${folder}/${f.name}`),
+        })));
+
+      const [tabelas, books, condominios, iptus] = await Promise.all([
+        mapFiles(tabelaList, "tabela"),
+        mapFiles(bookList, "book"),
+        mapFiles(condominioList, "condominio"),
+        mapFiles(iptuList, "iptu"),
+      ]);
+      return { tabelas, books, condominios, iptus };
     },
     enabled: expanded,
     staleTime: 30 * 60 * 1000,
   });
 
   const hasDocs =
-    (docsQ.data?.tabelas.length ?? 0) > 0 || (docsQ.data?.books.length ?? 0) > 0;
+    (docsQ.data?.tabelas.length ?? 0) > 0 || (docsQ.data?.books.length ?? 0) > 0 ||
+    (docsQ.data?.condominios.length ?? 0) > 0 || (docsQ.data?.iptus.length ?? 0) > 0;
 
   return (
     <div className={`bg-white rounded-xl border border-border ${!project.is_active ? "opacity-60" : ""}`}>
@@ -651,6 +654,30 @@ function ProjectCard({
                     >
                       <Eye size={12} />
                       {docsQ.data.books.length > 1 ? `Book ${idx + 1}` : "Book"}
+                    </button>
+                  ) : null
+                )}
+                {docsQ.data.condominios.map((doc, idx) =>
+                  doc.url ? (
+                    <button
+                      key={idx}
+                      onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
+                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
+                    >
+                      <Eye size={12} />
+                      {docsQ.data.condominios.length > 1 ? `Condomínio ${idx + 1}` : "Condomínio"}
+                    </button>
+                  ) : null
+                )}
+                {docsQ.data.iptus.map((doc, idx) =>
+                  doc.url ? (
+                    <button
+                      key={idx}
+                      onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
+                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-colors"
+                    >
+                      <Eye size={12} />
+                      {docsQ.data.iptus.length > 1 ? `IPTU ${idx + 1}` : "IPTU"}
                     </button>
                   ) : null
                 )}
