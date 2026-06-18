@@ -58,13 +58,13 @@ type ClassifiedFile = {
   file: File;
   projectId: string | null;
   projectName: string;
-  type: "tabela" | "book";
+  type: "tabela" | "book" | "condominio" | "iptu";
 };
 
 type ConflictInfo = {
   projectId: string;
   projectName: string;
-  type: "tabela" | "book";
+  type: "tabela" | "book" | "condominio" | "iptu";
   existingFiles: string[];
 };
 
@@ -219,7 +219,7 @@ async function classifyFilenamesWithGroq(
         },
         {
           role: "user",
-          content: `Projetos imobiliários existentes:\n${projects.map(p => `- "${p.name}" (ID: ${p.id})`).join("\n")}\n\nArquivos para classificar:\n${files.map((f, i) => `${i + 1}. ${f.name}`).join("\n")}\n\nPara cada arquivo identifique:\n1. O projeto ao qual pertence (busca fuzzy pelo nome no arquivo)\n2. Se é "tabela" (planilha/tabela de preços/tabelão) ou "book" (apresentação/book do produto/material de venda)\n\nRetorne:\n{\n  "files": [\n    {\n      "filename": "nome_exato.pdf",\n      "project_id": "uuid-do-projeto-ou-null",\n      "project_name": "Nome do Projeto",\n      "type": "tabela"\n    }\n  ]\n}`,
+          content: `Projetos imobiliários existentes:\n${projects.map(p => `- "${p.name}" (ID: ${p.id})`).join("\n")}\n\nArquivos para classificar:\n${files.map((f, i) => `${i + 1}. ${f.name}`).join("\n")}\n\nPara cada arquivo identifique:\n1. O projeto ao qual pertence (busca fuzzy pelo nome no arquivo)\n2. O tipo: "tabela" (planilha/tabela de preços/tabelão), "book" (apresentação/book do produto/material de venda), "condominio" (boleto/previsão de condomínio) ou "iptu" (boleto/carnê de IPTU)\n\nRetorne:\n{\n  "files": [\n    {\n      "filename": "nome_exato.pdf",\n      "project_id": "uuid-do-projeto-ou-null",\n      "project_name": "Nome do Projeto",\n      "type": "tabela"\n    }\n  ]\n}`,
         },
       ],
       temperature: 0.1,
@@ -240,7 +240,7 @@ async function classifyFilenamesWithGroq(
       file,
       projectId: validProject?.id ?? null,
       projectName: validProject?.name ?? "Não identificado",
-      type: (match?.type === "book" ? "book" : "tabela") as "tabela" | "book",
+      type: (["tabela", "book", "condominio", "iptu"].includes(match?.type) ? match.type : "tabela") as ClassifiedFile["type"],
     };
   });
 }
@@ -1129,10 +1129,12 @@ function DocsUploadModal({
                       <select
                         className="w-full h-9 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm"
                         value={cf.type}
-                        onChange={(e) => updateClassified(i, { type: e.target.value as "tabela" | "book" })}
+                        onChange={(e) => updateClassified(i, { type: e.target.value as ClassifiedFile["type"] })}
                       >
                         <option value="tabela">Tabela</option>
                         <option value="book">Book</option>
+                        <option value="condominio">Condomínio</option>
+                        <option value="iptu">IPTU</option>
                       </select>
                     </div>
                   </div>
@@ -1161,9 +1163,12 @@ function DocsUploadModal({
                       </p>
                     </div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                      c.type === "tabela" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                      c.type === "tabela" ? "bg-amber-100 text-amber-700"
+                        : c.type === "book" ? "bg-blue-100 text-blue-700"
+                        : c.type === "condominio" ? "bg-green-100 text-green-700"
+                        : "bg-purple-100 text-purple-700"
                     }`}>
-                      {c.type === "tabela" ? "Tabela" : "Book"}
+                      {{ tabela: "Tabela", book: "Book", condominio: "Condomínio", iptu: "IPTU" }[c.type]}
                     </span>
                   </div>
                 ))}
