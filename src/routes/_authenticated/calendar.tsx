@@ -68,18 +68,37 @@ function CalendarPage() {
     },
   });
 
-  const byDay = useMemo(() => {
-    const map: Record<string, any[]> = {};
-    (apptsQ.data ?? []).forEach((a) => { (map[a.date] ||= []).push(a); });
-    return map;
-  }, [apptsQ.data]);
-
   const brokerForAppt = (a: any) => {
     if (a.client_id && brokerByClientQ.data?.[a.client_id]) {
       return brokerByClientQ.data[a.client_id];
     }
     return (brokersQ.data ?? []).find((p) => p.id === a.owner_id);
   };
+
+  const teamIds = useMemo(() => {
+    const s = new Set(allBrokerIds);
+    if (profile?.id) s.add(profile.id);
+    return s;
+  }, [allBrokerIds, profile?.id]);
+
+  const filteredAppts = useMemo(() => {
+    return (apptsQ.data ?? []).filter((a) => {
+      if (filterBrokers.length > 0) {
+        const broker = brokerForAppt(a);
+        return broker ? filterBrokers.includes(broker.id) : false;
+      }
+      const broker = brokerForAppt(a);
+      if (broker && teamIds.has(broker.id)) return true;
+      return teamIds.has(a.owner_id);
+    });
+  }, [apptsQ.data, brokerByClientQ.data, filterBrokers, teamIds]);
+
+  const byDay = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    filteredAppts.forEach((a) => { (map[a.date] ||= []).push(a); });
+    return map;
+  }, [filteredAppts]);
+
   const dayAppts = (byDay[selectedDay] ?? []).sort((a, b) => a.start_time.localeCompare(b.start_time));
 
   const numWeeks = days.length / 7;
