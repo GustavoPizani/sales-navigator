@@ -19,7 +19,7 @@ export const Route = createFileRoute("/_authenticated/calendar")({
 const DAY_INITIALS = ["D", "S", "T", "Q", "Q", "S", "S"];
 
 function CalendarPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
   const [month, setMonth] = useState(startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -35,17 +35,36 @@ function CalendarPage() {
 
   const brokersQ = useBrokers();
   const allBrokerIds = useMemo(() => (brokersQ.data ?? []).map((p) => p.id), [brokersQ.data]);
-  const effectiveFilter = filterBrokers.length ? filterBrokers : allBrokerIds;
 
   const apptsQ = useQuery({
-    queryKey: ["team-appts", format(monthStart, "yyyy-MM"), effectiveFilter.join(",")],
-    enabled: allBrokerIds.length > 0,
+    queryKey: ["team-appts", format(monthStart, "yyyy-MM"), filterBrokers.join(",")],
     queryFn: async () => {
       let q = supabase.from("appointments").select("*")
-        .gte("date", format(gridStart, "yyyy-MM-dd")).lte("date", format(gridEnd, "yyyy-MM-dd"))
-        .in("owner_id", effectiveFilter);
+        .gte("date", format(gridStart, "yyyy-MM-dd")).lte("date", format(gridEnd, "yyyy-MM-dd"));
+      if (filterBrokers.length > 0) {
+        q = q.in("owner_id", filterBrokers);
+      }
       const { data } = await q;
       return data ?? [];
+    },
+  });
+
+  const clientIds = useMemo(() => {
+    return (apptsQ.data ?? []).map((a) => a.client_id).filter(Boolean) as string[];
+  }, [apptsQ.data]);
+
+  const brokerByClientQ = useQuery({
+    queryKey: ["appt-client-brokers", clientIds.join(",")],
+    enabled: clientIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("atendimentos")
+        .select("id_cliente, broker_id, profiles!atendimentos_broker_id_fkey(id,full_name,color)")
+        .in("id_cliente", clientIds);
+      const map: Record<string, any> = {};
+      (data ?? []).forEach((r: any) => {
+        if (r.id_cliente && r.profiles) map[r.id_cliente] = r.profiles;
+      });
+      return map;
     },
   });
 
@@ -55,7 +74,12 @@ function CalendarPage() {
     return map;
   }, [apptsQ.data]);
 
-  const profileById = (id: string) => (brokersQ.data ?? []).find((p) => p.id === id);
+  const brokerForAppt = (a: any) => {
+    if (a.client_id && brokerByClientQ.data?.[a.client_id]) {
+      return brokerByClientQ.data[a.client_id];
+    }
+    return (brokersQ.data ?? []).find((p) => p.id === a.owner_id);
+  };
   const dayAppts = (byDay[selectedDay] ?? []).sort((a, b) => a.start_time.localeCompare(b.start_time));
 
   const numWeeks = days.length / 7;
@@ -99,7 +123,7 @@ function CalendarPage() {
           {days.map((d) => {
             const ds = format(d, "yyyy-MM-dd");
             const inMonth = d.getMonth() === month.getMonth();
-            const dots = (byDay[ds] ?? []).map((a) => profileById(a.owner_id)?.color).filter(Boolean) as string[];
+            const dots = (byDay[ds] ?? []).map((a) => brokerForAppt(a)?.color).filter(Boolean) as string[];
             const uniq = Array.from(new Set(dots)).slice(0, 4);
             const isSel = ds === selectedDay;
             return (
@@ -124,7 +148,7 @@ function CalendarPage() {
         <DayModal
           date={selectedDay}
           appts={dayAppts}
-          profileById={profileById}
+          brokerForAppt={brokerForAppt}
           onClose={() => setDayModalOpen(false)}
           onEdit={(a) => { setEditing(a); setDayModalOpen(false); }}
           onAddNew={() => { setEditing("new"); setDayModalOpen(false); }}
@@ -136,10 +160,10 @@ function CalendarPage() {
   );
 }
 
-function DayModal({ date, appts, profileById, onClose, onEdit, onAddNew }: {
+function DayModal({ date, appts, brokerForAppt, onClose, onEdit, onAddNew }: {
   date: string;
   appts: any[];
-  profileById: (id: string) => any;
+  brokerForAppt: (a: any) => any;
   onClose: () => void;
   onEdit: (a: any) => void;
   onAddNew: () => void;
@@ -158,13 +182,13 @@ function DayModal({ date, appts, profileById, onClose, onEdit, onAddNew }: {
             <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento neste dia.</p>
           )}
           {appts.map((a) => {
-            const owner = profileById(a.owner_id);
+            const broker = brokerForAppt(a);
             return (
               <button key={a.id} onClick={() => onEdit(a)} className="w-full text-left bg-[var(--surface)] rounded-xl p-3 border border-border flex items-start gap-3">
-                {owner && <Avatar name={owner.full_name} color={owner.color} size={36} />}
+                {broker && <Avatar name={broker.full_name} color={broker.color} size={36} />}
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-[var(--navy)] truncate">{a.title}</p>
-                  <p className="text-xs text-muted-foreground">{a.start_time.slice(0,5)}–{a.end_time.slice(0,5)} · {owner?.full_name}</p>
+                  <p className="text-xs text-muted-foreground">{a.start_time.slice(0,5)}–{a.end_time.slice(0,5)} · {broker?.full_name}</p>
                   {a.client_name && <p className="text-xs text-muted-foreground">Cliente: {a.client_name}</p>}
                 </div>
               </button>
