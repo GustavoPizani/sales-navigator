@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, MapPin, Edit2, EyeOff, Eye, Sparkles, Upload, X,
   Loader2, CheckSquare, Square, ChevronDown, Files, Download, ZoomIn, ZoomOut,
+  Search, ArrowUpAZ, ArrowDownAZ, Share2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -84,6 +85,31 @@ function entregaBadge(entrega?: string) {
   if (entrega === "PRONTO") return "bg-green-100 text-green-700";
   if (entrega.toLowerCase().includes("lançamento")) return "bg-purple-100 text-purple-700";
   return "bg-amber-100 text-amber-700";
+}
+
+async function sharePdf(url: string, filename: string): Promise<void> {
+  const safeName = filename.endsWith(".pdf") ? filename : filename + ".pdf";
+  const toastId = toast.loading("Preparando PDF…");
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const file = new File([blob], safeName, { type: "application/pdf" });
+    toast.dismiss(toastId);
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: safeName });
+    } else if (navigator.share) {
+      await navigator.share({ url, title: safeName });
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = safeName;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  } catch (err: any) {
+    toast.dismiss(toastId);
+    if (err?.name !== "AbortError") toast.error("Não foi possível compartilhar.");
+  }
 }
 
 function normalizeProjectName(s: string): string {
@@ -360,6 +386,8 @@ function ProjectsPage() {
   const [editing, setEditing] = useState<Project | "new" | null>(null);
   const [importing, setImporting] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortAZ, setSortAZ] = useState<"none" | "asc" | "desc">("none");
   const qc = useQueryClient();
 
   const projectsQ = useQuery({
@@ -384,6 +412,24 @@ function ProjectsPage() {
       return map;
     },
   });
+
+  const displayedProjects = (() => {
+    let list = projectsQ.data ?? [];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      list = list.filter((p) =>
+        p.name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").includes(q)
+      );
+    }
+    if (sortAZ !== "none") {
+      list = [...list].sort((a, b) =>
+        sortAZ === "asc"
+          ? a.name.localeCompare(b.name, "pt-BR")
+          : b.name.localeCompare(a.name, "pt-BR")
+      );
+    }
+    return list;
+  })();
 
   return (
     <div className="pb-nav">
@@ -418,15 +464,45 @@ function ProjectsPage() {
         }
       />
 
-      <div className="px-4 pt-4 space-y-2">
-        {(projectsQ.data ?? []).length === 0 && (
+      <div className="px-4 pt-3 flex gap-2 items-center">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar imóvel..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-8 py-2 text-sm rounded-xl border border-border bg-surface focus:outline-none focus:ring-2 focus:ring-[var(--gold)]/40"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setSortAZ((s) => s === "none" ? "asc" : s === "asc" ? "desc" : "none")}
+          title={sortAZ === "asc" ? "A → Z (clique para Z → A)" : sortAZ === "desc" ? "Z → A (clique para desativar)" : "Ordenar A → Z"}
+          className={`p-2 rounded-xl border transition-colors ${sortAZ !== "none" ? "border-[var(--gold)] text-[var(--gold)] bg-[var(--gold)]/10" : "border-border text-muted-foreground"}`}
+        >
+          {sortAZ === "desc" ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
+        </button>
+      </div>
+
+      <div className="px-4 pt-3 space-y-2">
+        {displayedProjects.length === 0 && (
           <p className="text-center text-muted-foreground py-12 text-sm">
-            {isAdmin
+            {searchQuery
+              ? `Nenhum imóvel encontrado para "${searchQuery}".`
+              : isAdmin
               ? "Nenhum imóvel. Toque ✨ para importar do tabelão ou + para adicionar manualmente."
               : "Nenhum imóvel disponível no momento."}
           </p>
         )}
-        {(projectsQ.data ?? []).map((p) => (
+        {displayedProjects.map((p) => (
           <ProjectCard
             key={p.id}
             project={p}
@@ -635,50 +711,86 @@ function ProjectCard({
               <div className="flex flex-wrap gap-2">
                 {docsQ.data.tabelas.map((doc, idx) =>
                   doc.url ? (
-                    <button
-                      key={idx}
-                      onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
-                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
-                    >
-                      <Eye size={12} />
-                      {docsQ.data.tabelas.length > 1 ? `Tabela ${idx + 1}` : "Tabela"}
-                    </button>
+                    <div key={idx} className="flex items-stretch rounded-lg border border-amber-200 overflow-hidden">
+                      <button
+                        onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
+                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                      >
+                        <Eye size={12} />
+                        {docsQ.data.tabelas.length > 1 ? `Tabela ${idx + 1}` : "Tabela"}
+                      </button>
+                      <div className="w-px bg-amber-200" />
+                      <button
+                        onClick={() => sharePdf(doc.url!, doc.name)}
+                        title="Compartilhar"
+                        className="flex items-center px-2 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                      >
+                        <Share2 size={12} />
+                      </button>
+                    </div>
                   ) : null
                 )}
                 {docsQ.data.books.map((doc, idx) =>
                   doc.url ? (
-                    <button
-                      key={idx}
-                      onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
-                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
-                    >
-                      <Eye size={12} />
-                      {docsQ.data.books.length > 1 ? `Book ${idx + 1}` : "Book"}
-                    </button>
+                    <div key={idx} className="flex items-stretch rounded-lg border border-blue-200 overflow-hidden">
+                      <button
+                        onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
+                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                      >
+                        <Eye size={12} />
+                        {docsQ.data.books.length > 1 ? `Book ${idx + 1}` : "Book"}
+                      </button>
+                      <div className="w-px bg-blue-200" />
+                      <button
+                        onClick={() => sharePdf(doc.url!, doc.name)}
+                        title="Compartilhar"
+                        className="flex items-center px-2 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                      >
+                        <Share2 size={12} />
+                      </button>
+                    </div>
                   ) : null
                 )}
                 {docsQ.data.condominios.map((doc, idx) =>
                   doc.url ? (
-                    <button
-                      key={idx}
-                      onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
-                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
-                    >
-                      <Eye size={12} />
-                      {docsQ.data.condominios.length > 1 ? `Condomínio ${idx + 1}` : "Condomínio"}
-                    </button>
+                    <div key={idx} className="flex items-stretch rounded-lg border border-green-200 overflow-hidden">
+                      <button
+                        onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
+                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                      >
+                        <Eye size={12} />
+                        {docsQ.data.condominios.length > 1 ? `Condomínio ${idx + 1}` : "Condomínio"}
+                      </button>
+                      <div className="w-px bg-green-200" />
+                      <button
+                        onClick={() => sharePdf(doc.url!, doc.name)}
+                        title="Compartilhar"
+                        className="flex items-center px-2 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                      >
+                        <Share2 size={12} />
+                      </button>
+                    </div>
                   ) : null
                 )}
                 {docsQ.data.iptus.map((doc, idx) =>
                   doc.url ? (
-                    <button
-                      key={idx}
-                      onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
-                      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-colors"
-                    >
-                      <Eye size={12} />
-                      {docsQ.data.iptus.length > 1 ? `IPTU ${idx + 1}` : "IPTU"}
-                    </button>
+                    <div key={idx} className="flex items-stretch rounded-lg border border-purple-200 overflow-hidden">
+                      <button
+                        onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
+                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
+                      >
+                        <Eye size={12} />
+                        {docsQ.data.iptus.length > 1 ? `IPTU ${idx + 1}` : "IPTU"}
+                      </button>
+                      <div className="w-px bg-purple-200" />
+                      <button
+                        onClick={() => sharePdf(doc.url!, doc.name)}
+                        title="Compartilhar"
+                        className="flex items-center px-2 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
+                      >
+                        <Share2 size={12} />
+                      </button>
+                    </div>
                   ) : null
                 )}
               </div>
@@ -821,6 +933,13 @@ function PdfViewerModal({
         >
           <Download size={20} />
         </a>
+        <button
+          onClick={(e) => { e.stopPropagation(); sharePdf(url, name); }}
+          className="text-white/70 p-1 flex-shrink-0"
+          title="Compartilhar PDF"
+        >
+          <Share2 size={20} />
+        </button>
       </div>
 
       {/* Cascade pages */}
