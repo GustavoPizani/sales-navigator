@@ -427,7 +427,7 @@ function AdminDashboard({ user }: { user: any }) {
   const [brokerSearch, setBrokerSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"graficos" | "corretores" | "atendimentos">("graficos");
   const [registrarVendaAtendimento, setRegistrarVendaAtendimento] = useState<any | null>(null);
-  const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume">(null);
+  const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume" | "visitas">(null);
 
   const brokersQ = useBrokers({ select: "*", includeInactive: true });
 
@@ -514,6 +514,19 @@ function AdminDashboard({ user }: { user: any }) {
   const tratativasModalItems = useMemo(() =>
     atendimentos
       .filter(a => a.status === "Em Tratativa")
+      .map(a => ({
+        cliente: a.nome_cliente || "—",
+        corretor: a.profiles?.full_name || brokersById[a.broker_id] || "—",
+        unidade: a.produto || "—",
+        valor: Number(a.valor) || 0,
+        atendimento: a,
+      })),
+    [atendimentos, brokersById]
+  );
+
+  const visitasModalItems = useMemo(() =>
+    atendimentos
+      .filter(a => a.visita)
       .map(a => ({
         cliente: a.nome_cliente || "—",
         corretor: a.profiles?.full_name || brokersById[a.broker_id] || "—",
@@ -726,7 +739,7 @@ function AdminDashboard({ user }: { user: any }) {
       <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
-          <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} />
+          <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} onClick={() => setKpiModal("visitas")} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
           <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
           <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} />
@@ -870,11 +883,12 @@ function AdminDashboard({ user }: { user: any }) {
           title={
             kpiModal === "vendas" ? `Total de Vendas (${vendasModalItems.length})` :
             kpiModal === "tratativas" ? `Em Tratativas (${tratativasModalItems.length})` :
+            kpiModal === "visitas" ? `Total de Visitas (${visitasModalItems.length})` :
             `Volume de Vendas — ${formatBRL(dbData.volumeVendas)}`
           }
-          items={kpiModal === "tratativas" ? tratativasModalItems : vendasModalItems}
+          items={kpiModal === "tratativas" ? tratativasModalItems : kpiModal === "visitas" ? visitasModalItems : vendasModalItems}
           onClose={() => setKpiModal(null)}
-          onItemClick={kpiModal === "tratativas" ? (a) => { setKpiModal(null); setEditingAtendimento(a); } : undefined}
+          onItemClick={kpiModal === "tratativas" || kpiModal === "visitas" ? (a) => { setKpiModal(null); setEditingAtendimento(a); } : undefined}
         />
       )}
     </div>
