@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
 import { AtendimentoForm } from "./dashboard";
+import { CalendarView } from "./calendar";
 
 export const Route = createFileRoute("/_authenticated/appointments")({
   component: AppointmentsPage,
@@ -54,6 +55,17 @@ const typeLabels: Record<Appt["type"], string> = {
 };
 
 function AppointmentsPage() {
+  const { user, isAdmin, isDirector } = useAuth();
+  const isManager = isAdmin || isDirector;
+
+  if (!isManager) {
+    return <CalendarView mode="own" title="Meus Agendamentos" />;
+  }
+
+  return <ManagerAppointmentsList />;
+}
+
+function ManagerAppointmentsList() {
   const { user, isAdmin, isDirector } = useAuth();
   const isManager = isAdmin || isDirector;
   const [editing, setEditing] = useState<Appt | "new" | null>(null);

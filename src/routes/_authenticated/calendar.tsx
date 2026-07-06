@@ -19,8 +19,13 @@ export const Route = createFileRoute("/_authenticated/calendar")({
 const DAY_INITIALS = ["D", "S", "T", "Q", "Q", "S", "S"];
 
 function CalendarPage() {
-  const { isAdmin, profile } = useAuth();
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  const { isAdmin, isDirector } = useAuth();
+  if (!isAdmin && !isDirector) return <Navigate to="/dashboard" replace />;
+  return <CalendarView mode="team" title="Calendário" />;
+}
+
+export function CalendarView({ mode, title }: { mode: "team" | "own"; title: string }) {
+  const { profile } = useAuth();
   const [month, setMonth] = useState(startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterBrokers, setFilterBrokers] = useState<string[]>([]);
@@ -33,15 +38,18 @@ function CalendarPage() {
   const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
-  const brokersQ = useBrokers();
+  const brokersQ = useBrokers({ enabled: mode === "team" });
   const allBrokerIds = useMemo(() => (brokersQ.data ?? []).map((p) => p.id), [brokersQ.data]);
 
   const apptsQ = useQuery({
-    queryKey: ["team-appts", format(monthStart, "yyyy-MM"), filterBrokers.join(",")],
+    queryKey: ["team-appts", mode, profile?.id, format(monthStart, "yyyy-MM"), filterBrokers.join(",")],
+    enabled: mode === "team" || !!profile?.id,
     queryFn: async () => {
       let q = supabase.from("appointments").select("*")
         .gte("date", format(gridStart, "yyyy-MM-dd")).lte("date", format(gridEnd, "yyyy-MM-dd"));
-      if (filterBrokers.length > 0) {
+      if (mode === "own") {
+        q = q.eq("owner_id", profile!.id);
+      } else if (filterBrokers.length > 0) {
         q = q.in("owner_id", filterBrokers);
       }
       const { data } = await q;
@@ -50,8 +58,9 @@ function CalendarPage() {
   });
 
   const clientIds = useMemo(() => {
+    if (mode !== "team") return [];
     return (apptsQ.data ?? []).map((a) => a.client_id).filter(Boolean) as string[];
-  }, [apptsQ.data]);
+  }, [apptsQ.data, mode]);
 
   const brokerByClientQ = useQuery({
     queryKey: ["appt-client-brokers", clientIds.join(",")],
@@ -69,6 +78,7 @@ function CalendarPage() {
   });
 
   const brokerForAppt = (a: any) => {
+    if (mode === "own") return profile;
     if (a.client_id && brokerByClientQ.data?.[a.client_id]) {
       return brokerByClientQ.data[a.client_id];
     }
@@ -82,6 +92,7 @@ function CalendarPage() {
   }, [allBrokerIds, profile?.id]);
 
   const filteredAppts = useMemo(() => {
+    if (mode === "own") return apptsQ.data ?? [];
     return (apptsQ.data ?? []).filter((a) => {
       if (filterBrokers.length > 0) {
         const broker = brokerForAppt(a);
@@ -91,7 +102,7 @@ function CalendarPage() {
       if (broker && teamIds.has(broker.id)) return true;
       return teamIds.has(a.owner_id);
     });
-  }, [apptsQ.data, brokerByClientQ.data, filterBrokers, teamIds]);
+  }, [apptsQ.data, brokerByClientQ.data, filterBrokers, teamIds, mode]);
 
   const byDay = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -105,7 +116,7 @@ function CalendarPage() {
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden">
-      <AppHeader title="Calendário" />
+      <AppHeader title={title} />
 
       <div className="flex-1 min-h-0 flex flex-col px-4 pt-3 pb-nav gap-2">
         {/* Month navigation */}
@@ -115,21 +126,23 @@ function CalendarPage() {
           <button onClick={() => setMonth(addDays(monthEnd, 1))} className="p-2 rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
         </div>
 
-        {/* Filter chips */}
-        <div className="flex gap-2 overflow-x-auto flex-shrink-0 -mx-1 px-1">
-          <button onClick={() => setFilterBrokers([])} className={`h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap ${filterBrokers.length === 0 ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground border border-border"}`}>Todos</button>
-          {(brokersQ.data ?? []).map((p) => {
-            const on = filterBrokers.includes(p.id);
-            return (
-              <button key={p.id} onClick={() => setFilterBrokers(on ? filterBrokers.filter((x) => x !== p.id) : [...filterBrokers, p.id])}
-                className="h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1.5"
-                style={{ background: on ? p.color : "#FFFFFF", color: on ? "#FFFFFF" : "var(--muted-foreground)", border: on ? "none" : "1px solid var(--border)" }}>
-                <span className="w-2 h-2 rounded-full" style={{ background: on ? "#FFFFFF" : p.color }} />
-                {p.full_name.split(" ")[0]}
-              </button>
-            );
-          })}
-        </div>
+        {/* Filter chips (team mode only) */}
+        {mode === "team" && (
+          <div className="flex gap-2 overflow-x-auto flex-shrink-0 -mx-1 px-1">
+            <button onClick={() => setFilterBrokers([])} className={`h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap ${filterBrokers.length === 0 ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground border border-border"}`}>Todos</button>
+            {(brokersQ.data ?? []).map((p) => {
+              const on = filterBrokers.includes(p.id);
+              return (
+                <button key={p.id} onClick={() => setFilterBrokers(on ? filterBrokers.filter((x) => x !== p.id) : [...filterBrokers, p.id])}
+                  className="h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1.5"
+                  style={{ background: on ? p.color : "#FFFFFF", color: on ? "#FFFFFF" : "var(--muted-foreground)", border: on ? "none" : "1px solid var(--border)" }}>
+                  <span className="w-2 h-2 rounded-full" style={{ background: on ? "#FFFFFF" : p.color }} />
+                  {p.full_name.split(" ")[0]}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Calendar grid — fills all remaining space */}
         <div
