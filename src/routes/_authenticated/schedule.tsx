@@ -3,12 +3,13 @@ import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { addDays, differenceInDays, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2, MessageCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
+import { shortenUrl } from "@/lib/shorten.functions";
 
 export const Route = createFileRoute("/_authenticated/schedule")({
   component: SchedulePage,
@@ -138,6 +139,7 @@ function GenerateShiftLinkButton({ currentWeekStart }: { currentWeekStart: Date 
   const [saving, setSaving] = useState(false);
   const [generatedLink, setGeneratedLink] = useState("");
   const [existingConfigId, setExistingConfigId] = useState<string | null>(null);
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
 
   // Busca config existente para a semana selecionada
   const existingQ = useQuery({
@@ -242,6 +244,19 @@ function GenerateShiftLinkButton({ currentWeekStart }: { currentWeekStart: Date 
     toast.success("Link copiado!");
   };
 
+  const sendWhatsapp = async () => {
+    setSendingWhatsapp(true);
+    try {
+      const { shortUrl } = await shortenUrl({ data: { url: generatedLink } });
+      const message = `A escala da próxima semana foi liberada, pode preencher por favor os dias que virá para a empresa?\n\n${shortUrl}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao preparar mensagem do WhatsApp");
+    } finally {
+      setSendingWhatsapp(false);
+    }
+  };
+
   const resetAndClose = () => {
     setIsOpen(false);
     setGeneratedLink("");
@@ -271,9 +286,18 @@ function GenerateShiftLinkButton({ currentWeekStart }: { currentWeekStart: Date 
                     <CheckCircle2 size={32} />
                   </div>
                   <h4 className="text-xl font-bold text-[var(--navy)]">Escala liberada!</h4>
-                  <p className="text-sm text-muted-foreground max-w-md">Copie o link abaixo e envie no grupo dos corretores. Assim que acessarem, poderão escolher seus horários dentro das vagas definidas.</p>
-                  
-                  <div className="flex items-center gap-2 w-full max-w-lg mt-4 bg-[var(--surface)] p-2 rounded-xl border border-border">
+                  <p className="text-sm text-muted-foreground max-w-md">Envie a mensagem pelo WhatsApp para os corretores. Assim que acessarem o link, poderão escolher seus horários dentro das vagas definidas.</p>
+
+                  <button
+                    onClick={sendWhatsapp}
+                    disabled={sendingWhatsapp}
+                    className="flex items-center gap-2 h-11 px-5 bg-green-600 text-white rounded-xl font-semibold text-sm hover:opacity-90 disabled:opacity-60 mt-2"
+                  >
+                    {sendingWhatsapp ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />}
+                    {sendingWhatsapp ? "Preparando..." : "Enviar no WhatsApp"}
+                  </button>
+
+                  <div className="flex items-center gap-2 w-full max-w-lg mt-2 bg-[var(--surface)] p-2 rounded-xl border border-border">
                     <input type="text" readOnly value={generatedLink} className="flex-1 bg-transparent text-sm text-[var(--navy)] outline-none px-2" />
                     <button onClick={copyLink} className="flex items-center gap-2 h-10 px-4 bg-[var(--navy)] text-white rounded-lg font-semibold text-sm hover:opacity-90">
                       <Copy size={16} /> Copiar
@@ -773,11 +797,31 @@ function ShiftEditor({ broker, date, shift, onClose }: { broker: any; date: stri
     mutationFn: async () => {
       if (!period) throw new Error("Selecione um período (Manhã ou Tarde)");
       const p = PERIODS.find((x) => x.val === period)!;
+
+      // Se já existe uma vaga (gerada por link) para esta data/período, vincula o
+      // preenchimento manual a ela, para que a contagem de vagas disponíveis no
+      // link fique correta mesmo quando o gestor preenche a escala diretamente.
+      const { data: myConfigs } = await supabase.from("shift_configs").select("id").eq("manager_id", user!.id);
+      const configIds = (myConfigs ?? []).map((c) => c.id);
+      let slotId: string | null = null;
+      if (configIds.length > 0) {
+        const { data: slotRow } = await supabase
+          .from("shift_slots")
+          .select("id")
+          .in("config_id", configIds)
+          .eq("date", date)
+          .eq("start_time", p.start)
+          .eq("end_time", p.end)
+          .limit(1)
+          .maybeSingle();
+        slotId = slotRow?.id ?? null;
+      }
+
       if (shift) {
-        const { error } = await supabase.from("shifts").update({ start_time: p.start, end_time: p.end, notes: plantao || null }).eq("id", shift.id);
+        const { error } = await supabase.from("shifts").update({ start_time: p.start, end_time: p.end, notes: plantao || null, slot_id: slotId }).eq("id", shift.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("shifts").insert({ broker_id: broker.id, manager_id: user!.id, date, start_time: p.start, end_time: p.end, notes: plantao || null });
+        const { error } = await supabase.from("shifts").insert({ broker_id: broker.id, manager_id: user!.id, date, start_time: p.start, end_time: p.end, notes: plantao || null, slot_id: slotId });
         if (error) throw error;
       }
     },
