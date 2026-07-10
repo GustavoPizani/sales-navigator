@@ -635,6 +635,7 @@ function SchedulePage() {
             <div className="flex gap-2">
               <GenerateShiftLinkButton currentWeekStart={weekStart} />
               <ImportScheduleButton brokers={brokersQ.data ?? []} currentWeekStart={weekStart} onImported={setWeekStart} />
+              <FixShiftLinksButton />
             </div>
           )}
         </div>
@@ -646,6 +647,73 @@ function SchedulePage() {
         )}
       </div>
     </div>
+  );
+}
+
+function FixShiftLinksButton() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [running, setRunning] = useState(false);
+
+  const run = async () => {
+    if (!window.confirm("Isso vai vincular turnos preenchidos manualmente às vagas de link correspondentes (mesma data e horário), corrigindo a contagem de vagas disponíveis. Continuar?")) return;
+    setRunning(true);
+    try {
+      const { data: myConfigs, error: cfgErr } = await supabase.from("shift_configs").select("id").eq("manager_id", user!.id);
+      if (cfgErr) throw cfgErr;
+      const configIds = (myConfigs ?? []).map((c) => c.id);
+      if (configIds.length === 0) {
+        toast("Nenhuma escala com link gerada ainda.", { icon: "ℹ️" });
+        return;
+      }
+
+      const { data: slots, error: slotsErr } = await supabase
+        .from("shift_slots")
+        .select("id, date, start_time, end_time")
+        .in("config_id", configIds);
+      if (slotsErr) throw slotsErr;
+
+      const { data: looseShifts, error: shiftsErr } = await supabase
+        .from("shifts")
+        .select("id, date, start_time, end_time")
+        .eq("manager_id", user!.id)
+        .is("slot_id", null);
+      if (shiftsErr) throw shiftsErr;
+
+      const slotByKey = new Map((slots ?? []).map((s) => [`${s.date}_${s.start_time}_${s.end_time}`, s.id]));
+      const toFix = (looseShifts ?? [])
+        .map((s) => ({ id: s.id, slotId: slotByKey.get(`${s.date}_${s.start_time}_${s.end_time}`) }))
+        .filter((s): s is { id: string; slotId: string } => !!s.slotId);
+
+      if (toFix.length === 0) {
+        toast("Nenhum turno solto encontrado — tudo já está vinculado.", { icon: "✅" });
+        return;
+      }
+
+      const results = await Promise.all(
+        toFix.map((s) => supabase.from("shifts").update({ slot_id: s.slotId }).eq("id", s.id))
+      );
+      const failed = results.filter((r) => r.error);
+      if (failed.length > 0) throw failed[0].error;
+
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success(`${toFix.length} turno(s) vinculado(s) às vagas correspondentes!`);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao corrigir vínculos");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={run}
+      disabled={running}
+      className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm cursor-pointer hover:bg-gray-50 transition-colors disabled:opacity-60"
+    >
+      {running ? <Loader2 size={16} className="animate-spin" /> : <LinkIcon size={16} strokeWidth={2.5} />}
+      <span className="hidden sm:inline">{running ? "Corrigindo..." : "Corrigir Vínculos"}</span>
+    </button>
   );
 }
 
