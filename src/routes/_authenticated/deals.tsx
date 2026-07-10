@@ -233,8 +233,8 @@ const parseValor = (val: string) => {
   return parseInt(numeric, 10) / 100;
 };
 
-function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
-  const { user, isAdmin } = useAuth();
+export function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
+  const { user, isAdmin, isDirector } = useAuth();
   const qc = useQueryClient();
 
   const [data, setData] = useState(deal?.data ?? format(new Date(), "yyyy-MM-dd"));
@@ -554,7 +554,7 @@ function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) {
           )}
 
           <div className="flex gap-2 pt-4">
-            {deal && (isAdmin || deal.broker_id === user?.id) && (
+            {deal && (isAdmin || isDirector || deal.broker_id === user?.id) && (
               <button
                 type="button"
                 onClick={() => {

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { BarChart, Calendar, CalendarDays, Building2, Users, ClipboardList } from "lucide-react";
+import { BarChart, Calendar, CalendarDays, Building2, Users, ClipboardList, TrendingUp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeatures } from "@/hooks/useFeatures";
 
@@ -10,6 +10,7 @@ const adminTabs: Tab[] = [
   { to: "/schedule",   label: "Escala",       icon: Calendar },
   { to: "/calendar",   label: "Agendamentos",  icon: CalendarDays },
   { to: "/projects",   label: "Imóveis",       icon: Building2 },
+  { to: "/sales",      label: "Vendas",        icon: TrendingUp },
   { to: "/team",       label: "Time",          icon: Users },
 ];
 
@@ -17,6 +18,7 @@ const directorTabs: Tab[] = [
   { to: "/dashboard", label: "Dashboard",    icon: BarChart },
   { to: "/schedule",   label: "Escala",       icon: Calendar },
   { to: "/calendar",   label: "Agendamentos", icon: CalendarDays },
+  { to: "/sales",      label: "Vendas",       icon: TrendingUp },
   { to: "/team",       label: "Time",         icon: Users },
 ];
 
@@ -33,6 +35,7 @@ function filterTabs(tabs: Tab[], isFeatureEnabled: (k: any) => boolean): Tab[] {
     if (t.to === "/calendar")     return isFeatureEnabled("agendamentos");
     if (t.to === "/appointments") return isFeatureEnabled("agendamentos");
     if (t.to === "/projects")     return isFeatureEnabled("projects");
+    if (t.to === "/sales")        return isFeatureEnabled("sales");
     if (t.to === "/team")         return isFeatureEnabled("team");
     return true;
   });

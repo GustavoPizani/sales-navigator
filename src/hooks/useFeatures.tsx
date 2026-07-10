@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Calendar, CalendarDays, Building2, Users } from "lucide-react";
+import { Calendar, CalendarDays, Building2, Users, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 
-export type FeatureKey = "schedule" | "agendamentos" | "projects" | "team";
+export type FeatureKey = "schedule" | "agendamentos" | "projects" | "team" | "sales";
 
 export type FeaturesMap = Record<FeatureKey, boolean>;
 
@@ -39,6 +39,13 @@ export const FEATURE_DEFS: {
     icon: Users,
     adminOnly: true,
   },
+  {
+    key: "sales",
+    label: "Vendas",
+    description: "Clientes marcados como venda — apenas o gestor pode editar ou excluir",
+    icon: TrendingUp,
+    adminOnly: true,
+  },
 ];
 
 const DEFAULT_FEATURES: FeaturesMap = {
@@ -46,6 +53,7 @@ const DEFAULT_FEATURES: FeaturesMap = {
   agendamentos: true,
   projects: true,
   team: true,
+  sales: true,
 };
 
 export function useFeatures() {
