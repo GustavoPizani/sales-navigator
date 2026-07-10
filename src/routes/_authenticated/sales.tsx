@@ -40,9 +40,9 @@ function SalesView() {
   const [brokerFilter, setBrokerFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("approved");
 
-  const brokersQ = useBrokers({ select: "id,full_name" });
+  const brokersQ = useBrokers({ select: "id,full_name", includeInactive: true });
 
-  const { data: vendas = [] } = useQuery({
+  const { data: vendas = [], error: vendasError } = useQuery({
     queryKey: ["manager-vendas", month, brokerFilter, statusFilter, user?.id, (brokersQ.data ?? []).map((b) => b.id).join(",")],
     queryFn: async () => {
       const start = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
@@ -51,7 +51,7 @@ function SalesView() {
 
       let q = supabase
         .from("vendas")
-        .select("*, atendimentos(nome_cliente, id_cliente, produto), profiles(full_name)")
+        .select("*, atendimentos(nome_cliente, id_cliente, produto), profiles!vendas_broker_id_fkey(full_name)")
         .gte("data_venda", startDate)
         .lte("data_venda", endDateStr)
         .order("data_venda", { ascending: false })
@@ -84,6 +84,16 @@ function SalesView() {
       <AppHeader title="Vendas" />
 
       <div className="px-4 pt-4 flex flex-col gap-3">
+        {vendasError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-xs break-words">
+            Erro ao buscar vendas: {(vendasError as any).message ?? String(vendasError)}
+          </div>
+        )}
+        {brokersQ.error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-xs break-words">
+            Erro ao buscar corretores: {(brokersQ.error as any).message ?? String(brokersQ.error)}
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             type="month"
