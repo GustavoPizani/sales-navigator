@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronDown, Plus, Upload, X, Trash2, Calendar, Bell, Download, DollarSign } from "lucide-react";
+import { ChevronDown, Plus, Upload, X, Trash2, Calendar, Bell, Download, DollarSign, History, Loader2 } from "lucide-react";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Link, useNavigate } from "@tanstack/react-router";
 import toast from "react-hot-toast";
@@ -73,7 +73,7 @@ function KpiDetailModal({
   onItemClick,
 }: {
   title: string;
-  items: { cliente: string; corretor?: string; unidade: string; valor?: number; atendimento?: any }[];
+  items: { cliente: string; corretor?: string; unidade: string; valor?: number; data?: string; idCliente?: string; debug?: string; atendimento?: any }[];
   onClose: () => void;
   isAdmin?: boolean;
   onItemClick?: (atendimento: any) => void;
@@ -110,6 +110,15 @@ function KpiDetailModal({
                     <span className="text-xs text-muted-foreground">Unidade: <span className="font-medium text-[var(--navy)]">{item.unidade || "—"}</span></span>
                     {item.valor != null && item.valor > 0 && (
                       <span className="text-xs text-muted-foreground">Valor: <span className="font-medium text-[var(--navy)]">{formatBRL(item.valor)}</span></span>
+                    )}
+                    {item.data && (
+                      <span className="text-xs text-muted-foreground">Data: <span className="font-medium text-[var(--navy)]">{item.data}</span></span>
+                    )}
+                    {item.idCliente && (
+                      <span className="text-xs text-muted-foreground">ID Cliente: <span className="font-medium text-[var(--navy)]">{item.idCliente}</span></span>
+                    )}
+                    {item.debug && (
+                      <span className="text-[10px] text-muted-foreground/70 break-all w-full">{item.debug}</span>
                     )}
                   </div>
                 </div>
@@ -484,7 +493,24 @@ function AdminDashboard({ user }: { user: any }) {
     enabled: !!user && Array.isArray(brokersQ.data),
   });
 
-  const dbData = useDashboardData(atendimentos, vendas);
+  const { data: visitas = [] } = useQuery({
+    queryKey: ["dashboard-visitas", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, teamBrokerIds.join(",")],
+    queryFn: async () => {
+      const ids = filters.appliedBrokerId !== "all" ? [filters.appliedBrokerId] : teamBrokerIds;
+      if (ids.length === 0) return [];
+      const { data, error } = await supabase
+        .from("visitas")
+        .select("*")
+        .in("broker_id", ids)
+        .gte("data_visita", filters.appliedStartDate)
+        .lte("data_visita", filters.appliedEndDate);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user && Array.isArray(brokersQ.data),
+  });
+
+  const dbData = useDashboardData(atendimentos, vendas, visitas);
 
   const atendimentosById = useMemo(() => {
     const m: Record<string, any> = {};
@@ -525,16 +551,21 @@ function AdminDashboard({ user }: { user: any }) {
   );
 
   const visitasModalItems = useMemo(() =>
-    atendimentos
-      .filter(a => a.visita)
-      .map(a => ({
-        cliente: a.nome_cliente || "—",
-        corretor: a.profiles?.full_name || brokersById[a.broker_id] || "—",
-        unidade: a.produto || "—",
-        valor: Number(a.valor) || 0,
-        atendimento: a,
-      })),
-    [atendimentos, brokersById]
+    visitas
+      .map(v => {
+        const atend = atendimentosById[v.atendimento_id ?? ""];
+        return {
+          cliente: v.nome_cliente || atend?.nome_cliente || "—",
+          corretor: brokersById[v.broker_id] || atend?.profiles?.full_name || "—",
+          unidade: v.produto || atend?.produto || "—",
+          valor: 0,
+          data: format(new Date(v.data_visita + "T00:00:00"), "dd/MM/yyyy"),
+          idCliente: v.id_cliente || undefined,
+          debug: `visita_id=${v.id} broker_id=${v.broker_id} appointment_id=${v.appointment_id}`,
+          atendimento: atend,
+        };
+      }),
+    [visitas, atendimentosById, brokersById]
   );
 
   const projectsQ = useQuery({
@@ -790,6 +821,7 @@ function AdminDashboard({ user }: { user: any }) {
                   <Download size={14} /> Exportar Planilha
                 </button>
                 <CsvImportButton brokers={brokersQ.data ?? []} />
+                <BackfillVisitasButton teamBrokerIds={teamBrokerIds} />
                 <button
                   onClick={() => { setInsertPreFill(null); setInsertOpen(true); }}
                   className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5"
@@ -903,7 +935,7 @@ function BrokerDashboard({ user }: { user: any }) {
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
   const [registrarVendaAtendimento, setRegistrarVendaAtendimento] = useState<any | null>(null);
-  const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume">(null);
+  const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume" | "visitas">(null);
 
   const { data: atendimentos = [], isPending } = useQuery({
     queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.filterMode, "broker", user?.id],
@@ -942,7 +974,22 @@ function BrokerDashboard({ user }: { user: any }) {
     enabled: !!user,
   });
 
-  const dbData = useDashboardData(atendimentos, vendas);
+  const { data: visitas = [] } = useQuery({
+    queryKey: ["dashboard-visitas", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("visitas")
+        .select("*")
+        .eq("broker_id", user!.id)
+        .gte("data_visita", filters.appliedStartDate)
+        .lte("data_visita", filters.appliedEndDate);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user,
+  });
+
+  const dbData = useDashboardData(atendimentos, vendas, visitas);
 
   const atendimentosById = useMemo(() => {
     const m: Record<string, any> = {};
@@ -960,6 +1007,22 @@ function BrokerDashboard({ user }: { user: any }) {
       };
     }),
     [vendas, atendimentosById]
+  );
+
+  const visitasModalItems = useMemo(() =>
+    visitas.map(v => {
+      const atend = atendimentosById[v.atendimento_id ?? ""];
+      return {
+        cliente: v.nome_cliente || atend?.nome_cliente || "—",
+        unidade: v.produto || atend?.produto || "—",
+        valor: 0,
+        data: format(new Date(v.data_visita + "T00:00:00"), "dd/MM/yyyy"),
+        idCliente: v.id_cliente || undefined,
+        debug: `visita_id=${v.id} broker_id=${v.broker_id} appointment_id=${v.appointment_id}`,
+        atendimento: atend,
+      };
+    }),
+    [visitas, atendimentosById]
   );
 
   const tratativasModalItems = useMemo(() =>
@@ -1013,7 +1076,7 @@ function BrokerDashboard({ user }: { user: any }) {
       <div className="px-4 pt-4 pb-8 space-y-6">
         <div className="grid grid-cols-2 gap-3">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
-          <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} />
+          <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} onClick={() => setKpiModal("visitas")} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
           <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
           <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} /></div>
@@ -1108,11 +1171,12 @@ function BrokerDashboard({ user }: { user: any }) {
           title={
             kpiModal === "vendas" ? `Total de Vendas (${vendasModalItems.length})` :
             kpiModal === "tratativas" ? `Em Tratativas (${tratativasModalItems.length})` :
+            kpiModal === "visitas" ? `Total de Visitas (${visitasModalItems.length})` :
             `Volume de Vendas — ${formatBRL(dbData.volumeVendas)}`
           }
-          items={kpiModal === "tratativas" ? tratativasModalItems : vendasModalItems}
+          items={kpiModal === "tratativas" ? tratativasModalItems : kpiModal === "visitas" ? visitasModalItems : vendasModalItems}
           onClose={() => setKpiModal(null)}
-          onItemClick={kpiModal === "tratativas" ? (a) => { setKpiModal(null); setEditingAtendimento(a); } : undefined}
+          onItemClick={kpiModal === "tratativas" || kpiModal === "visitas" ? (a) => { setKpiModal(null); setEditingAtendimento(a); } : undefined}
         />
       )}
     </div>
@@ -1414,6 +1478,8 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
         valor: valor ? parseFloat(valor.replace(",", ".")) : null,
       };
 
+      let atendimentoId: string | null = null;
+
       if (idCliente) {
         const { data: existing } = await supabase.from("atendimentos")
           .select("id, venda, status, data")
@@ -1426,15 +1492,36 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
         if (existing && !existing.venda && existing.status !== "Contrato Assinado") {
           const { error } = await supabase.from("atendimentos").update({ ...payload, data: existing.data, data_atualizacao: format(new Date(), "yyyy-MM-dd") }).eq("id", existing.id);
           if (error) throw error;
-          return;
+          atendimentoId = existing.id;
         }
       }
 
-      const { error } = await supabase.from("atendimentos").insert(payload);
-      if (error) throw error;
+      if (!atendimentoId) {
+        const { data: created, error } = await supabase.from("atendimentos").insert(payload).select("id").single();
+        if (error) throw error;
+        atendimentoId = created.id;
+      }
+
+      // Cada "visita realizada" vira um registro próprio no histórico de
+      // visitas, mesmo que o atendimento (negociação em andamento) do cliente
+      // seja o mesmo de uma visita anterior — assim visitas repetidas do
+      // mesmo cliente continuam sendo contabilizadas.
+      if (visita) {
+        const { error: visitaError } = await supabase.from("visitas").insert({
+          atendimento_id: atendimentoId,
+          appointment_id: linkedApptId || null,
+          broker_id: targetUserId,
+          id_cliente: idCliente || null,
+          nome_cliente: nomeCliente || null,
+          produto: produto || null,
+          data_visita: data,
+        });
+        if (visitaError) throw visitaError;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dashboard-atendimentos"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-visitas"] });
       toast.success("Atendimento registrado!");
       onClose();
     },
@@ -1812,6 +1899,133 @@ function normalizeSetor(s: string): string {
   return s.trim();
 }
 
+
+function BackfillVisitasButton({ teamBrokerIds }: { teamBrokerIds: string[] }) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [running, setRunning] = useState(false);
+
+  const run = async () => {
+    if (!window.confirm("Isso vai recalcular do zero o histórico de visitas vindas do calendário (apaga o que foi vinculado a agendamentos antes e recria certo). Visitas registradas manualmente pelo fluxo normal não são afetadas. Continuar?")) return;
+    setRunning(true);
+    try {
+      const ownerIds = [user!.id, ...teamBrokerIds];
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+
+      const { data: visitAppts, error: apptsErr } = await supabase
+        .from("appointments")
+        .select("id, owner_id, date, client_id, client_name, project_id, custom_location")
+        .eq("type", "visit")
+        .in("owner_id", ownerIds)
+        .lte("date", todayStr);
+      if (apptsErr) throw apptsErr;
+
+      if (!visitAppts || visitAppts.length === 0) {
+        toast("Nenhuma visita encontrada no calendário.", { icon: "ℹ️" });
+        return;
+      }
+
+      // Remove qualquer backfill anterior (vinculado a agendamento) para recalcular do zero,
+      // evitando duplicatas com unidade errada de execuções passadas.
+      const { error: deleteErr } = await supabase
+        .from("visitas")
+        .delete()
+        .in("broker_id", ownerIds)
+        .not("appointment_id", "is", null);
+      if (deleteErr) throw deleteErr;
+
+      const clientIds = visitAppts.map((a) => a.client_id).filter(Boolean) as string[];
+      const { data: matchingAtendimentos } = clientIds.length > 0
+        ? await supabase.from("atendimentos").select("id, id_cliente, broker_id").in("id_cliente", clientIds)
+        : { data: [] as any[] };
+      const atendimentoByClientBroker = new Map(
+        (matchingAtendimentos ?? []).map((a) => [`${a.id_cliente}_${a.broker_id}`, a])
+      );
+
+      const projectIds = visitAppts.map((a) => a.project_id).filter(Boolean) as string[];
+      const { data: projects } = projectIds.length > 0
+        ? await supabase.from("projects").select("id, name").in("id", projectIds)
+        : { data: [] as any[] };
+      const projectNameById = new Map((projects ?? []).map((p) => [p.id, p.name]));
+
+      const withUnidade = visitAppts.map((a) => ({
+        ...a,
+        unidade: a.project_id ? (projectNameById.get(a.project_id) ?? null) : (a.custom_location || null),
+      }));
+
+      // Vários agendamentos de visita do mesmo cliente, na mesma data e na
+      // mesma unidade, são lançamento duplicado por engano (mesma visita
+      // cadastrada mais de uma vez, às vezes até por contas diferentes, ex:
+      // gestor e corretor) — conta só 1. Datas ou unidades diferentes
+      // continuam contando como visitas distintas. O dono (owner_id) do
+      // agendamento NÃO entra na chave — o que importa é o cliente/dia/local.
+      type VisitAppt = (typeof withUnidade)[number];
+      const dedupKey = (a: VisitAppt) => `${a.client_id ?? a.client_name}_${a.date}_${a.unidade ?? ""}`;
+      const groups = new Map<string, VisitAppt[]>();
+      for (const a of withUnidade) {
+        const k = dedupKey(a);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k)!.push(a);
+      }
+      // Entre duplicatas, prioriza o agendamento cujo dono é de fato um corretor
+      // do time (evita atribuir a visita à conta do gestor por engano).
+      const deduped = Array.from(groups.values()).map(
+        (group) => group.find((a) => teamBrokerIds.includes(a.owner_id)) ?? group[0]
+      );
+
+      // Se já existe uma visita registrada manualmente (sem vínculo de
+      // agendamento) para o mesmo cliente/data/unidade, ela já cobre esse
+      // evento — não recriar uma segunda vinda do calendário.
+      const { data: manualVisitas, error: manualErr } = await supabase
+        .from("visitas")
+        .select("id_cliente, nome_cliente, data_visita, produto")
+        .in("broker_id", ownerIds)
+        .is("appointment_id", null);
+      if (manualErr) throw manualErr;
+      const manualKeys = new Set(
+        (manualVisitas ?? []).map((v) => `${v.id_cliente ?? v.nome_cliente ?? ""}_${v.data_visita}_${v.produto ?? ""}`)
+      );
+      const toInsert = deduped.filter((a) => !manualKeys.has(dedupKey(a)));
+
+      const payload = toInsert.map((a) => {
+        const atend = a.client_id ? atendimentoByClientBroker.get(`${a.client_id}_${a.owner_id}`) : undefined;
+        return {
+          appointment_id: a.id,
+          atendimento_id: atend?.id ?? null,
+          broker_id: a.owner_id,
+          id_cliente: a.client_id || null,
+          nome_cliente: a.client_name || null,
+          produto: a.unidade,
+          data_visita: a.date,
+        };
+      });
+
+      if (payload.length > 0) {
+        const { error: insertErr } = await supabase.from("visitas").insert(payload);
+        if (insertErr) throw insertErr;
+      }
+
+      qc.invalidateQueries({ queryKey: ["dashboard-visitas"] });
+      const skipped = visitAppts.length - toInsert.length;
+      toast.success(`${payload.length} visita(s) recalculada(s)${skipped > 0 ? ` (${skipped} duplicata(s) ignorada(s))` : ""}!`);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao recuperar histórico de visitas");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={run}
+      disabled={running}
+      className="h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors disabled:opacity-60"
+    >
+      {running ? <Loader2 size={14} className="animate-spin" /> : <History size={14} />}
+      {running ? "Recalculando..." : "Recalcular Histórico de Visitas"}
+    </button>
+  );
+}
 
 function CsvImportButton({ brokers }: { brokers: any[] }) {
   const qc = useQueryClient();

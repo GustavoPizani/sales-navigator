@@ -145,6 +145,64 @@ export type Database = {
           }
         ]
       }
+      visitas: {
+        Row: {
+          id: string
+          created_at: string
+          atendimento_id: string | null
+          appointment_id: string | null
+          broker_id: string
+          id_cliente: string | null
+          nome_cliente: string | null
+          produto: string | null
+          data_visita: string
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          atendimento_id?: string | null
+          appointment_id?: string | null
+          broker_id: string
+          id_cliente?: string | null
+          nome_cliente?: string | null
+          produto?: string | null
+          data_visita?: string
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          atendimento_id?: string | null
+          appointment_id?: string | null
+          broker_id?: string
+          id_cliente?: string | null
+          nome_cliente?: string | null
+          produto?: string | null
+          data_visita?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visitas_atendimento_id_fkey"
+            columns: ["atendimento_id"]
+            isOneToOne: false
+            referencedRelation: "atendimentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitas_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitas_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       appointments: {
         Row: {
           client_email: string | null

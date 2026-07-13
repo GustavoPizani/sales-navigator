@@ -26,7 +26,7 @@ export function useDashboardFilters() {
   };
 }
 
-export function useDashboardData(atendimentos: any[], vendas: any[] = []) {
+export function useDashboardData(atendimentos: any[], vendas: any[] = [], visitas: any[] = []) {
   return useMemo(() => {
     let emTratativasSum = 0;
     const monthlyAtend: Record<string, any> = {};
@@ -82,7 +82,7 @@ export function useDashboardData(atendimentos: any[], vendas: any[] = []) {
 
     return {
       totalAtendimentos: atendimentos.length,
-      totalVisitas: atendimentos.filter((a) => a.visita).length,
+      totalVisitas: visitas.length,
       totalVendas: approvedVendas.length,
       emTratativas: emTratativasSum,
       volumeVendas: volumeVendasSum,
@@ -96,5 +96,5 @@ export function useDashboardData(atendimentos: any[], vendas: any[] = []) {
       chart4Data: sorted.map((d) => ({ name: d.name, valor: d.tratativasVal })),
       chart5Data: sorted.map((d) => ({ name: d.name, valor: monthlyVendas[d.sortKey]?.vendasVal || 0 })),
     };
-  }, [atendimentos, vendas]);
+  }, [atendimentos, vendas, visitas]);
 }
