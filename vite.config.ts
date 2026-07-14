@@ -12,7 +12,7 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 const isBuild = process.env.NODE_ENV === "production";
 
 export default defineConfig({
-  cloudflare: false,
+  
   tanstackStart: {
     server: { entry: "server" },
     serverFns: {
