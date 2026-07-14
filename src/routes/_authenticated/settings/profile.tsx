@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Eye, EyeOff, Bell } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Bell, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -161,12 +161,37 @@ function ModulesSection() {
   );
 }
 
+function formatLeadTime(min: number): string {
+  if (min % 1440 === 0) return `${min / 1440} dia${min / 1440 > 1 ? "s" : ""}`;
+  if (min % 60 === 0) return `${min / 60}h`;
+  return `${min} min`;
+}
+
 function NotificationsSection() {
   const { profile, isAdmin, isDirector, refreshProfile } = useAuth();
   const { supported, subscribed, loading, subscribe, unsubscribe } = usePushNotifications();
   const isManager = isAdmin || isDirector;
 
-  const [reminderMinutes, setReminderMinutes] = useState(profile?.reminder_minutes ?? 30);
+  const [reminderMinutes, setReminderMinutes] = useState<number[]>(profile?.reminder_minutes ?? [30]);
+  const [newLeadTime, setNewLeadTime] = useState("");
+  const [shiftReminderTime, setShiftReminderTime] = useState(profile?.shift_reminder_time?.slice(0, 5) ?? "");
+
+  const remindersChanged =
+    JSON.stringify([...reminderMinutes].sort((a, b) => a - b)) !==
+    JSON.stringify([...(profile?.reminder_minutes ?? [])].sort((a, b) => a - b));
+
+  const addLeadTime = () => {
+    const value = parseInt(newLeadTime);
+    if (!value || value <= 0) return;
+    if (!reminderMinutes.includes(value)) {
+      setReminderMinutes((prev) => [...prev, value].sort((a, b) => a - b));
+    }
+    setNewLeadTime("");
+  };
+
+  const removeLeadTime = (value: number) => {
+    setReminderMinutes((prev) => prev.filter((v) => v !== value));
+  };
 
   const saveReminder = useMutation({
     mutationFn: async () => {
@@ -178,7 +203,22 @@ function NotificationsSection() {
     },
     onSuccess: async () => {
       await refreshProfile();
-      toast.success("Lembrete atualizado!");
+      toast.success("Lembretes atualizados!");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const saveShiftReminder = useMutation({
+    mutationFn: async (value: string | null) => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ shift_reminder_time: value } as any)
+        .eq("id", profile!.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await refreshProfile();
+      toast.success("Lembrete de escala atualizado!");
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -214,30 +254,98 @@ function NotificationsSection() {
         {loading && <p className="text-xs text-muted-foreground">Atualizando…</p>}
 
         {isManager && (
-          <div className="pt-2 border-t border-border">
-            <label className="text-xs text-muted-foreground font-medium mb-1 block">
-              Lembrete de agendamento (minutos antes)
-            </label>
-            <p className="text-[11px] text-muted-foreground mb-2">
-              Você e o corretor recebem um lembrete push com essa antecedência.
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                min={1}
-                className="flex-1 h-12 px-4 rounded-xl bg-[var(--surface)] border border-border focus:outline-none focus:border-[var(--gold)] text-[var(--navy)]"
-                value={reminderMinutes}
-                onChange={(e) => setReminderMinutes(Math.max(1, parseInt(e.target.value) || 1))}
-              />
+          <>
+            <div className="pt-2 border-t border-border">
+              <label className="text-xs text-muted-foreground font-medium mb-1 block">
+                Lembretes de agendamento
+              </label>
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Você e o corretor recebem um lembrete push em cada uma dessas antecedências.
+              </p>
+
+              {reminderMinutes.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {reminderMinutes.map((m) => (
+                    <span
+                      key={m}
+                      className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-[var(--surface)] border border-border text-[var(--navy)]"
+                    >
+                      {formatLeadTime(m)}
+                      <button onClick={() => removeLeadTime(m)} className="text-muted-foreground hover:text-red-500">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Minutos (ex: 1440 = 1 dia)"
+                  className="flex-1 h-11 px-3 rounded-xl bg-[var(--surface)] border border-border focus:outline-none focus:border-[var(--gold)] text-[var(--navy)] text-sm"
+                  value={newLeadTime}
+                  onChange={(e) => setNewLeadTime(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addLeadTime()}
+                />
+                <button
+                  onClick={addLeadTime}
+                  className="px-3 h-11 rounded-xl bg-[var(--surface)] border border-border text-[var(--navy)] font-semibold"
+                >
+                  + Adicionar
+                </button>
+              </div>
+
               <button
                 onClick={() => saveReminder.mutate()}
-                disabled={reminderMinutes === profile?.reminder_minutes || saveReminder.isPending}
-                className="px-5 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
+                disabled={!remindersChanged || saveReminder.isPending}
+                className="mt-2 w-full h-11 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
               >
-                {saveReminder.isPending ? "Salvando…" : "Salvar"}
+                {saveReminder.isPending ? "Salvando…" : "Salvar lembretes"}
               </button>
             </div>
-          </div>
+
+            <div className="pt-2 border-t border-border">
+              <label className="text-xs text-muted-foreground font-medium mb-1 block">
+                Lembrete de escala (plantão do dia seguinte)
+              </label>
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Todo dia nesse horário, corretores com plantão marcado pra amanhã recebem um lembrete
+                push (destacando plantão noturno).
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="time"
+                  className="flex-1 h-11 px-3 rounded-xl bg-[var(--surface)] border border-border focus:outline-none focus:border-[var(--gold)] text-[var(--navy)] text-sm"
+                  value={shiftReminderTime}
+                  onChange={(e) => setShiftReminderTime(e.target.value)}
+                />
+                <button
+                  onClick={() => saveShiftReminder.mutate(shiftReminderTime || null)}
+                  disabled={
+                    shiftReminderTime === (profile?.shift_reminder_time?.slice(0, 5) ?? "") ||
+                    saveShiftReminder.isPending
+                  }
+                  className="px-4 h-11 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+                {profile?.shift_reminder_time && (
+                  <button
+                    onClick={() => {
+                      setShiftReminderTime("");
+                      saveShiftReminder.mutate(null);
+                    }}
+                    disabled={saveShiftReminder.isPending}
+                    className="px-3 h-11 rounded-xl border border-red-200 text-red-500 text-sm font-medium disabled:opacity-50"
+                  >
+                    Desativar
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
         )}
       </div>
     </SectionCard>

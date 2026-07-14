@@ -13,7 +13,8 @@ export interface Profile {
   is_active: boolean;
   manager_id: string | null;
   enabled_features: Record<string, boolean> | null;
-  reminder_minutes: number;
+  reminder_minutes: number[];
+  shift_reminder_time: string | null;
 }
 
 interface AuthContextValue {

@@ -14,48 +14,59 @@ function apptDateTime(a: any): Date | null {
   return null;
 }
 
+function formatLeadLabel(diffMin: number): string {
+  if (diffMin < 1) return "agora";
+  if (diffMin >= 1440) return `em ${Math.round(diffMin / 1440)} dia(s)`;
+  if (diffMin >= 60) return `em ${Math.round(diffMin / 60)}h`;
+  return `em ${Math.round(diffMin)} min`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   try {
     const supabase = admin();
     const now = new Date();
-    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    // Wide enough to cover multi-day lead times (e.g. "1 day before") without
+    // scanning the whole table.
+    const window48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
-    // Fetch appointments (columns vary — select * to be resilient)
     const { data: appts, error } = await supabase
       .from("appointments")
-      .select("*, owner:profiles!appointments_owner_id_fkey(id, full_name, manager_id), project:projects(name)")
-      .is("reminder_sent_at", null);
+      .select(
+        "id, date, start_time, reminder_sent_minutes, owner:profiles!appointments_owner_id_fkey(id, full_name, manager_id), project:projects(name)"
+      )
+      .gte("date", now.toISOString().slice(0, 10));
 
     if (error) throw error;
 
     let notified = 0;
-    for (const a of appts ?? []) {
-      const owner: any = (a as any).owner;
-      const project: any = (a as any).project;
+    for (const a of (appts ?? []) as any[]) {
+      const owner = a.owner;
+      const project = a.project;
       const managerId = owner?.manager_id;
       if (!managerId) continue;
 
       const when = apptDateTime(a);
-      if (!when) continue;
+      if (!when || when > window48h) continue;
 
       const diffMin = (when.getTime() - now.getTime()) / 60000;
-      if (diffMin < 0 || when > in24h) continue;
+      if (diffMin < 0) continue;
 
-      // fetch manager reminder_minutes
       const { data: mgr } = await supabase
         .from("profiles")
         .select("reminder_minutes")
         .eq("id", managerId)
         .maybeSingle();
 
-      const window = mgr?.reminder_minutes;
-      if (!window || window <= 0) continue;
+      const leadTimes: number[] = (mgr?.reminder_minutes ?? []).filter((m: number) => m > 0);
+      if (leadTimes.length === 0) continue;
 
-      if (diffMin > window) continue;
+      const alreadySent: number[] = a.reminder_sent_minutes ?? [];
+      const due = leadTimes.find((lt) => diffMin <= lt && !alreadySent.includes(lt));
+      if (due === undefined) continue;
 
-      const label = diffMin < 1 ? "agora" : `em ${Math.round(diffMin)} min`;
+      const label = formatLeadLabel(diffMin);
       const payload = {
         title: `⏰ Agendamento ${label}`,
         body: `${owner?.full_name ?? "Corretor"} — ${project?.name ?? "imóvel"}`,
@@ -67,8 +78,8 @@ Deno.serve(async (req) => {
 
       await supabase
         .from("appointments")
-        .update({ reminder_sent_at: new Date().toISOString() })
-        .eq("id", (a as any).id);
+        .update({ reminder_sent_minutes: [...alreadySent, due] })
+        .eq("id", a.id);
 
       notified++;
     }
