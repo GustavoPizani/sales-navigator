@@ -3,6 +3,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { BottomNav } from "@/components/BottomNav";
+import { PushSubscriber } from "@/components/PushSubscriber";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -10,10 +11,10 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, refreshProfile } = useAuth();
   if (loading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Carregando…</div>;
   if (!session) return <Navigate to="/login" replace />;
-  if (!profile) return <div className="min-h-screen grid place-items-center text-muted-foreground">Configurando sua conta…</div>;
+  if (!profile) return <ProfileLoadFailed onRetry={refreshProfile} />;
   if (!profile.is_active)
     return (
       <div className="min-h-screen grid place-items-center p-6 text-center">
@@ -30,8 +31,38 @@ function AuthenticatedLayout() {
 
   return (
     <div className="min-h-screen bg-[var(--surface)]">
+      <PushSubscriber />
       <Outlet />
       <BottomNav />
+    </div>
+  );
+}
+
+function ProfileLoadFailed({ onRetry }: { onRetry: () => Promise<void> }) {
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen grid place-items-center p-6 text-center">
+      <div>
+        <h2 className="text-xl font-semibold text-[var(--navy)]">Não foi possível carregar seu perfil</h2>
+        <p className="text-muted-foreground mt-2">Verifique sua conexão e tente novamente.</p>
+        <button
+          onClick={handleRetry}
+          disabled={retrying}
+          className="mt-4 h-11 px-6 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
+        >
+          {retrying ? "Tentando..." : "Tentar novamente"}
+        </button>
+      </div>
     </div>
   );
 }

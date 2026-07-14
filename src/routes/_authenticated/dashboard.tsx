@@ -45,19 +45,20 @@ function KpiCard({ label, value, isLoading, onClick }: { label: string; value: s
   const len = valueStr.length;
 
   let valueClasses = "text-2xl sm:text-3xl";
-  if (len > 18) valueClasses = "text-base sm:text-lg";
-  else if (len > 15) valueClasses = "text-lg sm:text-xl";
-  else if (len > 12) valueClasses = "text-xl sm:text-2xl";
+  if (len > 19) valueClasses = "text-[10px] sm:text-sm";
+  else if (len > 16) valueClasses = "text-xs sm:text-base";
+  else if (len > 13) valueClasses = "text-sm sm:text-lg";
+  else if (len > 10) valueClasses = "text-base sm:text-xl";
 
   return (
     <div
-      className={`bg-[var(--navy)] rounded-2xl p-4 flex flex-col justify-center items-center shadow-sm text-center min-h-[100px] transition-all ${onClick ? "cursor-pointer hover:ring-2 hover:ring-[var(--gold)]/60 hover:brightness-110 active:scale-95" : ""}`}
+      className={`bg-[var(--navy)] rounded-2xl p-4 flex flex-col justify-center items-center shadow-sm text-center h-[104px] sm:h-[112px] min-w-0 w-full overflow-hidden transition-all ${onClick ? "cursor-pointer hover:ring-2 hover:ring-[var(--gold)]/60 hover:brightness-110 active:scale-95" : ""}`}
       onClick={onClick}
     >
       {isLoading ? (
         <div className="w-20 h-7 rounded-lg bg-white/20 animate-pulse mb-2" />
       ) : (
-        <div className={`font-bold text-white mb-1 ${valueClasses}`}>{value}</div>
+        <div className={`font-bold text-white mb-1 whitespace-nowrap ${valueClasses}`}>{value}</div>
       )}
       <div className="text-[10px] sm:text-xs font-semibold text-[var(--gold)] uppercase tracking-wide leading-tight">{label}</div>
       {onClick && <div className="text-[9px] text-white/30 mt-1 uppercase tracking-wide">ver detalhes</div>}

@@ -24,3 +24,30 @@ self.addEventListener("fetch", (e) => {
   // Cache-first for static assets
   e.respondWith(caches.match(req).then((c) => c || fetch(req)));
 });
+
+self.addEventListener("push", (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = { title: "Notificação", body: e.data?.text() ?? "" }; }
+  const title = data.title || "Gestão Comercial";
+  const options = {
+    body: data.body || "",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    data: { url: data.url || "/" },
+    tag: data.tag,
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || "/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url.includes(url) && "focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
+  );
+});

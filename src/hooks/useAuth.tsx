@@ -13,6 +13,7 @@ export interface Profile {
   is_active: boolean;
   manager_id: string | null;
   enabled_features: Record<string, boolean> | null;
+  reminder_minutes: number;
 }
 
 interface AuthContextValue {
@@ -35,7 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async (uid: string) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+    if (error) console.error("Failed to load profile:", error);
     setProfile((data as Profile | null) ?? null);
   };
 

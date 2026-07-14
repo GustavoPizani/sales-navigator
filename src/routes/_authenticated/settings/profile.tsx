@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Bell } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar } from "@/components/Avatar";
 import { useFeatures, FEATURE_DEFS, type FeaturesMap } from "@/hooks/useFeatures";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export const Route = createFileRoute("/_authenticated/settings/profile")({
   component: ProfileSettingsPage,
@@ -160,6 +161,89 @@ function ModulesSection() {
   );
 }
 
+function NotificationsSection() {
+  const { profile, isAdmin, isDirector, refreshProfile } = useAuth();
+  const { supported, subscribed, loading, subscribe, unsubscribe } = usePushNotifications();
+  const isManager = isAdmin || isDirector;
+
+  const [reminderMinutes, setReminderMinutes] = useState(profile?.reminder_minutes ?? 30);
+
+  const saveReminder = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ reminder_minutes: reminderMinutes } as any)
+        .eq("id", profile!.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await refreshProfile();
+      toast.success("Lembrete atualizado!");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const handleToggle = async () => {
+    try {
+      if (subscribed) {
+        await unsubscribe();
+        toast.success("Notificações desativadas");
+      } else {
+        await subscribe();
+        toast.success("Notificações ativadas!");
+      }
+    } catch (e: any) {
+      toast.error(e.message ?? "Não foi possível alterar as notificações");
+    }
+  };
+
+  return (
+    <SectionCard title="Notificações">
+      <div className="space-y-4">
+        <FeatureToggle
+          label="Notificações push"
+          description={
+            !supported
+              ? "Seu navegador não suporta notificações push."
+              : "Receba avisos de agendamentos direto no celular/desktop."
+          }
+          icon={Bell}
+          enabled={subscribed}
+          onChange={supported ? handleToggle : () => {}}
+        />
+        {loading && <p className="text-xs text-muted-foreground">Atualizando…</p>}
+
+        {isManager && (
+          <div className="pt-2 border-t border-border">
+            <label className="text-xs text-muted-foreground font-medium mb-1 block">
+              Lembrete de agendamento (minutos antes)
+            </label>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              Você e o corretor recebem um lembrete push com essa antecedência.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={1}
+                className="flex-1 h-12 px-4 rounded-xl bg-[var(--surface)] border border-border focus:outline-none focus:border-[var(--gold)] text-[var(--navy)]"
+                value={reminderMinutes}
+                onChange={(e) => setReminderMinutes(Math.max(1, parseInt(e.target.value) || 1))}
+              />
+              <button
+                onClick={() => saveReminder.mutate()}
+                disabled={reminderMinutes === profile?.reminder_minutes || saveReminder.isPending}
+                className="px-5 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
+              >
+                {saveReminder.isPending ? "Salvando…" : "Salvar"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 function ProfileSettingsPage() {
   const { user, profile, isAdmin, refreshProfile } = useAuth();
 
@@ -246,6 +330,9 @@ function ProfileSettingsPage() {
       />
 
       <div className="px-4 pt-4 pb-6 space-y-4">
+        {/* ── Notificações ── */}
+        <NotificationsSection />
+
         {/* ── Dados pessoais ── */}
         <SectionCard title="Dados pessoais">
           <div className="space-y-3">
