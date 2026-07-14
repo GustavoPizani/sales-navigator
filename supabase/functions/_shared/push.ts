@@ -1,50 +1,60 @@
+// Shared Web Push sender using VAPID
 import webpush from "npm:web-push@3.6.7";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
-export const supabaseAdmin = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
+const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
+const VAPID_EMAIL = Deno.env.get("VAPID_EMAIL")!;
+
+webpush.setVapidDetails(
+  VAPID_EMAIL.startsWith("mailto:") ? VAPID_EMAIL : `mailto:${VAPID_EMAIL}`,
+  VAPID_PUBLIC_KEY,
+  VAPID_PRIVATE_KEY,
 );
 
-const vapidPublic = Deno.env.get("VAPID_PUBLIC_KEY");
-const vapidPrivate = Deno.env.get("VAPID_PRIVATE_KEY");
-const vapidEmail = Deno.env.get("VAPID_EMAIL") ?? "suporte@example.com";
-
-if (vapidPublic && vapidPrivate) {
-  webpush.setVapidDetails(`mailto:${vapidEmail}`, vapidPublic, vapidPrivate);
+export function admin() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false } },
+  );
 }
 
-// Sends a push notification to every device the given user is subscribed on.
-// Cleans up subscriptions the push service reports as gone (410/404).
-export async function sendPushToUser(userId: string, title: string, body: string, url?: string) {
-  if (!vapidPublic || !vapidPrivate) {
-    console.error("[PUSH] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY não configurados");
-    return;
-  }
+export interface PushPayload {
+  title: string;
+  body: string;
+  url?: string;
+}
 
-  const { data: subs } = await supabaseAdmin
+export async function sendPushToUser(userId: string, payload: PushPayload) {
+  const supabase = admin();
+  const { data: subs, error } = await supabase
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
     .eq("user_id", userId);
 
+  if (error) {
+    console.error("[push] fetch subs error", error);
+    return;
+  }
   if (!subs || subs.length === 0) return;
 
-  const payload = JSON.stringify({ title, body, url });
+  const json = JSON.stringify(payload);
 
-  await Promise.allSettled(
-    subs.map(async (sub) => {
+  await Promise.all(
+    subs.map(async (s: any) => {
       try {
         await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload
+          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+          json,
         );
       } catch (err: any) {
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          await supabaseAdmin.from("push_subscriptions").delete().eq("id", sub.id);
-        } else {
-          console.error("[PUSH] Falha ao enviar:", err.message);
+        const status = err?.statusCode;
+        console.error("[push] send failed", status, err?.body || err?.message);
+        if (status === 404 || status === 410) {
+          await supabase.from("push_subscriptions").delete().eq("id", s.id);
         }
       }
-    })
+    }),
   );
 }

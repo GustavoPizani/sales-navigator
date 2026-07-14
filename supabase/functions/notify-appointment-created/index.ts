@@ -1,48 +1,56 @@
-import { sendPushToUser, supabaseAdmin } from "../_shared/push.ts";
+import { admin, sendPushToUser } from "../_shared/push.ts";
 
-// Triggered by a Postgres trigger (see migration) right after an appointment
-// is inserted. Notifies the broker's manager with which broker and which
-// imóvel now has an agendamento.
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
   try {
     const { appointment_id } = await req.json();
     if (!appointment_id) {
-      return new Response(JSON.stringify({ error: "Missing appointment_id" }), { status: 400 });
-    }
-
-    const { data: appt, error } = await supabaseAdmin
-      .from("appointments")
-      .select(
-        "id, date, start_time, owner:owner_id(full_name, manager_id), project:project_id(name)"
-      )
-      .eq("id", appointment_id)
-      .maybeSingle();
-
-    if (error || !appt) {
-      return new Response(JSON.stringify({ error: error?.message ?? "Appointment not found" }), {
-        status: 404,
+      return new Response(JSON.stringify({ error: "appointment_id required" }), {
+        status: 400,
+        headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
-    const owner = (appt as any).owner;
-    const project = (appt as any).project;
-    const managerId = owner?.manager_id as string | null;
+    const supabase = admin();
+    const { data: appt, error } = await supabase
+      .from("appointments")
+      .select("id, owner_id, project_id, owner:profiles!appointments_owner_id_fkey(full_name, manager_id), project:projects(name)")
+      .eq("id", appointment_id)
+      .maybeSingle();
 
-    if (managerId) {
-      const brokerName = owner?.full_name ?? "Um corretor";
-      const productName = project?.name ?? "um imóvel";
-      await sendPushToUser(
-        managerId,
-        "📅 Novo agendamento",
-        `${brokerName} agendou ${productName}`,
-        "/agendamentos"
-      );
+    if (error) throw error;
+    if (!appt) return new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: cors });
+
+    const owner: any = appt.owner;
+    const project: any = appt.project;
+    const managerId = owner?.manager_id;
+
+    if (!managerId) {
+      return new Response(JSON.stringify({ ok: true, skipped: "no manager" }), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
     }
 
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { "Content-Type": "application/json" },
+    await sendPushToUser(managerId, {
+      title: "📅 Novo agendamento",
+      body: `${owner?.full_name ?? "Corretor"} agendou ${project?.name ?? "imóvel"}`,
+      url: "/agendamentos",
     });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    console.error("[notify-appointment-created]", e);
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
+      headers: { ...cors, "Content-Type": "application/json" },
+    });
   }
 });
