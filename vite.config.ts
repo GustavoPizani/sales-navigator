@@ -22,6 +22,14 @@ export default defineConfig({
     ? {
         vite: {
           ssr: { noExternal: true },
+          // pdfjs-dist optionally imports "canvas" (Node canvas rendering fallback),
+          // which isn't installed as a dependency — keep it external so SSR build
+          // doesn't try to bundle/resolve it.
+          build: {
+            rollupOptions: {
+              external: ["canvas"],
+            },
+          },
         },
       }
     : {}),
