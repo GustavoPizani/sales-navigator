@@ -1,5 +1,9 @@
-const CACHE = "gc-shell-v1";
-const ASSETS = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
+const CACHE = "gc-shell-v2";
+// "/" is deliberately NOT precached: caching the HTML shell means it can
+// reference JS chunk hashes from a previous deploy that no longer exist,
+// which sends the app into a reload loop after every release. The manifest
+// and icons never change content per-deploy, so they're safe to keep.
+const ASSETS = ["/manifest.json", "/icon-192.png", "/icon-512.png"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
