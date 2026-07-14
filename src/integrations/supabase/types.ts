@@ -14,195 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      atendimentos: {
-        Row: {
-          id: string
-          created_at: string
-          broker_id: string
-          appointment_id: string | null
-          data: string
-          data_atualizacao: string | null
-          nome_cliente: string | null
-          id_cliente: string | null
-          telefone: string | null
-          email: string | null
-          produto: string | null
-          setor: string | null
-          ocorrencia: string | null
-          temperatura: string | null
-          visita: boolean
-          venda: boolean
-          status: string | null
-          valor: number | null
-        }
-        Insert: {
-          id?: string
-          created_at?: string
-          broker_id: string
-          appointment_id?: string | null
-          data: string
-          data_atualizacao?: string | null
-          nome_cliente?: string | null
-          id_cliente?: string | null
-          telefone?: string | null
-          email?: string | null
-          produto?: string | null
-          setor?: string | null
-          ocorrencia?: string | null
-          temperatura?: string | null
-          visita?: boolean
-          venda?: boolean
-          status?: string | null
-          valor?: number | null
-        }
-        Update: {
-          id?: string
-          created_at?: string
-          broker_id?: string
-          appointment_id?: string | null
-          data?: string
-          data_atualizacao?: string | null
-          nome_cliente?: string | null
-          id_cliente?: string | null
-          telefone?: string | null
-          email?: string | null
-          produto?: string | null
-          setor?: string | null
-          ocorrencia?: string | null
-          temperatura?: string | null
-          visita?: boolean
-          venda?: boolean
-          status?: string | null
-          valor?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "atendimentos_broker_id_fkey"
-            columns: ["broker_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      vendas: {
-        Row: {
-          id: string
-          created_at: string
-          atendimento_id: string
-          broker_id: string
-          data_venda: string
-          produto: string | null
-          unidade: string | null
-          valor: number | null
-          status: string
-          approved_by: string | null
-          approved_at: string | null
-          rejected_reason: string | null
-        }
-        Insert: {
-          id?: string
-          created_at?: string
-          atendimento_id: string
-          broker_id: string
-          data_venda: string
-          produto?: string | null
-          unidade?: string | null
-          valor?: number | null
-          status?: string
-          approved_by?: string | null
-          approved_at?: string | null
-          rejected_reason?: string | null
-        }
-        Update: {
-          id?: string
-          created_at?: string
-          atendimento_id?: string
-          broker_id?: string
-          data_venda?: string
-          produto?: string | null
-          unidade?: string | null
-          valor?: number | null
-          status?: string
-          approved_by?: string | null
-          approved_at?: string | null
-          rejected_reason?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "vendas_atendimento_id_fkey"
-            columns: ["atendimento_id"]
-            isOneToOne: false
-            referencedRelation: "atendimentos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vendas_broker_id_fkey"
-            columns: ["broker_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      visitas: {
-        Row: {
-          id: string
-          created_at: string
-          atendimento_id: string | null
-          appointment_id: string | null
-          broker_id: string
-          id_cliente: string | null
-          nome_cliente: string | null
-          produto: string | null
-          data_visita: string
-        }
-        Insert: {
-          id?: string
-          created_at?: string
-          atendimento_id?: string | null
-          appointment_id?: string | null
-          broker_id: string
-          id_cliente?: string | null
-          nome_cliente?: string | null
-          produto?: string | null
-          data_visita?: string
-        }
-        Update: {
-          id?: string
-          created_at?: string
-          atendimento_id?: string | null
-          appointment_id?: string | null
-          broker_id?: string
-          id_cliente?: string | null
-          nome_cliente?: string | null
-          produto?: string | null
-          data_visita?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "visitas_atendimento_id_fkey"
-            columns: ["atendimento_id"]
-            isOneToOne: false
-            referencedRelation: "atendimentos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "visitas_appointment_id_fkey"
-            columns: ["appointment_id"]
-            isOneToOne: false
-            referencedRelation: "appointments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "visitas_broker_id_fkey"
-            columns: ["broker_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       appointments: {
         Row: {
           client_email: string | null
@@ -218,6 +29,7 @@ export type Database = {
           include_manager: boolean
           owner_id: string
           project_id: string | null
+          reminder_sent_at: string | null
           start_time: string
           title: string
           type: Database["public"]["Enums"]["appointment_type"]
@@ -236,6 +48,7 @@ export type Database = {
           include_manager?: boolean
           owner_id: string
           project_id?: string | null
+          reminder_sent_at?: string | null
           start_time: string
           title: string
           type?: Database["public"]["Enums"]["appointment_type"]
@@ -254,6 +67,7 @@ export type Database = {
           include_manager?: boolean
           owner_id?: string
           project_id?: string | null
+          reminder_sent_at?: string | null
           start_time?: string
           title?: string
           type?: Database["public"]["Enums"]["appointment_type"]
@@ -275,101 +89,122 @@ export type Database = {
           },
         ]
       }
-      shift_configs: {
+      atendimentos: {
         Row: {
+          appointment_id: string | null
+          broker_id: string
+          created_at: string | null
+          data: string
+          data_atualizacao: string | null
+          email: string | null
           id: string
-          created_at: string
-          manager_id: string
-          week_start_date: string
-          modality: string
-          project_id: string | null
-          link_token: string
+          id_cliente: string | null
+          nome_cliente: string
+          ocorrencia: string | null
+          produto: string | null
+          setor: string | null
+          status: string | null
+          telefone: string | null
+          temperatura: string | null
+          valor: number | null
+          venda: boolean | null
+          visita: boolean | null
         }
         Insert: {
+          appointment_id?: string | null
+          broker_id: string
+          created_at?: string | null
+          data: string
+          data_atualizacao?: string | null
+          email?: string | null
           id?: string
-          created_at?: string
-          manager_id: string
-          week_start_date: string
-          modality?: string
-          project_id?: string | null
-          link_token: string
+          id_cliente?: string | null
+          nome_cliente: string
+          ocorrencia?: string | null
+          produto?: string | null
+          setor?: string | null
+          status?: string | null
+          telefone?: string | null
+          temperatura?: string | null
+          valor?: number | null
+          venda?: boolean | null
+          visita?: boolean | null
         }
         Update: {
+          appointment_id?: string | null
+          broker_id?: string
+          created_at?: string | null
+          data?: string
+          data_atualizacao?: string | null
+          email?: string | null
           id?: string
-          created_at?: string
-          manager_id?: string
-          week_start_date?: string
-          modality?: string
-          project_id?: string | null
-          link_token?: string
+          id_cliente?: string | null
+          nome_cliente?: string
+          ocorrencia?: string | null
+          produto?: string | null
+          setor?: string | null
+          status?: string | null
+          telefone?: string | null
+          temperatura?: string | null
+          valor?: number | null
+          venda?: boolean | null
+          visita?: boolean | null
         }
-        Relationships: []
-      }
-      shift_slots: {
-        Row: {
-          id: string
-          created_at: string
-          config_id: string
-          date: string
-          period: string
-          capacity: number
-          start_time: string
-          end_time: string
-        }
-        Insert: {
-          id?: string
-          created_at?: string
-          config_id: string
-          date: string
-          period: string
-          capacity?: number
-          start_time: string
-          end_time: string
-        }
-        Update: {
-          id?: string
-          created_at?: string
-          config_id?: string
-          date?: string
-          period?: string
-          capacity?: number
-          start_time?: string
-          end_time?: string
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "atendimentos_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "atendimentos_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
           color: string
           created_at: string
           email: string
+          enabled_features: Json
           full_name: string
           id: string
           is_active: boolean
           manager_id: string | null
           phone: string | null
+          reminder_minutes: number
           role: Database["public"]["Enums"]["app_role"]
         }
         Insert: {
           color?: string
           created_at?: string
           email: string
+          enabled_features?: Json
           full_name?: string
           id: string
           is_active?: boolean
           manager_id?: string | null
           phone?: string | null
+          reminder_minutes?: number
           role?: Database["public"]["Enums"]["app_role"]
         }
         Update: {
           color?: string
           created_at?: string
           email?: string
+          enabled_features?: Json
           full_name?: string
           id?: string
           is_active?: boolean
           manager_id?: string | null
           phone?: string | null
+          reminder_minutes?: number
           role?: Database["public"]["Enums"]["app_role"]
         }
         Relationships: [
@@ -379,7 +214,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       projects: {
@@ -422,6 +257,124 @@ export type Database = {
             columns: ["manager_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_configs: {
+        Row: {
+          created_at: string | null
+          id: string
+          link_token: string
+          manager_id: string | null
+          modality: string | null
+          project_id: string | null
+          week_start_date: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          link_token: string
+          manager_id?: string | null
+          modality?: string | null
+          project_id?: string | null
+          week_start_date: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          link_token?: string
+          manager_id?: string | null
+          modality?: string | null
+          project_id?: string | null
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_configs_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_configs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_slots: {
+        Row: {
+          capacity: number
+          config_id: string | null
+          date: string
+          end_time: string
+          id: string
+          period: string | null
+          start_time: string
+        }
+        Insert: {
+          capacity: number
+          config_id?: string | null
+          date: string
+          end_time: string
+          id?: string
+          period?: string | null
+          start_time: string
+        }
+        Update: {
+          capacity?: number
+          config_id?: string | null
+          date?: string
+          end_time?: string
+          id?: string
+          period?: string | null
+          start_time?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_slots_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "shift_configs"
             referencedColumns: ["id"]
           },
         ]
@@ -475,6 +428,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "shifts_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "shift_slots"
+            referencedColumns: ["id"]
+          },
         ]
       }
       tasks: {
@@ -518,11 +478,145 @@ export type Database = {
           },
         ]
       }
+      vendas: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          atendimento_id: string
+          broker_id: string
+          created_at: string | null
+          data_venda: string
+          id: string
+          produto: string | null
+          rejected_reason: string | null
+          status: string
+          unidade: string | null
+          valor: number | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          atendimento_id: string
+          broker_id: string
+          created_at?: string | null
+          data_venda: string
+          id?: string
+          produto?: string | null
+          rejected_reason?: string | null
+          status?: string
+          unidade?: string | null
+          valor?: number | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          atendimento_id?: string
+          broker_id?: string
+          created_at?: string | null
+          data_venda?: string
+          id?: string
+          produto?: string | null
+          rejected_reason?: string | null
+          status?: string
+          unidade?: string | null
+          valor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendas_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendas_atendimento_id_fkey"
+            columns: ["atendimento_id"]
+            isOneToOne: false
+            referencedRelation: "atendimentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendas_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      visitas: {
+        Row: {
+          appointment_id: string | null
+          atendimento_id: string | null
+          broker_id: string
+          created_at: string
+          data_visita: string
+          id: string
+          id_cliente: string | null
+          nome_cliente: string | null
+          produto: string | null
+        }
+        Insert: {
+          appointment_id?: string | null
+          atendimento_id?: string | null
+          broker_id: string
+          created_at?: string
+          data_visita?: string
+          id?: string
+          id_cliente?: string | null
+          nome_cliente?: string | null
+          produto?: string | null
+        }
+        Update: {
+          appointment_id?: string | null
+          atendimento_id?: string | null
+          broker_id?: string
+          created_at?: string
+          data_visita?: string
+          id?: string
+          id_cliente?: string | null
+          nome_cliente?: string | null
+          produto?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visitas_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitas_atendimento_id_fkey"
+            columns: ["atendimento_id"]
+            isOneToOne: false
+            referencedRelation: "atendimentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitas_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      admin_reset_password: {
+        Args: { p_new_password: string; p_user_id: string }
+        Returns: boolean
+      }
+      claim_shift_slot: {
+        Args: { p_broker_id: string; p_slot_id: string }
+        Returns: undefined
+      }
+      get_shift_config_by_token: { Args: { p_token: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
