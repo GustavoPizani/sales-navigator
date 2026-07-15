@@ -29,7 +29,7 @@ export type Database = {
           include_manager: boolean
           owner_id: string
           project_id: string | null
-          reminder_sent_at: string | null
+          reminder_sent_minutes: number[]
           start_time: string
           title: string
           type: Database["public"]["Enums"]["appointment_type"]
@@ -48,7 +48,7 @@ export type Database = {
           include_manager?: boolean
           owner_id: string
           project_id?: string | null
-          reminder_sent_at?: string | null
+          reminder_sent_minutes?: number[]
           start_time: string
           title: string
           type?: Database["public"]["Enums"]["appointment_type"]
@@ -67,7 +67,7 @@ export type Database = {
           include_manager?: boolean
           owner_id?: string
           project_id?: string | null
-          reminder_sent_at?: string | null
+          reminder_sent_minutes?: number[]
           start_time?: string
           title?: string
           type?: Database["public"]["Enums"]["appointment_type"]
@@ -178,8 +178,9 @@ export type Database = {
           is_active: boolean
           manager_id: string | null
           phone: string | null
-          reminder_minutes: number
+          reminder_minutes: number[]
           role: Database["public"]["Enums"]["app_role"]
+          shift_reminder_time: string | null
         }
         Insert: {
           color?: string
@@ -191,8 +192,9 @@ export type Database = {
           is_active?: boolean
           manager_id?: string | null
           phone?: string | null
-          reminder_minutes?: number
+          reminder_minutes?: number[]
           role?: Database["public"]["Enums"]["app_role"]
+          shift_reminder_time?: string | null
         }
         Update: {
           color?: string
@@ -204,8 +206,9 @@ export type Database = {
           is_active?: boolean
           manager_id?: string | null
           phone?: string | null
-          reminder_minutes?: number
+          reminder_minutes?: number[]
           role?: Database["public"]["Enums"]["app_role"]
+          shift_reminder_time?: string | null
         }
         Relationships: [
           {
@@ -388,6 +391,7 @@ export type Database = {
           id: string
           manager_id: string
           notes: string | null
+          reminder_sent_at: string | null
           slot_id: string | null
           start_time: string
         }
@@ -399,6 +403,7 @@ export type Database = {
           id?: string
           manager_id: string
           notes?: string | null
+          reminder_sent_at?: string | null
           slot_id?: string | null
           start_time: string
         }
@@ -410,6 +415,7 @@ export type Database = {
           id?: string
           manager_id?: string
           notes?: string | null
+          reminder_sent_at?: string | null
           slot_id?: string | null
           start_time?: string
         }
@@ -625,6 +631,8 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_director: { Args: { _user_id: string }; Returns: boolean }
+      my_manager_id: { Args: never; Returns: string }
     }
     Enums: {
       app_role: "admin" | "broker" | "director" | "master"
