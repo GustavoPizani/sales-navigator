@@ -1490,7 +1490,10 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
           .limit(1)
           .maybeSingle();
 
-        if (existing && !existing.venda && existing.status !== "Contrato Assinado") {
+        // Um cliente tem no máximo 1 atendimento por corretor — mesmo que ele já
+        // tenha comprado/fechado antes, um novo agendamento atualiza o mesmo
+        // registro (produto/status mais recentes) em vez de duplicar a linha.
+        if (existing) {
           const { error } = await supabase.from("atendimentos").update({ ...payload, data: existing.data, data_atualizacao: format(new Date(), "yyyy-MM-dd") }).eq("id", existing.id);
           if (error) throw error;
           atendimentoId = existing.id;
@@ -2078,13 +2081,55 @@ function CsvImportButton({ brokers }: { brokers: any[] }) {
   const handleImport = async () => {
     if (!parsed?.rawRows.length || !brokerId) return;
     setLoading(true);
-    const rows = parsed.rawRows.map(r => ({ ...r, broker_id: brokerId }));
-    const { error } = await supabase.from("atendimentos").insert(rows as any);
-    setLoading(false);
-    if (error) { toast.error("Erro ao importar: " + error.message); return; }
-    toast.success(`${rows.length} atendimentos importados!`);
-    qc.invalidateQueries({ queryKey: ["dashboard-atendimentos"] });
-    setParsed(null);
+    try {
+      const rows = parsed.rawRows.map(r => ({ ...r, broker_id: brokerId }));
+
+      // Um cliente só pode ter 1 atendimento por corretor: se a planilha tem
+      // várias linhas do mesmo id_cliente, fica só a última; e se o cliente já
+      // tem atendimento cadastrado, atualiza esse registro em vez de duplicar.
+      const dedupedRows = new Map<string, any>();
+      const withoutClientId: any[] = [];
+      for (const row of rows) {
+        if (row.id_cliente) dedupedRows.set(row.id_cliente, row);
+        else withoutClientId.push(row);
+      }
+
+      const clientIds = [...dedupedRows.keys()];
+      const { data: existing } = clientIds.length
+        ? await supabase.from("atendimentos").select("id, id_cliente, data")
+            .eq("broker_id", brokerId).in("id_cliente", clientIds)
+        : { data: [] as { id: string; id_cliente: string; data: string }[] };
+
+      const existingByClientId = new Map((existing ?? []).map(e => [e.id_cliente, e]));
+
+      const toInsert: any[] = [...withoutClientId];
+      const toUpdate: { id: string; payload: any }[] = [];
+      for (const [clientId, row] of dedupedRows) {
+        const match = existingByClientId.get(clientId);
+        if (match) {
+          toUpdate.push({ id: match.id, payload: { ...row, data: match.data, data_atualizacao: format(new Date(), "yyyy-MM-dd") } });
+        } else {
+          toInsert.push(row);
+        }
+      }
+
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from("atendimentos").insert(toInsert as any);
+        if (error) throw error;
+      }
+      for (const { id, payload } of toUpdate) {
+        const { error } = await supabase.from("atendimentos").update(payload).eq("id", id);
+        if (error) throw error;
+      }
+
+      toast.success(`${toInsert.length} novo(s), ${toUpdate.length} atualizado(s)!`);
+      qc.invalidateQueries({ queryKey: ["dashboard-atendimentos"] });
+      setParsed(null);
+    } catch (err: any) {
+      toast.error("Erro ao importar: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const selectedBroker = brokers.find(b => b.id === brokerId);
