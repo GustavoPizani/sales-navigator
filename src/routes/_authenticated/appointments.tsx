@@ -26,6 +26,29 @@ export type Appt = {
   include_manager: boolean; google_calendar_link: string | null;
 };
 
+// Opens the modal for a specific appointment when the page is reached via a
+// push notification link (?open=<appointment_id>), then strips the param so
+// a refresh doesn't reopen it. Fetches the record directly by id instead of
+// relying on whatever's already loaded — the notification can point at an
+// appointment outside the currently visible date range/filter.
+export function useOpenAppointmentFromUrl(onOpen: (appt: Appt) => void) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const openId = params.get("open");
+    if (!openId) return;
+
+    supabase.from("appointments").select("*").eq("id", openId).maybeSingle().then(({ data }) => {
+      if (data) onOpen(data as Appt);
+    });
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("open");
+    window.history.replaceState({}, "", url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
 export function outlookCalendarLink(p: {
   title: string;
   date: string;
@@ -70,6 +93,7 @@ function ManagerAppointmentsList() {
   const isManager = isAdmin || isDirector;
   const [editing, setEditing] = useState<Appt | "new" | null>(null);
   const [brokerFilter, setBrokerFilter] = useState<string>("all");
+  useOpenAppointmentFromUrl(setEditing);
 
   const brokersQ = useQuery({
     queryKey: ["team-broker-profiles", user?.id],

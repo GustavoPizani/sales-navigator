@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar } from "@/components/Avatar";
-import { AppointmentForm } from "./appointments";
+import { AppointmentForm, useOpenAppointmentFromUrl } from "./appointments";
 
 export const Route = createFileRoute("/_authenticated/calendar")({
   component: CalendarPage,
@@ -31,6 +31,7 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
   const [filterBrokers, setFilterBrokers] = useState<string[]>([]);
   const [editing, setEditing] = useState<any | "new" | null>(null);
   const [dayModalOpen, setDayModalOpen] = useState(false);
+  useOpenAppointmentFromUrl(setEditing);
 
   const monthStart = startOfMonth(month);
   const monthEnd = endOfMonth(month);

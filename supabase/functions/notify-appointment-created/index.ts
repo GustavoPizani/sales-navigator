@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     await sendPushToUser(managerId, {
       title: "📅 Novo agendamento",
       body: `${owner?.full_name ?? "Corretor"} agendou ${project?.name ?? "imóvel"}`,
-      url: "/agendamentos",
+      url: `/agendamentos?open=${appt.id}`,
     });
 
     return new Response(JSON.stringify({ ok: true }), {
