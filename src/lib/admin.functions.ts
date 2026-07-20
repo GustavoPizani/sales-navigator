@@ -54,8 +54,14 @@ export const deleteUser = createServerFn({ method: "POST" })
     if (!caller || (caller.role !== "admin" && caller.role !== "master" && caller.role !== "director")) {
       throw new Error("Forbidden");
     }
-    // Delete from auth.users — cascades to profiles via FK or trigger
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.id);
+    // Não apaga a conta de login (auth.users) — isso exige a service role key,
+    // que não está disponível no ambiente. Em vez disso, desativa o perfil:
+    // o corretor some das listas de time (profiles_team_view exige is_active)
+    // e perde acesso, sem precisar de privilégios de admin do Supabase Auth.
+    const { error } = await context.supabase
+      .from("profiles")
+      .update({ is_active: false })
+      .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

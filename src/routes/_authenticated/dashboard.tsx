@@ -1511,16 +1511,27 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
       // seja o mesmo de uma visita anterior — assim visitas repetidas do
       // mesmo cliente continuam sendo contabilizadas.
       if (visita) {
-        const { error: visitaError } = await supabase.from("visitas").insert({
-          atendimento_id: atendimentoId,
-          appointment_id: linkedApptId || null,
-          broker_id: targetUserId,
-          id_cliente: idCliente || null,
-          nome_cliente: nomeCliente || null,
-          produto: produto || null,
-          data_visita: data,
-        });
-        if (visitaError) throw visitaError;
+        // Evita duplicar quando o mesmo atendimento é reenviado (ex: correção
+        // de campo) no mesmo dia — mas continua contando visitas repetidas
+        // do cliente em datas diferentes.
+        const { data: existingVisita } = await supabase.from("visitas")
+          .select("id")
+          .eq("atendimento_id", atendimentoId)
+          .eq("data_visita", data)
+          .maybeSingle();
+
+        if (!existingVisita) {
+          const { error: visitaError } = await supabase.from("visitas").insert({
+            atendimento_id: atendimentoId,
+            appointment_id: linkedApptId || null,
+            broker_id: targetUserId,
+            id_cliente: idCliente || null,
+            nome_cliente: nomeCliente || null,
+            produto: produto || null,
+            data_visita: data,
+          });
+          if (visitaError) throw visitaError;
+        }
       }
     },
     onSuccess: () => {
@@ -1978,18 +1989,32 @@ function BackfillVisitasButton({ teamBrokerIds }: { teamBrokerIds: string[] }) {
       );
 
       // Se já existe uma visita registrada manualmente (sem vínculo de
-      // agendamento) para o mesmo cliente/data/unidade, ela já cobre esse
-      // evento — não recriar uma segunda vinda do calendário.
+      // agendamento) para o mesmo cliente/unidade em uma data próxima, ela já
+      // cobre esse evento — não recriar uma segunda vinda do calendário.
+      // Usamos uma janela de dias (em vez de data exata) porque a data
+      // lançada manualmente às vezes diverge um pouco da data do agendamento
+      // (reagendamento, lançamento retroativo etc.), o que causava duplicidade.
+      const DEDUPE_WINDOW_DAYS = 3;
       const { data: manualVisitas, error: manualErr } = await supabase
         .from("visitas")
         .select("id_cliente, nome_cliente, data_visita, produto")
         .in("broker_id", ownerIds)
         .is("appointment_id", null);
       if (manualErr) throw manualErr;
-      const manualKeys = new Set(
-        (manualVisitas ?? []).map((v) => `${v.id_cliente ?? v.nome_cliente ?? ""}_${v.data_visita}_${v.produto ?? ""}`)
-      );
-      const toInsert = deduped.filter((a) => !manualKeys.has(dedupKey(a)));
+      const manualByClientProduct = new Map<string, string[]>();
+      for (const v of manualVisitas ?? []) {
+        const key = `${v.id_cliente ?? v.nome_cliente ?? ""}_${v.produto ?? ""}`;
+        if (!manualByClientProduct.has(key)) manualByClientProduct.set(key, []);
+        manualByClientProduct.get(key)!.push(v.data_visita);
+      }
+      const isNearManualVisita = (a: VisitAppt) => {
+        const key = `${a.client_id ?? a.client_name ?? ""}_${a.unidade ?? ""}`;
+        const dates = manualByClientProduct.get(key);
+        if (!dates) return false;
+        const apptTime = new Date(a.date).getTime();
+        return dates.some((d) => Math.abs(new Date(d).getTime() - apptTime) <= DEDUPE_WINDOW_DAYS * 86400000);
+      };
+      const toInsert = deduped.filter((a) => !isNearManualVisita(a));
 
       const payload = toInsert.map((a) => {
         const atend = a.client_id ? atendimentoByClientBroker.get(`${a.client_id}_${a.owner_id}`) : undefined;
