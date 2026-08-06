@@ -181,6 +181,7 @@ export type Database = {
           reminder_minutes: number[]
           role: Database["public"]["Enums"]["app_role"]
           shift_reminder_time: string | null
+          setor: string | null
         }
         Insert: {
           color?: string
@@ -195,6 +196,7 @@ export type Database = {
           reminder_minutes?: number[]
           role?: Database["public"]["Enums"]["app_role"]
           shift_reminder_time?: string | null
+          setor?: string | null
         }
         Update: {
           color?: string
@@ -209,6 +211,7 @@ export type Database = {
           reminder_minutes?: number[]
           role?: Database["public"]["Enums"]["app_role"]
           shift_reminder_time?: string | null
+          setor?: string | null
         }
         Relationships: [
           {

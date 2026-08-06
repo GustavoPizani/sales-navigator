@@ -12,6 +12,7 @@ export interface Profile {
   color: string;
   is_active: boolean;
   manager_id: string | null;
+  setor: "Online" | "Salão";
   enabled_features: Record<string, boolean> | null;
   reminder_minutes: number[];
   shift_reminder_time: string | null;

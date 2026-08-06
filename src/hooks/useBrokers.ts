@@ -15,7 +15,7 @@ interface UseBrokersOptions {
  * - broker → empty (not applicable)
  */
 export function useBrokers({
-  select = "id,full_name,color,role,is_active,phone,email",
+  select = "id,full_name,color,role,is_active,phone,email,setor",
   includeInactive = false,
   enabled = true,
 }: UseBrokersOptions = {}) {

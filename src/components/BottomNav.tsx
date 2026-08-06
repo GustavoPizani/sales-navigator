@@ -29,9 +29,11 @@ const brokerTabs: Tab[] = [
   { to: "/projects",     label: "Imóveis",      icon: Building2 },
 ];
 
-function filterTabs(tabs: Tab[], isFeatureEnabled: (k: any) => boolean): Tab[] {
+function filterTabs(tabs: Tab[], isFeatureEnabled: (k: any) => boolean, isBroker: boolean, setor: string | undefined): Tab[] {
   return tabs.filter((t) => {
-    if (t.to === "/schedule")     return isFeatureEnabled("schedule");
+    // Escala só aparece para corretores do setor Online — gestores/diretores
+    // enxergam a escala do time inteiro, então não são filtrados pelo próprio setor.
+    if (t.to === "/schedule")     return isFeatureEnabled("schedule") && (!isBroker || setor === "Online");
     if (t.to === "/calendar")     return isFeatureEnabled("agendamentos");
     if (t.to === "/appointments") return isFeatureEnabled("agendamentos");
     if (t.to === "/projects")     return isFeatureEnabled("projects");
@@ -42,12 +44,12 @@ function filterTabs(tabs: Tab[], isFeatureEnabled: (k: any) => boolean): Tab[] {
 }
 
 export function BottomNav() {
-  const { isAdmin, isDirector } = useAuth();
+  const { isAdmin, isDirector, profile } = useAuth();
   const { isFeatureEnabled } = useFeatures();
   const loc = useLocation();
 
   const baseTabs = isAdmin ? adminTabs : isDirector ? directorTabs : brokerTabs;
-  const tabs = filterTabs(baseTabs, isFeatureEnabled);
+  const tabs = filterTabs(baseTabs, isFeatureEnabled, !isAdmin && !isDirector, profile?.setor);
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 bg-[var(--navy)] text-white safe-bottom shadow-[0_-2px_12px_rgba(0,0,0,0.15)]">

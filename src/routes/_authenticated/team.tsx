@@ -24,6 +24,7 @@ type Profile = {
   phone: string | null;
   color: string;
   role: string;
+  setor: "Online" | "Salão";
   is_active: boolean;
 };
 
@@ -276,6 +277,7 @@ function DirectorBrokerCard({ broker }: { broker: BrokerWithManager }) {
         <p className="font-semibold text-[var(--navy)] truncate">{broker.full_name}</p>
         <p className="text-xs text-muted-foreground">{broker.phone ?? broker.email}</p>
         <div className="mt-1 flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{broker.setor}</span>
           {broker.is_active ? (
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Ativo</span>
           ) : (
@@ -336,7 +338,10 @@ function BrokerCard({
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-[var(--navy)] truncate">{broker.full_name}</p>
         <p className="text-xs text-muted-foreground capitalize">Corretor · {broker.phone ?? broker.email}</p>
-        <div className="mt-1.5 flex items-center gap-2">
+        <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+            {broker.setor}
+          </span>
           {broker.is_active ? (
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
               Ativo
@@ -562,6 +567,7 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [color, setColor] = useState("#C9A84C");
+  const [setor, setSetor] = useState<"Online" | "Salão">("Online");
   const [tempPassword] = useState(() => "Setin@" + Math.floor(100000 + Math.random() * 900000));
   const [created, setCreated] = useState<{ name: string; email: string; phone: string } | null>(null);
 
@@ -605,6 +611,7 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
           color,
           phone: phone || null,
           role: "broker",
+          setor,
           manager_id: profile?.id ?? null,
         }).eq("id", data.user.id);
       }
@@ -674,6 +681,18 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
           />
+
+          <div>
+            <label className="text-xs text-muted-foreground font-medium mb-2 block">Setor</label>
+            <select
+              value={setor}
+              onChange={(e) => setSetor(e.target.value as "Online" | "Salão")}
+              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+            >
+              <option value="Online">Online</option>
+              <option value="Salão">Salão</option>
+            </select>
+          </div>
 
           <div>
             <p className="text-xs text-muted-foreground font-medium mb-2">Cor do perfil (HEX)</p>
@@ -844,6 +863,7 @@ function EditBrokerSheet({ profile, onClose }: { profile: Profile; onClose: () =
   const [name, setName] = useState(profile.full_name);
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [color, setColor] = useState(profile.color);
+  const [setor, setSetor] = useState<"Online" | "Salão">(profile.setor ?? "Online");
 
   const m = useMutation({
     mutationFn: async () => {
@@ -851,6 +871,7 @@ function EditBrokerSheet({ profile, onClose }: { profile: Profile; onClose: () =
         full_name: name,
         phone: phone || null,
         color,
+        setor,
       }).eq("id", profile.id);
       if (error) throw error;
     },
@@ -890,6 +911,18 @@ function EditBrokerSheet({ profile, onClose }: { profile: Profile; onClose: () =
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
           />
+
+          <div>
+            <label className="text-xs text-muted-foreground font-medium mb-2 block">Setor</label>
+            <select
+              value={setor}
+              onChange={(e) => setSetor(e.target.value as "Online" | "Salão")}
+              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+            >
+              <option value="Online">Online</option>
+              <option value="Salão">Salão</option>
+            </select>
+          </div>
 
           <div>
             <p className="text-xs text-muted-foreground font-medium mb-2">Cor do perfil (HEX)</p>
