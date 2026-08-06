@@ -914,7 +914,9 @@ function AdminGrid({ days, brokers, shifts, slots, modality }: { days: Date[]; b
   const brokerIds = useMemo(() => new Set(brokers.map((b) => b.id)), [brokers]);
   const remainingFor = (ds: string, periodVal: "manha" | "tarde" | "noite") => {
     const p = PERIODS.find((x) => x.val === periodVal)!;
-    const slot = slots.find((s) => s.date === ds && s.start_time === p.start && s.end_time === p.end);
+    // start_time/end_time voltam do banco como "HH:MM:SS" (coluna time),
+    // então compara só os 5 primeiros caracteres ("HH:MM").
+    const slot = slots.find((s) => s.date === ds && s.start_time.slice(0, 5) === p.start && s.end_time.slice(0, 5) === p.end);
     if (!slot) return null;
     const occupied = shifts.filter((s) => s.date === ds && derivePeriod(s.start_time) === periodVal && brokerIds.has(s.broker_id)).length;
     return Math.max(0, slot.capacity - occupied);
