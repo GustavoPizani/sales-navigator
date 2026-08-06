@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { addDays, differenceInDays, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2, MessageCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2, MessageCircle, FileDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -601,6 +601,126 @@ function ImportScheduleButton({ brokers, currentWeekStart, onImported }: { broke
   );
 }
 
+const EXPORT_DAY_LABELS = ["SEGUNDA", "TERÇA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO", "DOMINGO"];
+
+async function exportScheduleXlsx({ weekStart, days, brokers, shifts }: { weekStart: Date; days: Date[]; brokers: any[]; shifts: Shift[] }) {
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Escala");
+  const numCols = 1 + days.length;
+
+  ws.columns = [{ width: 6 }, ...days.map(() => ({ width: 18 }))];
+
+  const fill = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
+  const thinBorder = { style: "thin" as const, color: { argb: "FFCCCCCC" } };
+
+  let rowIdx = 1;
+
+  ws.mergeCells(rowIdx, 1, rowIdx, numCols);
+  const titleCell = ws.getCell(rowIdx, 1);
+  titleCell.value = "PROGRAMAÇÃO - ESCALA";
+  titleCell.font = { bold: true, size: 14 };
+  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+  titleCell.fill = fill("FFC6E8C6");
+  ws.getRow(rowIdx).height = 24;
+  rowIdx++;
+
+  for (const period of PERIODS) {
+    ws.mergeCells(rowIdx, 1, rowIdx, numCols);
+    const pCell = ws.getCell(rowIdx, 1);
+    pCell.value = period.label.toUpperCase();
+    pCell.font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
+    pCell.alignment = { horizontal: "center", vertical: "middle" };
+    pCell.fill = fill("FF4C9A4C");
+    ws.getRow(rowIdx).height = 20;
+    rowIdx++;
+
+    const dayRow = ws.getRow(rowIdx);
+    days.forEach((_d, i) => {
+      const c = dayRow.getCell(i + 2);
+      c.value = EXPORT_DAY_LABELS[i];
+      c.font = { bold: true };
+      c.alignment = { horizontal: "center" };
+      c.fill = fill("FFF6A821");
+    });
+    rowIdx++;
+
+    const dateRow = ws.getRow(rowIdx);
+    days.forEach((d, i) => {
+      const c = dateRow.getCell(i + 2);
+      c.value = format(d, "d/M");
+      c.font = { bold: true };
+      c.alignment = { horizontal: "center" };
+      c.fill = fill("FF9DC3E6");
+    });
+    rowIdx++;
+
+    const perDay = days.map((d) => {
+      const ds = format(d, "yyyy-MM-dd");
+      return shifts
+        .filter((s) => s.date === ds && derivePeriod(s.start_time) === period.val)
+        .map((s) => brokers.find((b) => b.id === s.broker_id)?.full_name)
+        .filter((n): n is string => !!n);
+    });
+    const maxRows = Math.max(1, ...perDay.map((arr) => arr.length));
+
+    for (let r = 0; r < maxRows; r++) {
+      const row = ws.getRow(rowIdx);
+      const slotCell = row.getCell(1);
+      slotCell.value = r + 1;
+      slotCell.alignment = { horizontal: "center" };
+      slotCell.fill = fill("FFFFFF99");
+      slotCell.border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+      perDay.forEach((names, i) => {
+        const c = row.getCell(i + 2);
+        c.value = names[r] ?? "";
+        c.border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+      });
+      rowIdx++;
+    }
+
+    const totalRow = ws.getRow(rowIdx);
+    totalRow.getCell(1).fill = fill("FFF6A821");
+    perDay.forEach((names, i) => {
+      const c = totalRow.getCell(i + 2);
+      c.value = names.length;
+      c.font = { bold: true };
+      c.alignment = { horizontal: "center" };
+      c.fill = fill("FFF6A821");
+    });
+    rowIdx += 2;
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `escala_${format(weekStart, "yyyy-MM-dd")}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ExportScheduleButton({ weekStart, days, brokers, shifts }: { weekStart: Date; days: Date[]; brokers: any[]; shifts: Shift[] }) {
+  const [exporting, setExporting] = useState(false);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportScheduleXlsx({ weekStart, days, brokers, shifts });
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao exportar planilha");
+    } finally {
+      setExporting(false);
+    }
+  };
+  return (
+    <button onClick={handleExport} disabled={exporting} className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm cursor-pointer hover:bg-gray-50 transition-colors disabled:opacity-60">
+      {exporting ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} strokeWidth={2.5} />}
+      <span className="hidden sm:inline">{exporting ? "Exportando..." : "Exportar Planilha"}</span>
+    </button>
+  );
+}
+
 function SchedulePage() {
   const { isAdmin, user } = useAuth();
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -626,6 +746,27 @@ function SchedulePage() {
     },
   });
 
+  const modality = activeSetor === "Online" ? "online" : "salao";
+  const slotsQ = useQuery({
+    queryKey: ["shift-slots-capacity", startStr, modality, user?.id],
+    enabled: isAdmin && !!user,
+    queryFn: async () => {
+      const { data: config } = await supabase
+        .from("shift_configs")
+        .select("id")
+        .eq("manager_id", user!.id)
+        .eq("week_start_date", startStr)
+        .eq("modality", modality)
+        .maybeSingle();
+      if (!config) return [];
+      const { data } = await supabase
+        .from("shift_slots")
+        .select("date, start_time, end_time, capacity")
+        .eq("config_id", config.id);
+      return (data ?? []) as { date: string; start_time: string; end_time: string; capacity: number }[];
+    },
+  });
+
   return (
     <div className="pb-nav">
       <AppHeader title={isAdmin ? "Escala" : "Minha Escala"} />
@@ -640,6 +781,7 @@ function SchedulePage() {
             <div className="flex gap-2">
               <GenerateShiftLinkButton currentWeekStart={weekStart} />
               <ImportScheduleButton brokers={brokersQ.data ?? []} currentWeekStart={weekStart} onImported={setWeekStart} />
+              <ExportScheduleButton weekStart={weekStart} days={days} brokers={brokersInSetor} shifts={shiftsQ.data ?? []} />
               <FixShiftLinksButton />
             </div>
           )}
@@ -662,7 +804,7 @@ function SchedulePage() {
         )}
 
         {isAdmin ? (
-          <AdminGrid days={days} brokers={brokersInSetor} shifts={shiftsQ.data ?? []} />
+          <AdminGrid days={days} brokers={brokersInSetor} shifts={shiftsQ.data ?? []} slots={slotsQ.data ?? []} modality={modality} />
         ) : (
           <BrokerWeek days={days} shifts={shiftsQ.data ?? []} />
         )}
@@ -767,8 +909,16 @@ function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
   );
 }
 
-function AdminGrid({ days, brokers, shifts }: { days: Date[]; brokers: any[]; shifts: Shift[] }) {
+function AdminGrid({ days, brokers, shifts, slots, modality }: { days: Date[]; brokers: any[]; shifts: Shift[]; slots: { date: string; start_time: string; end_time: string; capacity: number }[]; modality: "online" | "salao" }) {
   const [editing, setEditing] = useState<{ broker: any; date: string; shift?: Shift } | null>(null);
+  const brokerIds = useMemo(() => new Set(brokers.map((b) => b.id)), [brokers]);
+  const remainingFor = (ds: string, periodVal: "manha" | "tarde" | "noite") => {
+    const p = PERIODS.find((x) => x.val === periodVal)!;
+    const slot = slots.find((s) => s.date === ds && s.start_time === p.start && s.end_time === p.end);
+    if (!slot) return null;
+    const occupied = shifts.filter((s) => s.date === ds && derivePeriod(s.start_time) === periodVal && brokerIds.has(s.broker_id)).length;
+    return Math.max(0, slot.capacity - occupied);
+  };
   return (
     <>
       <div className="overflow-x-auto -mx-4 px-4">
@@ -776,11 +926,22 @@ function AdminGrid({ days, brokers, shifts }: { days: Date[]; brokers: any[]; sh
           <thead>
             <tr>
               <th className="text-left pb-1"></th>
-              {days.map((d) => (
-                <th key={d.toISOString()} className="text-center font-semibold text-[var(--navy)] pb-1 min-w-[60px]">
-                  <div>{format(d, "EEE", { locale: ptBR })}</div><div className="text-muted-foreground font-normal">{format(d, "d")}</div>
-                </th>
-              ))}
+              {days.map((d) => {
+                const ds = format(d, "yyyy-MM-dd");
+                const remaining = (["manha", "tarde", "noite"] as const).map((pv) => remainingFor(ds, pv));
+                const hasAny = remaining.some((r) => r !== null);
+                return (
+                  <th key={d.toISOString()} className="text-center font-semibold text-[var(--navy)] pb-1 min-w-[60px]">
+                    <div>{format(d, "EEE", { locale: ptBR })}</div>
+                    <div className="text-muted-foreground font-normal">{format(d, "d")}</div>
+                    {hasAny && (
+                      <div className="text-[9px] font-normal text-muted-foreground/60 leading-tight mt-0.5 whitespace-nowrap">
+                        M{remaining[0] ?? "–"} T{remaining[1] ?? "–"} N{remaining[2] ?? "–"}
+                      </div>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -849,7 +1010,7 @@ function AdminGrid({ days, brokers, shifts }: { days: Date[]; brokers: any[]; sh
           </tbody>
         </table>
       </div>
-      {editing && <ShiftEditor {...editing} onClose={() => setEditing(null)} />}
+      {editing && <ShiftEditor {...editing} modality={modality} onClose={() => setEditing(null)} />}
     </>
   );
 }
@@ -868,7 +1029,7 @@ function derivePeriod(startTime?: string): "manha" | "tarde" | "noite" | null {
   return null;
 }
 
-function ShiftEditor({ broker, date, shift, onClose }: { broker: any; date: string; shift?: Shift; onClose: () => void }) {
+function ShiftEditor({ broker, date, shift, modality, onClose }: { broker: any; date: string; shift?: Shift; modality: "online" | "salao"; onClose: () => void }) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [period, setPeriod] = useState<"manha" | "tarde" | "noite" | null>(derivePeriod(shift?.start_time));
@@ -887,24 +1048,51 @@ function ShiftEditor({ broker, date, shift, onClose }: { broker: any; date: stri
       if (!period) throw new Error("Selecione um período (Manhã ou Tarde)");
       const p = PERIODS.find((x) => x.val === period)!;
 
-      // Se já existe uma vaga (gerada por link) para esta data/período, vincula o
-      // preenchimento manual a ela, para que a contagem de vagas disponíveis no
-      // link fique correta mesmo quando o gestor preenche a escala diretamente.
-      const { data: myConfigs } = await supabase.from("shift_configs").select("id").eq("manager_id", user!.id);
-      const configIds = (myConfigs ?? []).map((c) => c.id);
-      let slotId: string | null = null;
-      if (configIds.length > 0) {
-        const { data: slotRow } = await supabase
-          .from("shift_slots")
-          .select("id")
-          .in("config_id", configIds)
-          .eq("date", date)
-          .eq("start_time", p.start)
-          .eq("end_time", p.end)
-          .limit(1)
-          .maybeSingle();
-        slotId = slotRow?.id ?? null;
+      // Só é possível preencher a escala manualmente dentro das vagas já
+      // configuradas (via "Configurar Escala"/link) para essa semana e
+      // modalidade — evita escalar acima da capacidade definida.
+      const weekStartStr = format(startOfWeek(parseISO(date), { weekStartsOn: 1 }), "yyyy-MM-dd");
+      const { data: config } = await supabase
+        .from("shift_configs")
+        .select("id")
+        .eq("manager_id", user!.id)
+        .eq("week_start_date", weekStartStr)
+        .eq("modality", modality)
+        .maybeSingle();
+      if (!config) {
+        throw new Error("Configure as vagas dessa semana primeiro (botão \"Configurar Escala\").");
       }
+
+      const { data: slotRow } = await supabase
+        .from("shift_slots")
+        .select("id, capacity")
+        .eq("config_id", config.id)
+        .eq("date", date)
+        .eq("start_time", p.start)
+        .eq("end_time", p.end)
+        .maybeSingle();
+      if (!slotRow) {
+        throw new Error("Não há vaga configurada para esse turno nessa semana.");
+      }
+
+      // Conta por data/turno/setor (não só slot_id) para bater com o que é
+      // exibido no cabeçalho da grade — dados antigos importados via CSV nem
+      // sempre têm slot_id preenchido.
+      const setorLabel = modality === "online" ? "Online" : "Salão";
+      let occupiedQuery = supabase
+        .from("shifts")
+        .select("id, profiles!inner(setor)", { count: "exact", head: true })
+        .eq("date", date)
+        .eq("start_time", p.start)
+        .eq("end_time", p.end)
+        .eq("profiles.setor", setorLabel);
+      if (shift) occupiedQuery = occupiedQuery.neq("id", shift.id);
+      const { count } = await occupiedQuery;
+      if ((count ?? 0) >= slotRow.capacity) {
+        throw new Error("Vagas esgotadas para esse turno.");
+      }
+
+      const slotId = slotRow.id;
 
       if (shift) {
         const { error } = await supabase.from("shifts").update({ start_time: p.start, end_time: p.end, notes: plantao || null, slot_id: slotId }).eq("id", shift.id);
