@@ -604,11 +604,16 @@ function ImportScheduleButton({ brokers, currentWeekStart, onImported }: { broke
 function SchedulePage() {
   const { isAdmin, user } = useAuth();
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [activeSetor, setActiveSetor] = useState<"Online" | "Salão">("Online");
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const startStr = format(weekStart, "yyyy-MM-dd");
   const endStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
 
-  const brokersQ = useBrokers({ select: "id,full_name,color,role,is_active", enabled: isAdmin });
+  const brokersQ = useBrokers({ select: "id,full_name,color,role,is_active,setor", enabled: isAdmin });
+  const brokersInSetor = useMemo(
+    () => (brokersQ.data ?? []).filter((b: any) => b.setor === activeSetor),
+    [brokersQ.data, activeSetor]
+  );
 
   const shiftsQ = useQuery({
     queryKey: ["shifts", startStr, endStr, isAdmin, user?.id],
@@ -640,8 +645,24 @@ function SchedulePage() {
           )}
         </div>
 
+        {isAdmin && (
+          <div className="flex gap-1.5 mb-3 bg-[var(--surface)] p-1 rounded-xl w-fit">
+            {(["Online", "Salão"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setActiveSetor(s)}
+                className={`h-9 px-4 rounded-lg text-sm font-semibold transition-colors ${
+                  activeSetor === s ? "bg-white text-[var(--navy)] shadow-sm" : "text-muted-foreground"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
         {isAdmin ? (
-          <AdminGrid days={days} brokers={brokersQ.data ?? []} shifts={shiftsQ.data ?? []} />
+          <AdminGrid days={days} brokers={brokersInSetor} shifts={shiftsQ.data ?? []} />
         ) : (
           <BrokerWeek days={days} shifts={shiftsQ.data ?? []} />
         )}
