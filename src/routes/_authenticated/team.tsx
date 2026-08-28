@@ -617,7 +617,7 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team"] });
+      qc.invalidateQueries({ queryKey: ["team-director"] });
       qc.invalidateQueries({ queryKey: ["brokers-active"] });
       setCreated({ name, email, phone });
     },
@@ -876,7 +876,7 @@ function EditBrokerSheet({ profile, onClose }: { profile: Profile; onClose: () =
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team"] });
+      qc.invalidateQueries({ queryKey: ["team-director"] });
       qc.invalidateQueries({ queryKey: ["brokers-active"] });
       toast.success("Corretor atualizado");
       onClose();
