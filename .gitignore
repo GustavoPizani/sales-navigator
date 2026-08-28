@@ -34,3 +34,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
+.env*
+
+# Supabase CLI local state
+supabase/.temp/
+
+# Claude Code local state
+.claude/scheduled_tasks.lock

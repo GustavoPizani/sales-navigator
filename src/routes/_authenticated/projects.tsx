@@ -8,6 +8,7 @@ import {
   Car, Bike, Footprints, Image as ImageIcon, RefreshCw, Trash2,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import JSZip from "jszip";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
@@ -530,6 +531,7 @@ function ProjectsPage() {
   const [editing, setEditing] = useState<Project | "new" | null>(null);
   const [importing, setImporting] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState(false);
+  const [downloadingAll, setDownloadingAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortAZ, setSortAZ] = useState<"none" | "asc" | "desc">("none");
   const qc = useQueryClient();
@@ -557,6 +559,62 @@ function ProjectsPage() {
     },
   });
 
+  const handleDownloadAllDocs = async () => {
+    setDownloadingAll(true);
+    const toastId = toast.loading("Buscando imóveis...");
+    try {
+      const { data: allProjects, error } = await supabase.from("projects").select("id, name");
+      if (error) throw error;
+      if (!allProjects?.length) {
+        toast.error("Nenhum imóvel encontrado.", { id: toastId });
+        return;
+      }
+
+      const zip = new JSZip();
+      const folders = ["tabela", "book", "condominio", "iptu", "capa"];
+      let fileCount = 0;
+
+      for (const project of allProjects) {
+        const folderName = normalizeProjectName(project.name).replace(/\s+/g, "-") || project.id;
+        for (const folder of folders) {
+          const { data: list } = await supabase.storage
+            .from("project-docs")
+            .list(`${project.id}/${folder}`, { limit: 100 });
+          if (!list?.length) continue;
+          for (const file of list) {
+            const path = `${project.id}/${folder}/${file.name}`;
+            const { data: blob, error: dlError } = await supabase.storage
+              .from("project-docs")
+              .download(path);
+            if (dlError || !blob) continue;
+            zip.file(`${folderName}/${folder}/${file.name}`, blob);
+            fileCount++;
+            toast.loading(`Baixando arquivos... (${fileCount})`, { id: toastId });
+          }
+        }
+      }
+
+      if (fileCount === 0) {
+        toast.error("Nenhum arquivo encontrado no storage.", { id: toastId });
+        return;
+      }
+
+      toast.loading("Compactando arquivos...", { id: toastId });
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(zipBlob);
+      a.download = `documentos-imoveis-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+
+      toast.success(`${fileCount} arquivo(s) baixado(s) com sucesso.`, { id: toastId });
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao baixar arquivos.", { id: toastId });
+    } finally {
+      setDownloadingAll(false);
+    }
+  };
+
   const displayedProjects = (() => {
     let list = projectsQ.data ?? [];
     if (searchQuery.trim()) {
@@ -582,6 +640,14 @@ function ProjectsPage() {
         right={
           isAdmin ? (
             <div className="flex items-center gap-1">
+              <button
+                onClick={handleDownloadAllDocs}
+                disabled={downloadingAll}
+                className="text-white/70 p-2 disabled:opacity-50"
+                title="Baixar todos os documentos (ZIP)"
+              >
+                {downloadingAll ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+              </button>
               <button
                 onClick={() => setUploadingDocs(true)}
                 className="text-white/70 p-2"
