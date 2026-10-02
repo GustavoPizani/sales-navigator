@@ -22,6 +22,7 @@ import { Route as AuthenticatedDealsRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
+import { Route as EscalaTokenRouteImport } from './routes/escala.$token'
 import { Route as AuthenticatedLeadsLeadIdRouteImport } from './routes/_authenticated/leads.$leadId'
 import { Route as AuthenticatedSettingsPermissionsRouteImport } from './routes/_authenticated/settings/permissions'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
@@ -93,6 +94,11 @@ const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const EscalaTokenRoute = EscalaTokenRouteImport.update({
+  id: '/escala/$token',
+  path: '/escala/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedLeadsLeadIdRoute =
   AuthenticatedLeadsLeadIdRouteImport.update({
     id: '/leads/$leadId',
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/projects': typeof AuthenticatedProjectsRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/escala/$token': typeof EscalaTokenRoute
   '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/projects': typeof AuthenticatedProjectsRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/escala/$token': typeof EscalaTokenRoute
   '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/_authenticated/projects': typeof AuthenticatedProjectsRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
+  '/escala/$token': typeof EscalaTokenRoute
   '/_authenticated/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/_authenticated/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
@@ -198,6 +207,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/schedule'
     | '/team'
+    | '/escala/$token'
     | '/leads/$leadId'
     | '/settings/permissions'
     | '/settings/profile'
@@ -217,6 +227,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/schedule'
     | '/team'
+    | '/escala/$token'
     | '/leads/$leadId'
     | '/settings/permissions'
     | '/settings/profile'
@@ -237,6 +248,7 @@ export interface FileRouteTypes {
     | '/_authenticated/projects'
     | '/_authenticated/schedule'
     | '/_authenticated/team'
+    | '/escala/$token'
     | '/_authenticated/leads/$leadId'
     | '/_authenticated/settings/permissions'
     | '/_authenticated/settings/profile'
@@ -249,6 +261,7 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   CadastroRoute: typeof CadastroRoute
   LoginRoute: typeof LoginRoute
+  EscalaTokenRoute: typeof EscalaTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -344,6 +357,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTeamRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/escala/$token': {
+      id: '/escala/$token'
+      path: '/escala/$token'
+      fullPath: '/escala/$token'
+      preLoaderRoute: typeof EscalaTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/leads/$leadId': {
       id: '/_authenticated/leads/$leadId'
       path: '/leads/$leadId'
@@ -438,6 +458,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   CadastroRoute: CadastroRoute,
   LoginRoute: LoginRoute,
+  EscalaTokenRoute: EscalaTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

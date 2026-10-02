@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RequireModule } from "@/components/RequireModule";
 import { useState } from "react";
-import { QrCode, Radar, Settings2 } from "lucide-react";
+import { QrCode, Radar, ScrollText, Settings2 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { BrokerCheckin } from "@/components/checkin/BrokerCheckin";
+import { CheckinLog } from "@/components/checkin/CheckinLog";
 import { CheckinQr } from "@/components/checkin/CheckinQr";
 import { CheckinRules } from "@/components/checkin/CheckinRules";
 import { TurnMonitor } from "@/components/checkin/TurnMonitor";
@@ -22,20 +23,23 @@ function CheckinPageGuarded() {
   );
 }
 
-type Tab = "monitor" | "qr" | "rules";
+type Tab = "monitor" | "qr" | "log" | "rules";
 
 // Check-in da roleta:
 //   corretor → faz o check-in (GPS; pelo app ou escaneando o QR code) e acompanha o status;
 //   gerente  → acompanha os check-ins da equipe e mostra o QR code;
-//   admin    → acompanha todos os turnos, decide vagas, gera o QR code e configura as regras.
+//   admin    → acompanha todos os turnos, decide vagas, gera o QR code, vê o log e configura as regras.
 function CheckinPage() {
-  const { profile, isSuperAdmin } = useAuth();
+  const { profile, isSuperAdmin, canSeeCheckinLog } = useAuth();
   const [tab, setTab] = useState<Tab>("monitor");
   const isBroker = profile?.role === "broker";
 
   const tabs: [Tab, string, React.ElementType][] = [
     ["monitor", "Acompanhamento do turno", Radar],
     ["qr", "QR code", QrCode],
+    ...(canSeeCheckinLog
+      ? ([["log", "Log de check-ins", ScrollText]] as [Tab, string, React.ElementType][])
+      : []),
     ...(isSuperAdmin
       ? ([["rules", "Regras de check-in", Settings2]] as [Tab, string, React.ElementType][])
       : []),
@@ -44,7 +48,7 @@ function CheckinPage() {
   return (
     <div className="pb-nav">
       <AppHeader title="Check-in" />
-      <div className="px-4 pt-4 max-w-4xl mx-auto space-y-3">
+      <div className={`px-4 pt-4 mx-auto space-y-3 ${tab === "log" ? "max-w-6xl" : "max-w-4xl"}`}>
         {isBroker ? (
           <BrokerCheckin />
         ) : (
@@ -70,6 +74,8 @@ function CheckinPage() {
             </div>
             {tab === "rules" && isSuperAdmin ? (
               <CheckinRules />
+            ) : tab === "log" && canSeeCheckinLog ? (
+              <CheckinLog embedded />
             ) : tab === "qr" ? (
               <CheckinQr />
             ) : (

@@ -1,8 +1,8 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { RequireModule } from "@/components/RequireModule";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Phone, MessageCircle, Mail, MoreVertical, ChevronDown, ChevronRight, Check, Trash2, Copy, Link, KeyRound } from "lucide-react";
+import { Plus, Phone, MessageCircle, Mail, MoreVertical, ChevronDown, ChevronRight, Check, Trash2, Copy, Link, KeyRound, GripVertical, Search, ShieldCheck, UserPlus, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Collapsible from "@radix-ui/react-collapsible";
@@ -14,6 +14,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { Avatar } from "@/components/Avatar";
 import { deleteUser } from "@/lib/admin.functions";
 import { useBrokers } from "@/hooks/useBrokers";
+import { PermissionsPanel } from "@/components/team/PermissionsPanel";
 
 export const Route = createFileRoute("/_authenticated/team")({
   component: TeamPageGuarded,
@@ -164,18 +165,79 @@ function AdminTeamView() {
   );
 }
 
-/** Visão do admin: todas as equipes (um gerente cada) e seus corretores. */
+type NewKind = "broker" | "master" | "hr";
+type KindFilter = "all" | "master" | "broker" | "hr";
+type StatusFilter = "all" | "active" | "inactive";
+
+const NEW_KINDS: { key: NewKind; label: string }[] = [
+  { key: "broker", label: "Corretor" },
+  { key: "master", label: "Gerente" },
+  { key: "hr", label: "RH" },
+];
+
+const normalizeText = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+/** Visão do admin: subabas "Usuários" (gestão das equipes) e "Permissões". */
 function TeamsAdminView() {
+  const [tab, setTab] = useState<"users" | "permissions">("users");
+  const { profile } = useAuth();
+  const tabs = [
+    ["users", "Usuários", Users],
+    ["permissions", "Permissões", ShieldCheck],
+  ] as const;
+
+  return (
+    <div className="pb-nav">
+      <AppHeader title={`Equipes ${profile?.team_name || "P&G"}`} />
+      <div className="px-4 pt-4 space-y-4">
+        <div className="inline-flex rounded-lg border border-border bg-white p-0.5" role="tablist">
+          {tabs.map(([key, label, Icon]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
+              className={`h-9 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5 ${
+                tab === key ? "bg-[var(--navy)] text-white" : "text-muted-foreground"
+              }`}
+            >
+              <Icon size={15} /> {label}
+            </button>
+          ))}
+        </div>
+        {tab === "users" ? (
+          <UsersTab />
+        ) : (
+          <div className="max-w-5xl">
+            <PermissionsPanel embedded />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Subaba "Usuários": criar, pesquisar, filtrar e mover corretores de equipe (arrastando). */
+function UsersTab() {
   const qc = useQueryClient();
-  const [addManager, setAddManager] = useState(false);
-  const [addHr, setAddHr] = useState(false);
-  // undefined = fechado; null = sem equipe pré-selecionada; id = equipe
-  const [addBroker, setAddBroker] = useState<string | null | undefined>(undefined);
+  // novo usuário: tipo escolhido dentro do próprio formulário
+  const [newUser, setNewUser] = useState<{ kind: NewKind; teamId: string | null } | null>(null);
   const [editing, setEditing] = useState<Profile | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Profile | null>(null);
   const [resetPasswordProfile, setResetPasswordProfile] = useState<Profile | null>(null);
   const [openTeams, setOpenTeams] = useState<Record<string, boolean>>({});
-  const { profile } = useAuth();
+  const [search, setSearch] = useState("");
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [teamFilter, setTeamFilter] = useState("all");
+  // arrastar e soltar: corretor sendo arrastado e equipe sob o cursor
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overTeam, setOverTeam] = useState<string | null>(null);
 
   const managersQ = useQuery({
     queryKey: ["team-managers"],
@@ -229,17 +291,80 @@ function TeamsAdminView() {
     },
     onError: (e: any) => toast.error(e.message),
   });
+  // mover de equipe: só o admin (o banco também bloqueia); os leads vão junto com o corretor
+  const moveBroker = useMutation({
+    mutationFn: async ({ broker, team }: { broker: Profile; team: Profile }) => {
+      const { error } = await supabase.from("profiles").update({ manager_id: team.id }).eq("id", broker.id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, { broker, team }) => {
+      invalidate();
+      toast.success(`${broker.full_name} agora está na Equipe ${teamLabel(team)}`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   const managers = managersQ.data ?? [];
   const brokers = (brokersQ.data ?? []) as Profile[];
+  const hrUsers = hrQ.data ?? [];
   const managerIds = new Set(managers.map((m) => m.id));
   const teams: TeamOption[] = managers.filter((m) => m.is_active).map((m) => ({ id: m.id, label: teamLabel(m) }));
-  const noTeam = brokers.filter((b) => !b.manager_id || !managerIds.has(b.manager_id));
+
+  const q = normalizeText(search.trim());
+  const filtering = !!q || statusFilter !== "all" || kindFilter !== "all" || teamFilter !== "all";
+  const matches = (p: Profile) => {
+    if (statusFilter === "active" && !p.is_active) return false;
+    if (statusFilter === "inactive" && p.is_active) return false;
+    return !q || normalizeText(`${p.full_name} ${p.email} ${p.phone ?? ""}`).includes(q);
+  };
+  const showBrokers = kindFilter === "all" || kindFilter === "broker";
+  const showManagers = kindFilter === "all" || kindFilter === "master";
+  const noTeam =
+    showBrokers && teamFilter === "all"
+      ? brokers.filter((b) => (!b.manager_id || !managerIds.has(b.manager_id)) && matches(b))
+      : [];
+  const hrList = (kindFilter === "all" || kindFilter === "hr") && teamFilter === "all" ? hrUsers.filter(matches) : [];
+
+  const sections = managers
+    .filter((m) => teamFilter === "all" || m.id === teamFilter)
+    .map((m) => {
+      const all = brokers.filter((b) => b.manager_id === m.id);
+      const team = showBrokers ? all.filter(matches) : [];
+      const managerMatches = showManagers && matches(m);
+      // enquanto arrasta, todas as equipes ativas aparecem como destino
+      const visible = dragId
+        ? m.is_active
+        : kindFilter === "hr"
+          ? false
+          : kindFilter === "broker"
+            ? team.length > 0 || !q
+            : kindFilter === "master"
+              ? managerMatches
+              : !filtering || managerMatches || team.length > 0;
+      return { m, all, team, visible };
+    })
+    .filter((x) => x.visible);
+  const nothingFound =
+    !managersQ.isPending && filtering && sections.length === 0 && noTeam.length === 0 && hrList.length === 0;
+
+  const dragged = dragId ? brokers.find((b) => b.id === dragId) : undefined;
+  const dropOn = (team: Profile) => {
+    if (dragged && team.is_active && dragged.manager_id !== team.id) moveBroker.mutate({ broker: dragged, team });
+    setDragId(null);
+    setOverTeam(null);
+  };
 
   const brokerCard = (b: Profile) => (
     <BrokerCard
       key={b.id}
       broker={b}
+      draggable
+      dragging={dragId === b.id}
+      onDragStart={() => setDragId(b.id)}
+      onDragEnd={() => {
+        setDragId(null);
+        setOverTeam(null);
+      }}
       onEdit={() => setEditing(b)}
       onToggleActive={() => toggleActive.mutate({ id: b.id, is_active: b.is_active })}
       onDelete={() => setConfirmDelete(b)}
@@ -247,46 +372,109 @@ function TeamsAdminView() {
     />
   );
 
+  const selectCls = "h-11 px-3 rounded-xl bg-white border border-border text-sm text-[var(--navy)]";
+  const kindSwitcher = newUser && (
+    <div className="mb-4">
+      <p className="text-xs text-muted-foreground font-medium mb-1.5">Tipo de usuário</p>
+      <div className="grid grid-cols-3 gap-1 rounded-xl bg-[var(--surface)] p-1">
+        {NEW_KINDS.map((k) => (
+          <button
+            key={k.key}
+            type="button"
+            onClick={() => setNewUser({ kind: k.key, teamId: newUser.teamId })}
+            className={`h-10 rounded-lg text-sm font-semibold ${
+              newUser.kind === k.key ? "bg-[var(--navy)] text-white" : "text-muted-foreground"
+            }`}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="pb-nav">
-      <AppHeader title={`Equipes ${profile?.team_name || "P&G"}`} />
-      <div className="px-4 pt-4 space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <button
-            onClick={() => setAddManager(true)}
-            className="h-12 rounded-xl bg-[var(--navy)] text-white font-bold text-sm flex items-center justify-center gap-2"
-          >
-            <Plus size={16} strokeWidth={2.5} /> Adicionar gerente
-          </button>
-          <button
-            onClick={() => setAddBroker(null)}
-            className="h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center justify-center gap-2"
-          >
-            <Plus size={16} strokeWidth={2.5} /> Adicionar corretor
-          </button>
-          <button
-            onClick={() => setAddHr(true)}
-            className="h-12 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm flex items-center justify-center gap-2 col-span-2 sm:col-span-1"
-          >
-            <Plus size={16} strokeWidth={2.5} /> Adicionar RH
-          </button>
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquisar por nome, e-mail ou telefone"
+            className="w-full h-11 pl-9 pr-3 rounded-xl bg-white border border-border text-sm"
+          />
         </div>
+        <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value as KindFilter)} className={selectCls} aria-label="Tipo">
+          <option value="all">Todos os tipos</option>
+          <option value="master">Gerentes</option>
+          <option value="broker">Corretores</option>
+          <option value="hr">RH</option>
+        </select>
+        <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className={selectCls} aria-label="Equipe">
+          <option value="all">Todas as equipes</option>
+          {managers.map((m) => (
+            <option key={m.id} value={m.id}>
+              Equipe {teamLabel(m)}
+            </option>
+          ))}
+        </select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className={selectCls} aria-label="Situação">
+          <option value="all">Ativos e inativos</option>
+          <option value="active">Só ativos</option>
+          <option value="inactive">Só inativos</option>
+        </select>
+        <button
+          onClick={() => setNewUser({ kind: managers.length === 0 ? "master" : "broker", teamId: null })}
+          className="h-11 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm inline-flex items-center gap-2"
+        >
+          <UserPlus size={16} strokeWidth={2.5} /> Novo usuário
+        </button>
+      </div>
 
-        {managersQ.isPending && <p className="text-center text-muted-foreground text-sm py-4">Carregando...</p>}
-        {!managersQ.isPending && managers.length === 0 && (
-          <p className="text-center text-muted-foreground py-8 text-sm">
-            Nenhuma equipe ainda. Comece adicionando os gerentes.
-          </p>
-        )}
+      {managers.length > 1 && (
+        <p className="hidden md:block text-xs text-muted-foreground">
+          Arraste um corretor para outra equipe para movê-lo. No celular, use Editar → Equipe.
+        </p>
+      )}
 
-        {managers.map((m) => {
-          const team = brokers.filter((b) => b.manager_id === m.id);
-          const activeCount = team.filter((b) => b.is_active).length;
+      {managersQ.isPending && <p className="text-center text-muted-foreground text-sm py-4">Carregando...</p>}
+      {!managersQ.isPending && managers.length === 0 && hrUsers.length === 0 && (
+        <p className="text-center text-muted-foreground py-8 text-sm">
+          Nenhuma equipe ainda. Comece criando os gerentes em "Novo usuário".
+        </p>
+      )}
+      {nothingFound && (
+        <p className="text-center text-muted-foreground py-8 text-sm">Nenhum usuário encontrado com esses filtros.</p>
+      )}
+
+      <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3 items-start">
+        {sections.map(({ m, all, team }) => {
+          const activeCount = all.filter((b) => b.is_active).length;
           const open = openTeams[m.id] ?? true;
+          const canDrop = !!dragged && m.is_active && dragged.manager_id !== m.id;
           return (
             <section
               key={m.id}
-              className={`bg-white rounded-2xl border border-border overflow-hidden ${!m.is_active ? "opacity-60" : ""}`}
+              onDragOver={(e) => {
+                if (!canDrop) return;
+                e.preventDefault();
+                setOverTeam(m.id);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOverTeam((t) => (t === m.id ? null : t));
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                dropOn(m);
+              }}
+              className={`bg-white rounded-2xl border overflow-hidden transition-shadow ${!m.is_active ? "opacity-60" : ""} ${
+                overTeam === m.id && canDrop
+                  ? "border-[var(--gold)] ring-2 ring-[var(--gold)]/40"
+                  : canDrop
+                    ? "border-dashed border-[var(--gold)]"
+                    : "border-border"
+              }`}
             >
               <div className="flex items-center gap-2 p-4 border-b border-border bg-[var(--surface)]/60">
                 <button
@@ -310,7 +498,7 @@ function TeamsAdminView() {
                   </div>
                 </button>
                 <button
-                  onClick={() => setAddBroker(m.id)}
+                  onClick={() => setNewUser({ kind: "broker", teamId: m.id })}
                   className="h-9 w-9 flex-shrink-0 rounded-xl bg-[var(--gold)]/15 text-[var(--gold-dark)] flex items-center justify-center"
                   aria-label={`Adicionar corretor na equipe ${teamLabel(m)}`}
                   title="Adicionar corretor nesta equipe"
@@ -325,10 +513,16 @@ function TeamsAdminView() {
                   onResetPassword={() => setResetPasswordProfile(m)}
                 />
               </div>
-              {open && (
+              {open && kindFilter !== "master" && (
                 <div className="p-3 space-y-2">
                   {team.length === 0 ? (
-                    <p className="text-center text-xs text-muted-foreground py-3">Nenhum corretor nesta equipe.</p>
+                    <p className="text-center text-xs text-muted-foreground py-3">
+                      {canDrop
+                        ? "Solte aqui para mover para esta equipe."
+                        : all.length === 0
+                          ? "Nenhum corretor nesta equipe."
+                          : "Nenhum corretor desta equipe corresponde aos filtros."}
+                    </p>
                   ) : (
                     team.map(brokerCard)
                   )}
@@ -337,49 +531,54 @@ function TeamsAdminView() {
             </section>
           );
         })}
-
-        {noTeam.length > 0 && (
-          <section className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Sem equipe ({noTeam.length})
-            </p>
-            {noTeam.map(brokerCard)}
-          </section>
-        )}
-
-        {(hrQ.data ?? []).length > 0 && (
-          <section className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              RH ({(hrQ.data ?? []).length})
-            </p>
-            {(hrQ.data ?? []).map((u) => (
-              <BrokerCard
-                key={u.id}
-                broker={u}
-                roleLabel="RH"
-                onEdit={() => setEditing(u)}
-                onToggleActive={() => toggleActive.mutate({ id: u.id, is_active: u.is_active })}
-                onDelete={() => setConfirmDelete(u)}
-                onResetPassword={() => setResetPasswordProfile(u)}
-              />
-            ))}
-          </section>
-        )}
       </div>
 
-      {addManager && <AddManagerSheet onClose={() => setAddManager(false)} />}
-      {addHr && (
-        <AddManagerSheet
-          kind="hr"
-          onClose={() => {
-            setAddHr(false);
-            qc.invalidateQueries({ queryKey: ["team-hr"] });
-          }}
-        />
+      {noTeam.length > 0 && (
+        <section className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Sem equipe ({noTeam.length})
+          </p>
+          {noTeam.map(brokerCard)}
+        </section>
       )}
-      {addBroker !== undefined && (
-        <AddBrokerSheet teams={teams} defaultTeamId={addBroker} onClose={() => setAddBroker(undefined)} />
+
+      {hrList.length > 0 && (
+        <section className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">RH ({hrList.length})</p>
+          {hrList.map((u) => (
+            <BrokerCard
+              key={u.id}
+              broker={u}
+              roleLabel="RH"
+              onEdit={() => setEditing(u)}
+              onToggleActive={() => toggleActive.mutate({ id: u.id, is_active: u.is_active })}
+              onDelete={() => setConfirmDelete(u)}
+              onResetPassword={() => setResetPasswordProfile(u)}
+            />
+          ))}
+        </section>
       )}
+
+      {newUser &&
+        (newUser.kind === "broker" ? (
+          <AddBrokerSheet
+            key={`broker-${newUser.teamId ?? ""}`}
+            switcher={kindSwitcher}
+            teams={teams}
+            defaultTeamId={newUser.teamId}
+            onClose={() => setNewUser(null)}
+          />
+        ) : (
+          <AddManagerSheet
+            key={newUser.kind}
+            kind={newUser.kind}
+            switcher={kindSwitcher}
+            onClose={() => {
+              setNewUser(null);
+              invalidate();
+            }}
+          />
+        ))}
       {editing && <EditBrokerSheet profile={editing} teams={teams} onClose={() => setEditing(null)} />}
       <DeleteConfirmModal
         name={confirmDelete?.full_name ?? ""}
@@ -395,13 +594,17 @@ function TeamsAdminView() {
         open={!!resetPasswordProfile}
         onCancel={() => setResetPasswordProfile(null)}
       />
-    </div>
+    </>
   );
 }
 
 function BrokerCard({
   broker,
   roleLabel = "Corretor",
+  draggable = false,
+  dragging = false,
+  onDragStart,
+  onDragEnd,
   onEdit,
   onToggleActive,
   onDelete,
@@ -409,6 +612,11 @@ function BrokerCard({
 }: {
   broker: Profile;
   roleLabel?: string;
+  /** admin: arrastar o corretor para outra equipe */
+  draggable?: boolean;
+  dragging?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
   onEdit: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
@@ -418,10 +626,18 @@ function BrokerCard({
 
   return (
     <div
+      draggable={draggable}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", broker.id);
+        onDragStart?.();
+      }}
+      onDragEnd={onDragEnd}
       className={`bg-white rounded-2xl border border-border p-4 flex items-center gap-3 ${
         !broker.is_active ? "opacity-60" : ""
-      }`}
+      } ${draggable ? "md:cursor-grab active:cursor-grabbing" : ""} ${dragging ? "opacity-40" : ""}`}
     >
+      {draggable && <GripVertical size={16} className="hidden md:block -ml-2 -mr-1 flex-shrink-0 text-muted-foreground/50" />}
       <Avatar name={broker.full_name} color={broker.color} src={broker.avatar_url} size={48} />
 
       <div className="flex-1 min-w-0">
@@ -674,8 +890,11 @@ function AddBrokerSheet({
   onClose,
   teams,
   defaultTeamId,
+  switcher,
 }: {
   onClose: () => void;
+  /** admin: seletor do tipo de usuário (corretor, gerente, RH) */
+  switcher?: ReactNode;
   /** admin: equipes disponíveis (gerentes); gerente: não informa (usa a própria) */
   teams?: TeamOption[];
   defaultTeamId?: string | null;
@@ -756,7 +975,8 @@ function AddBrokerSheet({
         className="bg-white w-full rounded-t-2xl p-5 safe-bottom max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold text-[var(--navy)] mb-4">Adicionar corretor</h3>
+        <h3 className="text-lg font-semibold text-[var(--navy)] mb-4">{switcher ? "Novo usuário" : "Adicionar corretor"}</h3>
+        {switcher}
 
         {teams && (
           <div className="mb-4">
@@ -878,7 +1098,7 @@ function AddBrokerSheet({
   );
 }
 
-function AddManagerSheet({ onClose, kind = "master" }: { onClose: () => void; kind?: "master" | "hr" }) {
+function AddManagerSheet({ onClose, kind = "master", switcher }: { onClose: () => void; kind?: "master" | "hr"; switcher?: ReactNode }) {
   const isHr = kind === "hr";
   const qc = useQueryClient();
   const [teamName, setTeamName] = useState("");
@@ -940,8 +1160,9 @@ function AddManagerSheet({ onClose, kind = "master" }: { onClose: () => void; ki
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-[var(--navy)] mb-4">
-          {isHr ? "Adicionar usuário de RH" : "Adicionar gerente"}
+          {switcher ? "Novo usuário" : isHr ? "Adicionar usuário de RH" : "Adicionar gerente"}
         </h3>
+        {switcher}
         <div className="space-y-3">
           {isHr ? (
             <p className="text-xs text-muted-foreground">

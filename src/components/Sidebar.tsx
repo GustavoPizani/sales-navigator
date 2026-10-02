@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, ChevronsLeft, ChevronsRight, LogOut, ScrollText, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, LogOut } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLE_LABELS, isTabActive, useNavTabs, type NavTab } from "@/components/nav/useNavTabs";
@@ -9,18 +10,39 @@ export const SIDEBAR_WIDTH = { expanded: "16rem", collapsed: "4.75rem" };
 /**
  * Navegação do desktop (no celular é a BottomNav). Colada à esquerda, com a
  * mesma cor e altura do cabeçalho (AppHeader): os dois formam uma moldura em
- * "L" que abraça o conteúdo. Recolhível: aberta mostra rótulos e perfil;
- * recolhida vira um trilho de ícones.
+ * "L" que abraça o conteúdo. Fica como um trilho de ícones e abre ao passar
+ * o mouse (ou ao navegar por teclado), por cima do conteúdo, sem empurrá-lo.
  */
-export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export function Sidebar() {
   const tabs = useNavTabs();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { profile, signOut, isSuperAdmin } = useAuth();
+  const { profile, signOut } = useAuth();
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<number | undefined>(undefined);
+  const collapsed = !open;
+  const expand = () => {
+    window.clearTimeout(closeTimer.current);
+    setOpen(true);
+  };
+  // pequeno atraso ao sair, para não fechar em um deslize do mouse
+  const scheduleClose = () => {
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => setOpen(false), 180);
+  };
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
   return (
     <aside
-      className="app-sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 flex-col text-white overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)]"
+      onMouseEnter={expand}
+      onMouseLeave={scheduleClose}
+      onFocus={expand}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) scheduleClose();
+      }}
+      className={`app-sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 flex-col text-white overflow-hidden transition-[width,box-shadow] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)] ${
+        open ? "shadow-[8px_0_32px_rgba(0,0,0,0.28)]" : ""
+      }`}
       style={{ width: collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded }}
       aria-label="Navegação principal"
     >
@@ -28,11 +50,9 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       <div
         className={`flex h-14 flex-shrink-0 items-center gap-2 ${collapsed ? "justify-center px-2" : "px-4"}`}
       >
-        {!collapsed && (
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--gold)] to-[var(--gold-dark)] text-[13px] font-bold tracking-tight">
-            P&amp;G
-          </div>
-        )}
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--gold)] to-[var(--gold-dark)] text-[13px] font-bold tracking-tight">
+          P&amp;G
+        </div>
         <div
           className={`min-w-0 flex-1 transition-opacity duration-200 ${collapsed ? "hidden" : "opacity-100"}`}
         >
@@ -41,15 +61,6 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             Gestão Comercial
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-          title={collapsed ? "Expandir menu" : "Recolher menu"}
-        >
-          {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
-        </button>
       </div>
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pt-2">
@@ -79,20 +90,6 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           />
         )}
         <ul className="mt-1 space-y-1">
-          {isSuperAdmin && (
-            <>
-              <SidebarItem
-                tab={{ to: "/checkin-log", label: "Log de check-ins", icon: ScrollText }}
-                active={pathname.startsWith("/checkin-log")}
-                collapsed={collapsed}
-              />
-              <SidebarItem
-                tab={{ to: "/settings/permissions", label: "Permissões", icon: ShieldCheck }}
-                active={pathname.startsWith("/settings/permissions")}
-                collapsed={collapsed}
-              />
-            </>
-          )}
           <li>
             <button
               type="button"

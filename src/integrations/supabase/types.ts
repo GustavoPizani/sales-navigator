@@ -725,45 +725,78 @@ export type Database = {
       }
       roulette_settings: {
         Row: {
+          central_address: string | null
           central_lat: number | null
           central_lng: number | null
           central_radius_m: number
           checkin_open_before_min: number
           id: number
           max_accuracy_m: number
+          plantao_address: string | null
           plantao_lat: number | null
           plantao_lng: number | null
           plantao_project_id: string | null
           plantao_radius_m: number
           tolerance_min: number
+          manha_end: string
+          manha_require_gps: boolean
+          manha_start: string
+          noite_require_gps: boolean
+          tarde_require_gps: boolean
+          noite_end: string
+          noite_start: string
+          tarde_end: string
+          tarde_start: string
           updated_at: string
         }
         Insert: {
+          central_address?: string | null
           central_lat?: number | null
           central_lng?: number | null
           central_radius_m?: number
           checkin_open_before_min?: number
           id?: number
           max_accuracy_m?: number
+          plantao_address?: string | null
           plantao_lat?: number | null
           plantao_lng?: number | null
           plantao_project_id?: string | null
           plantao_radius_m?: number
           tolerance_min?: number
+          manha_end?: string
+          manha_require_gps?: boolean
+          manha_start?: string
+          noite_require_gps?: boolean
+          tarde_require_gps?: boolean
+          noite_end?: string
+          noite_start?: string
+          tarde_end?: string
+          tarde_start?: string
           updated_at?: string
         }
         Update: {
+          central_address?: string | null
           central_lat?: number | null
           central_lng?: number | null
           central_radius_m?: number
           checkin_open_before_min?: number
           id?: number
           max_accuracy_m?: number
+          plantao_address?: string | null
           plantao_lat?: number | null
           plantao_lng?: number | null
           plantao_project_id?: string | null
           plantao_radius_m?: number
           tolerance_min?: number
+          manha_end?: string
+          manha_require_gps?: boolean
+          manha_start?: string
+          noite_require_gps?: boolean
+          tarde_require_gps?: boolean
+          noite_end?: string
+          noite_start?: string
+          tarde_end?: string
+          tarde_start?: string
           updated_at?: string
         }
         Relationships: []
@@ -779,8 +812,8 @@ export type Database = {
           end_time: string
           id: string
           kind: string
-          lat: number
-          lng: number
+          lat: number | null
+          lng: number | null
           location: string
           shift_id: string | null
           slot_id: string | null
@@ -799,8 +832,8 @@ export type Database = {
           end_time: string
           id?: string
           kind: string
-          lat: number
-          lng: number
+          lat?: number | null
+          lng?: number | null
           location: string
           shift_id?: string | null
           slot_id?: string | null
@@ -819,8 +852,8 @@ export type Database = {
           end_time?: string
           id?: string
           kind?: string
-          lat?: number
-          lng?: number
+          lat?: number | null
+          lng?: number | null
           location?: string
           shift_id?: string | null
           slot_id?: string | null
@@ -1223,7 +1256,7 @@ export type Database = {
         Returns: Json
       }
       crm_roulette_checkin: {
-        Args: { p_lat: number; p_lng: number; p_accuracy: number }
+        Args: { p_lat: number | null; p_lng: number | null; p_accuracy: number | null }
         Returns: Json
       }
       crm_roulette_admin_decide: {

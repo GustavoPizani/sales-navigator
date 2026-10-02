@@ -10,9 +10,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
-import { usePdvLabels } from "@/hooks/useRoulette";
+import { usePdvLabels, useShiftPeriods } from "@/hooks/useRoulette";
 import { TeamQuotaButton } from "@/components/schedule/TeamQuotaEditor";
 import { ScheduleLinksButton } from "@/components/schedule/ScheduleLinks";
+import { deletePendingBroker, fetchPendingForSlots, type PendingRow } from "@/lib/publicSchedule";
 
 export const Route = createFileRoute("/_authenticated/schedule")({
   component: SchedulePageGuarded,
@@ -134,12 +135,6 @@ function matchProjectName(produto: string, projects: { name: string }[]): string
   return best.name;
 }
 
-const SHIFT_PERIODS = [
-  { val: "Manhã", start: "09:00", end: "14:00" },
-  { val: "Tarde", start: "14:00", end: "19:00" },
-  { val: "Noite", start: "19:00", end: "23:00" },
-];
-
 function ImportScheduleButton({ brokers, currentWeekStart, onImported, managerId }: { brokers: any[]; currentWeekStart: Date; onImported: (d: Date) => void; managerId: string }) {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -191,19 +186,12 @@ function ImportScheduleButton({ brokers, currentWeekStart, onImported, managerId
           continue;
         }
 
-        let start_time = "09:00";
-        let end_time = "14:00";
-        let label_period = "Manhã";
         const periodUpper = shift.period?.toUpperCase() || "";
-        if (periodUpper.includes("T")) {
-          start_time = "14:00";
-          end_time = "19:00";
-          label_period = "Tarde";
-        } else if (periodUpper.includes("N") || periodUpper.includes("E")) { 
-          start_time = "19:00";
-          end_time = "23:00";
-          label_period = "Noite";
-        }
+        const importPeriod =
+          PERIODS[periodUpper.includes("T") ? 1 : periodUpper.includes("N") || periodUpper.includes("E") ? 2 : 0];
+        const start_time = importPeriod.start;
+        const end_time = importPeriod.end;
+        const label_period = importPeriod.label;
 
         const finalProject = matchProjectName(shift.project, projectsList);
         if (!finalProject) continue;
@@ -498,6 +486,9 @@ function ExportScheduleButton({ weekStart, days, brokers, shifts }: { weekStart:
 function SchedulePage() {
   const { isAdmin, isSuperAdmin, user } = useAuth();
   const pdvLabels = usePdvLabels();
+  // horários dos turnos definidos pelo admin (regras de check-in)
+  const shiftPeriods = useShiftPeriods();
+  PERIODS = shiftPeriods.map((p) => ({ val: p.key, label: p.label, start: p.start, end: p.end }));
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   // Não há mais divisão de corretores por setor: as abas são a modalidade do plantão.
   const [modality, setModality] = useState<"online" | "salao">("online");
@@ -547,11 +538,13 @@ function SchedulePage() {
     },
   });
 
+  // Vagas da semana nos dois PDVs. O admin define o total do turno e o gerente
+  // escolhe o PDV de cada corretor, então a capacidade de cada vaga é calculada.
   const slotsQ = useQuery({
-    queryKey: ["shift-slots-capacity", startStr, modality, managerId],
+    queryKey: ["shift-slots-capacity", startStr, managerId],
     enabled: isAdmin && !!managerId,
     queryFn: async () => {
-      let cq = supabase.from("shift_configs").select("id, manager_id").eq("week_start_date", startStr).eq("modality", modality);
+      let cq = supabase.from("shift_configs").select("id, manager_id, modality").eq("week_start_date", startStr);
       if (managerId !== "all") cq = cq.eq("manager_id", managerId);
       const { data: configs } = await cq;
       if (!configs?.length) return [];
@@ -559,19 +552,39 @@ function SchedulePage() {
         .from("shift_slots")
         .select("id, date, start_time, end_time, capacity, config_id")
         .in("config_id", configs.map((c) => c.id));
-      return (data ?? []) as { id: string; date: string; start_time: string; end_time: string; capacity: number; config_id: string }[];
+      const modalityOf = new Map(configs.map((c) => [c.id, c.modality]));
+      return (data ?? []).map((sl) => ({ ...sl, modality: modalityOf.get(sl.config_id ?? "") ?? "online" }));
     },
   });
+  const allSlots = slotsQ.data ?? [];
+  const tabSlots = useMemo(() => (slotsQ.data ?? []).filter((sl) => sl.modality === modality), [slotsQ.data, modality]);
 
   // Plantões da modalidade da aba: pela vaga (slot) da configuração da semana;
   // plantões sem vaga vinculada contam como Central Online.
   const modalityShifts = useMemo(() => {
-    const slotIds = new Set((slotsQ.data ?? []).map((sl) => sl.id));
+    const slotIds = new Set(tabSlots.map((sl) => sl.id));
     const teamIds = new Set(brokers.map((b: any) => b.id));
     return (shiftsQ.data ?? []).filter(
       (sh) => teamIds.has(sh.broker_id) && (sh.slot_id ? slotIds.has(sh.slot_id) : modality === "online"),
     );
-  }, [shiftsQ.data, slotsQ.data, modality, brokers]);
+  }, [shiftsQ.data, tabSlots, modality, brokers]);
+
+  // Corretores pré-cadastrados pelo link do gerente (ainda sem usuário no app).
+  const slotIdsKey = (slotsQ.data ?? []).map((sl) => sl.id).sort().join(",");
+  const pendingQ = useQuery({
+    queryKey: ["pending-shifts", slotIdsKey],
+    enabled: isAdmin && slotIdsKey.length > 0,
+    queryFn: () => fetchPendingForSlots(slotIdsKey.split(",")),
+  });
+  const allPending = slotIdsKey ? (pendingQ.data ?? []) : [];
+  // na aba: só os plantões do PDV selecionado
+  const pending = useMemo(() => {
+    const ids = new Set(tabSlots.map((sl) => sl.id));
+    return allPending
+      .map((p) => ({ ...p, shifts: p.shifts.filter((ps) => ids.has(ps.slot_id)) }))
+      .filter((p) => p.shifts.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingQ.data, slotIdsKey, tabSlots]);
 
   return (
     <div className="pb-nav">
@@ -655,7 +668,11 @@ function SchedulePage() {
             days={days}
             brokers={brokers}
             shifts={modalityShifts}
-            slots={slotsQ.data ?? []}
+            slots={tabSlots}
+            pending={pending}
+            allSlots={allSlots}
+            allShifts={shiftsQ.data ?? []}
+            allPending={allPending}
             modality={modality}
             managerId={managerId}
             teams={isSuperAdmin ? teams.filter((t) => allTeams || t.id === managerId) : undefined}
@@ -763,29 +780,42 @@ function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
   );
 }
 
-function AdminGrid({ days, brokers, shifts, slots, modality, managerId, teams }: { days: Date[]; brokers: any[]; shifts: Shift[]; slots: { date: string; start_time: string; end_time: string; capacity: number }[]; modality: "online" | "salao"; managerId: string; teams?: { id: string; label: string; color: string }[] }) {
+type GridSlot = { id: string; date: string; start_time: string; end_time: string; capacity: number };
+
+function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts, allPending, modality, managerId, teams }: { days: Date[]; brokers: any[]; shifts: Shift[]; slots: GridSlot[]; pending: PendingRow[]; /** os dois PDVs: o total de vagas do turno vale para Central + Plantão */ allSlots: GridSlot[]; allShifts: Shift[]; allPending: PendingRow[]; modality: "online" | "salao"; managerId: string; teams?: { id: string; label: string; color: string }[] }) {
   // Visão do admin: corretores agrupados por equipe, plantões na cor do gerente.
   const teamById = useMemo(() => new Map((teams ?? []).map((t) => [t.id, t])), [teams]);
   const groups = useMemo(() => {
-    if (!teams) return [{ team: null as null | { id: string; label: string; color: string }, brokers }];
-    const list = teams.map((t) => ({ team: t as null | { id: string; label: string; color: string }, brokers: brokers.filter((b) => b.manager_id === t.id) }));
+    if (!teams) return [{ team: null as null | { id: string; label: string; color: string }, brokers, pending }];
+    const list = teams.map((t) => ({ team: t as null | { id: string; label: string; color: string }, brokers: brokers.filter((b) => b.manager_id === t.id), pending: pending.filter((p) => p.manager_id === t.id) }));
     const others = brokers.filter((b) => !teamById.has(b.manager_id));
-    if (others.length) list.push({ team: null, brokers: others });
-    return list.filter((g) => g.brokers.length > 0);
-  }, [teams, brokers, teamById]);
+    if (others.length) list.push({ team: null, brokers: others, pending: [] });
+    return list.filter((g) => g.brokers.length > 0 || g.pending.length > 0);
+  }, [teams, brokers, teamById, pending]);
+  const qc = useQueryClient();
+  const slotById = useMemo(() => new Map(slots.map((sl) => [sl.id, sl])), [slots]);
+  const removePending = async (p: PendingRow) => {
+    if (!window.confirm(`Remover ${p.full_name} (sem cadastro) e liberar os turnos dele(a)?`)) return;
+    try {
+      await deletePendingBroker(p.id);
+      qc.invalidateQueries({ queryKey: ["pending-shifts"] });
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao remover");
+    }
+  };
   const chipColor = (b: any) => (teams ? teamById.get(b.manager_id)?.color ?? "#A8A8A8" : b.color);
   const [editing, setEditing] = useState<{ broker: any; date: string; shift?: Shift } | null>(null);
   const brokerIds = useMemo(() => new Set(brokers.map((b) => b.id)), [brokers]);
+  // Vagas restantes do turno: o total vale para os dois PDVs somados (o gerente
+  // escolhe o PDV de cada corretor), então conta Central + Plantão.
   const remainingFor = (ds: string, periodVal: "manha" | "tarde" | "noite") => {
-    const p = PERIODS.find((x) => x.val === periodVal)!;
-    // start_time/end_time voltam do banco como "HH:MM:SS" (coluna time),
-    // então compara só os 5 primeiros caracteres ("HH:MM").
-    // soma as vagas de todas as equipes exibidas
-    const matching = slots.filter((s) => s.date === ds && s.start_time.slice(0, 5) === p.start && s.end_time.slice(0, 5) === p.end);
-    if (matching.length === 0) return null;
+    const matching = allSlots.filter((s) => s.date === ds && derivePeriod(s.start_time) === periodVal);
     const capacity = matching.reduce((sum, s) => sum + s.capacity, 0);
-    const occupied = shifts.filter((s) => s.date === ds && derivePeriod(s.start_time) === periodVal && brokerIds.has(s.broker_id)).length;
-    return Math.max(0, capacity - occupied);
+    if (capacity === 0) return null;
+    const ids = new Set(matching.map((m) => m.id));
+    const occupied = allShifts.filter((s) => s.slot_id && ids.has(s.slot_id)).length;
+    const occupiedPending = allPending.reduce((sum, pb) => sum + pb.shifts.filter((ps) => ids.has(ps.slot_id)).length, 0);
+    return Math.max(0, capacity - occupied - occupiedPending);
   };
   return (
     <>
@@ -822,7 +852,7 @@ function AdminGrid({ days, brokers, shifts, slots, modality, managerId, teams }:
                         className="flex items-center gap-2 rounded-lg px-2 py-1 text-[11px] font-bold text-white"
                         style={{ backgroundColor: g.team?.color ?? "#A8A8A8" }}
                       >
-                        Equipe {g.team?.label ?? "sem gerente"} · {g.brokers.length}
+                        Equipe {g.team?.label ?? "sem gerente"} · {g.brokers.length + g.pending.length}
                       </div>
                     </td>
                   </tr>
@@ -886,9 +916,44 @@ function AdminGrid({ days, brokers, shifts, slots, modality, managerId, teams }:
                 })}
               </tr>
             ))}
+            {g.pending.map((p) => (
+              <tr key={p.id}>
+                <td className="pr-2 py-1 align-middle">
+                  <div className="flex items-center gap-1.5" title={`${p.full_name} — preenchido pelo link do gerente, ainda sem cadastro`}>
+                    <span className="w-2.5 h-2.5 rounded-full border border-dashed border-muted-foreground" />
+                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{p.full_name.split(" ")[0]}</span>
+                    <span className="text-[9px] text-muted-foreground whitespace-nowrap">sem cadastro</span>
+                    <button onClick={() => removePending(p)} aria-label={`Remover ${p.full_name}`} className="text-muted-foreground hover:text-red-600">
+                      <X size={11} />
+                    </button>
+                  </div>
+                </td>
+                {days.map((d) => {
+                  const ds = format(d, "yyyy-MM-dd");
+                  const daySlots = p.shifts.map((ps) => slotById.get(ps.slot_id)).filter((sl) => sl && sl.date === ds);
+                  return (
+                    <td key={ds} className="align-middle p-0.5">
+                      <div className="flex flex-col gap-1 min-h-[48px] justify-center">
+                        {daySlots.map((sl) => (
+                          <div
+                            key={sl!.id}
+                            className="w-full rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1 py-1 border border-dashed"
+                            style={{ borderColor: g.team?.color ?? "#A8A8A8", color: g.team?.color ?? "#6B6B6B" }}>
+                            <span className="text-center leading-tight">
+                              <span className="block font-bold">{derivePeriod(sl!.start_time) === "manha" ? "M" : (derivePeriod(sl!.start_time) === "tarde" ? "T" : "N")}</span>
+                              <span className="block text-[9px] opacity-90">pré</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
               </Fragment>
             ))}
-            {brokers.length === 0 && (
+            {brokers.length === 0 && pending.length === 0 && (
               <tr><td colSpan={8} className="text-center text-muted-foreground py-6">Adicione corretores na aba Time.</td></tr>
             )}
           </tbody>
@@ -906,18 +971,25 @@ function AdminGrid({ days, brokers, shifts, slots, modality, managerId, teams }:
   );
 }
 
-const PERIODS = [
-  { val: "manha" as const, label: "Manhã", start: "09:00", end: "14:00" },
-  { val: "tarde" as const, label: "Tarde", start: "14:00", end: "19:00" },
-  { val: "noite" as const, label: "Noite", start: "19:00", end: "23:00" },
+// Turnos: os horários vêm das regras de check-in (SchedulePage atualiza a cada render).
+let PERIODS: { val: "manha" | "tarde" | "noite"; label: string; start: string; end: string }[] = [
+  { val: "manha", label: "Manhã", start: "09:00", end: "14:00" },
+  { val: "tarde", label: "Tarde", start: "14:00", end: "19:00" },
+  { val: "noite", label: "Noite", start: "19:00", end: "23:00" },
 ];
+
+const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
 function derivePeriod(startTime?: string): "manha" | "tarde" | "noite" | null {
   if (!startTime) return null;
-  if (startTime.startsWith("08") || startTime.startsWith("07") || startTime.startsWith("06") || startTime.startsWith("09") || startTime.startsWith("10")) return "manha";
-  if (startTime.startsWith("13") || startTime.startsWith("12") || startTime.startsWith("14")) return "tarde";
-  if (startTime.startsWith("18") || startTime.startsWith("19") || startTime.startsWith("20")) return "noite";
-  return null;
+  // turno cujo início fica mais perto do horário do plantão (vale também para
+  // plantões antigos, lançados antes de uma mudança de horário)
+  const t = toMinutes(startTime);
+  let best = PERIODS[0];
+  for (const p of PERIODS) {
+    if (Math.abs(toMinutes(p.start) - t) < Math.abs(toMinutes(best.start) - t)) best = p;
+  }
+  return best.val;
 }
 
 function ShiftEditor({ broker, date, shift, modality, managerId, onClose }: { broker: any; date: string; shift?: Shift; modality: "online" | "salao"; managerId: string; onClose: () => void }) {
@@ -950,32 +1022,21 @@ function ShiftEditor({ broker, date, shift, modality, managerId, onClose }: { br
         .eq("modality", modality)
         .maybeSingle();
       if (!config) {
-        throw new Error("Configure as vagas dessa semana primeiro (botão \"Configurar Escala\").");
+        throw new Error("O administrador ainda não definiu as vagas dessa semana.");
       }
 
       const { data: slotRow } = await supabase
         .from("shift_slots")
-        .select("id, capacity")
+        .select("id")
         .eq("config_id", config.id)
         .eq("date", date)
-        .eq("start_time", p.start)
-        .eq("end_time", p.end)
+        .eq("period", p.label)
         .maybeSingle();
       if (!slotRow) {
         throw new Error("Não há vaga configurada para esse turno nessa semana.");
       }
 
-      // Ocupação pela vaga (slot) do turno nesta modalidade.
-      let occupiedQuery = supabase
-        .from("shifts")
-        .select("id", { count: "exact", head: true })
-        .eq("slot_id", slotRow.id);
-      if (shift) occupiedQuery = occupiedQuery.neq("id", shift.id);
-      const { count } = await occupiedQuery;
-      if ((count ?? 0) >= slotRow.capacity) {
-        throw new Error("Vagas esgotadas para esse turno.");
-      }
-
+      // O limite (total do turno, Central + Plantão) é conferido no banco.
       const slotId = slotRow.id;
 
       if (shift) {

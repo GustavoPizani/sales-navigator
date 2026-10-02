@@ -5,11 +5,7 @@ import type { Database } from "@/integrations/supabase/types";
 export type RouletteSettings = Database["public"]["Tables"]["roulette_settings"]["Row"];
 export type RouletteCheckin = Database["public"]["Tables"]["roulette_checkins"]["Row"];
 export type CheckinStatus =
-  | "validated"
-  | "standby"
-  | "allocated"
-  | "waiting_admin"
-  | "not_allocated";
+  "validated" | "standby" | "allocated" | "waiting_admin" | "not_allocated";
 export type RouletteLocation = "central" | "plantao";
 
 export const LOCATION_LABEL: Record<RouletteLocation, string> = {
@@ -110,7 +106,11 @@ export function usePdvLabels(): Record<RouletteLocation, string> {
     enabled: !!projectId,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const { data } = await supabase.from("projects").select("id,name").eq("id", projectId!).maybeSingle();
+      const { data } = await supabase
+        .from("projects")
+        .select("id,name")
+        .eq("id", projectId!)
+        .maybeSingle();
       return data;
     },
   });
@@ -118,4 +118,23 @@ export function usePdvLabels(): Record<RouletteLocation, string> {
     central: "Central",
     plantao: projectQ.data?.name ? `Plantão ${projectQ.data.name}` : "Plantão",
   };
+}
+
+export type ShiftPeriodKey = "manha" | "tarde" | "noite";
+export type ShiftPeriod = { key: ShiftPeriodKey; label: string; start: string; end: string };
+
+export const DEFAULT_SHIFT_PERIODS: ShiftPeriod[] = [
+  { key: "manha", label: "Manhã", start: "09:00", end: "14:00" },
+  { key: "tarde", label: "Tarde", start: "14:00", end: "19:00" },
+  { key: "noite", label: "Noite", start: "19:00", end: "23:00" },
+];
+
+/** Horário dos 3 turnos, definido pelo admin nas regras de check-in. */
+export function useShiftPeriods(): ShiftPeriod[] {
+  const s = useRouletteSettings().data;
+  return DEFAULT_SHIFT_PERIODS.map((p) => ({
+    ...p,
+    start: s?.[`${p.key}_start`] ? hhmm(s[`${p.key}_start`]) : p.start,
+    end: s?.[`${p.key}_end`] ? hhmm(s[`${p.key}_end`]) : p.end,
+  }));
 }

@@ -21,7 +21,10 @@ export function AppHeader({
   return (
     <header className="relative bg-[var(--navy)] text-white safe-top sticky top-0 z-30 shadow-sm lg:shadow-none">
       {/* desktop: canto côncavo que liga o cabeçalho à sidebar */}
-      <span aria-hidden className="app-frame-corner pointer-events-none absolute left-0 top-full hidden lg:block" />
+      <span
+        aria-hidden
+        className="app-frame-corner pointer-events-none absolute left-0 top-full hidden lg:block"
+      />
       <div className="px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {left}
@@ -71,22 +74,6 @@ function SettingsMenu({ isAdmin, isSuperAdmin }: { isAdmin: boolean; isSuperAdmi
           >
             Minha Conta
           </DropdownMenu.Item>
-          {isSuperAdmin && (
-            <>
-              <DropdownMenu.Item
-                className="flex items-center px-4 py-2.5 text-sm font-medium hover:bg-[var(--surface)] cursor-pointer outline-none select-none rounded-lg mx-1"
-                onSelect={() => navigate({ to: "/checkin-log" })}
-              >
-                Log de check-ins
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                className="flex items-center px-4 py-2.5 text-sm font-medium hover:bg-[var(--surface)] cursor-pointer outline-none select-none rounded-lg mx-1"
-                onSelect={() => navigate({ to: "/settings/permissions" })}
-              >
-                Permissões
-              </DropdownMenu.Item>
-            </>
-          )}
           {isAdmin && (
             <DropdownMenu.Item
               className="flex items-center px-4 py-2.5 text-sm font-medium hover:bg-[var(--surface)] cursor-pointer outline-none select-none rounded-lg mx-1"

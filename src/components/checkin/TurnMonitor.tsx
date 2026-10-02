@@ -167,13 +167,16 @@ export function TurnMonitor({ canDecide }: { canDecide: boolean }) {
       radius: cfg.plantao_radius_m,
       color: LOCATION_COLOR.plantao,
     });
-  const points: MapPoint[] = tCheckins.map((c) => ({
-    id: c.id,
-    lat: c.lat,
-    lng: c.lng,
-    color: STATUS_INFO[c.status as CheckinStatus].color,
-    label: `${c.broker?.full_name ?? "Corretor"} · ${STATUS_INFO[c.status as CheckinStatus].label}`,
-  }));
+  // check-ins de turnos sem exigência de localização não têm ponto no mapa
+  const points: MapPoint[] = tCheckins
+    .filter((c) => c.lat != null && c.lng != null)
+    .map((c) => ({
+      id: c.id,
+      lat: c.lat as number,
+      lng: c.lng as number,
+      color: STATUS_INFO[c.status as CheckinStatus].color,
+      label: `${c.broker?.full_name ?? "Corretor"} · ${STATUS_INFO[c.status as CheckinStatus].label}`,
+    }));
 
   const firstSlot = tSlots[0];
   const allocAt =

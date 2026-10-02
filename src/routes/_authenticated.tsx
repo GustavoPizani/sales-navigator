@@ -33,36 +33,16 @@ function AuthenticatedLayout() {
   return <AppShell />;
 }
 
-const SIDEBAR_PREF_KEY = "sidebar:collapsed";
-
-// Desktop: sidebar fixa à esquerda (recolhível, preferência lembrada no navegador).
-// Celular: barra inferior.
+// Desktop: trilho de ícones à esquerda, que abre ao passar o mouse por cima
+// do conteúdo (o conteúdo não se desloca). Celular: barra inferior.
 function AppShell() {
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem(SIDEBAR_PREF_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const toggle = () =>
-    setCollapsed((c) => {
-      try {
-        window.localStorage.setItem(SIDEBAR_PREF_KEY, c ? "0" : "1");
-      } catch {
-        /* storage indisponível */
-      }
-      return !c;
-    });
-  const offset = collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded;
-
   return (
     <div className="min-h-screen bg-[var(--surface)]">
       <PushSubscriber />
-      <Sidebar collapsed={collapsed} onToggle={toggle} />
+      <Sidebar />
       <div
-        className="min-w-0 transition-[padding] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)] lg:pl-[var(--sidebar-offset)]"
-        style={{ "--sidebar-offset": offset } as React.CSSProperties}
+        className="min-w-0 lg:pl-[var(--sidebar-offset)]"
+        style={{ "--sidebar-offset": SIDEBAR_WIDTH.collapsed } as React.CSSProperties}
       >
         <Outlet />
       </div>

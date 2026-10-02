@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { ManagerPublicLink } from "./ManagerPublicLink";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Copy, Loader2, SlidersHorizontal, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { usePdvLabels } from "@/hooks/useRoulette";
+import { usePdvLabels, useShiftPeriods } from "@/hooks/useRoulette";
 
 /** Turnos da escala (mesmos horários das vagas e do check-in). */
 export const QUOTA_PERIODS = [
@@ -14,10 +15,8 @@ export const QUOTA_PERIODS = [
   { val: "Noite", start: "19:00", end: "23:00" },
 ] as const;
 
-const PDVS = [
-  { modality: "online", key: "central" },
-  { modality: "salao", key: "plantao" },
-] as const;
+// O admin define só o total do turno; o gerente escolhe o PDV de cada corretor.
+const PDVS = [{ modality: "total", key: "total" }] as const;
 
 type Grid = Record<string, number>; // `${modality}_${dayIndex}_${period}`
 const cellKey = (modality: string, d: number, period: string) => `${modality}_${d}_${period}`;
@@ -25,8 +24,9 @@ const cellKey = (modality: string, d: number, period: string) => `${modality}_${
 type Team = { id: string; label: string; color: string };
 
 /**
- * Admin: define quantas vagas cada gerente tem por PDV (Central / Plantão do
- * produto), dia e turno na semana. O gerente distribui os corretores nelas.
+ * Admin: define quantas vagas cada gerente tem por dia e turno na semana.
+ * O gerente distribui os corretores e decide quantos ficam na Central e
+ * quantos no Plantão.
  */
 export function TeamQuotaButton({
   teams,
@@ -66,6 +66,9 @@ function TeamQuotaEditor({
   defaultManagerId?: string;
   onClose: () => void;
 }) {
+  // horários dos turnos definidos nas regras de check-in
+  const shiftPeriods = useShiftPeriods();
+  const QUOTA_PERIODS = shiftPeriods.map((p) => ({ val: p.label, start: p.start, end: p.end }));
   const qc = useQueryClient();
   const labels = usePdvLabels();
   const [weekStart, setWeekStart] = useState(() =>
@@ -88,41 +91,51 @@ function TeamQuotaEditor({
     queryKey: ["team-quota", managerId, weekStr],
     enabled: !!managerId,
     queryFn: async () => {
-      const { data: configs, error } = await supabase
-        .from("shift_configs")
-        .select("id, modality")
+      const weekEnd = format(addDays(weekStart, 6), "yyyy-MM-dd");
+      const dayIndex = (date: string) =>
+        Math.round((new Date(`${date}T00:00:00`).getTime() - weekStart.getTime()) / 86_400_000);
+      // (team_period_quotas e pending_shifts ainda não estão nos tipos gerados)
+      const { data: quotas, error } = await (supabase as any)
+        .from("team_period_quotas")
+        .select("date, period, total")
         .eq("manager_id", managerId)
-        .eq("week_start_date", weekStr);
+        .gte("date", weekStr)
+        .lte("date", weekEnd);
       if (error) throw error;
-      if (!configs?.length) return { grid: {} as Grid, used: {} as Grid };
-      const { data: slots, error: sErr } = await supabase
-        .from("shift_slots")
-        .select("id, config_id, date, period, capacity")
-        .in(
-          "config_id",
-          configs.map((c) => c.id),
-        );
-      if (sErr) throw sErr;
-      const { data: shifts } = await supabase
-        .from("shifts")
-        .select("slot_id")
-        .in(
-          "slot_id",
-          (slots ?? []).map((s) => s.id),
-        );
-      const usedBySlot = new Map<string, number>();
-      (shifts ?? []).forEach(
-        (s) => s.slot_id && usedBySlot.set(s.slot_id, (usedBySlot.get(s.slot_id) ?? 0) + 1),
-      );
       const g: Grid = {};
       const used: Grid = {};
-      for (const s of slots ?? []) {
-        const modality = configs.find((c) => c.id === s.config_id)?.modality ?? "online";
-        const d = Math.round(
-          (new Date(`${s.date}T00:00:00`).getTime() - weekStart.getTime()) / 86_400_000,
-        );
-        g[cellKey(modality, d, s.period ?? "")] = s.capacity;
-        used[cellKey(modality, d, s.period ?? "")] = usedBySlot.get(s.id) ?? 0;
+      for (const q of (quotas ?? []) as { date: string; period: string; total: number }[]) {
+        g[cellKey("total", dayIndex(q.date), q.period)] = q.total;
+      }
+
+      // já escalados no turno: Central + Plantão, cadastrados e pré-cadastrados
+      const { data: configs } = await supabase
+        .from("shift_configs")
+        .select("id")
+        .eq("manager_id", managerId)
+        .eq("week_start_date", weekStr);
+      if (configs?.length) {
+        const { data: slots } = await supabase
+          .from("shift_slots")
+          .select("id, date, period")
+          .in(
+            "config_id",
+            configs.map((c) => c.id),
+          );
+        const ids = (slots ?? []).map((s) => s.id);
+        if (ids.length) {
+          const [{ data: shifts }, { data: pend }] = await Promise.all([
+            supabase.from("shifts").select("slot_id").in("slot_id", ids),
+            (supabase as any).from("pending_shifts").select("slot_id").in("slot_id", ids),
+          ]);
+          const slotKey = new Map(
+            (slots ?? []).map((s) => [s.id, cellKey("total", dayIndex(s.date), s.period ?? "")]),
+          );
+          for (const r of [...(shifts ?? []), ...((pend ?? []) as { slot_id: string }[])]) {
+            const k = r.slot_id ? slotKey.get(r.slot_id) : undefined;
+            if (k) used[k] = (used[k] ?? 0) + 1;
+          }
+        }
       }
       return { grid: g, used };
     },
@@ -164,27 +177,21 @@ function TeamQuotaEditor({
   });
 
   const copyFromPreviousWeek = async () => {
-    const prev = format(addDays(weekStart, -7), "yyyy-MM-dd");
-    const { data: configs } = await supabase
-      .from("shift_configs")
-      .select("id, modality")
+    const prevStart = addDays(weekStart, -7);
+    const { data } = await (supabase as any)
+      .from("team_period_quotas")
+      .select("date, period, total")
       .eq("manager_id", managerId)
-      .eq("week_start_date", prev);
-    if (!configs?.length)
-      return toast("A semana anterior não tem vagas definidas.", { icon: "ℹ️" });
-    const { data: slots } = await supabase
-      .from("shift_slots")
-      .select("config_id, date, period, capacity")
-      .in(
-        "config_id",
-        configs.map((c) => c.id),
-      );
-    const prevStart = addDays(weekStart, -7).getTime();
+      .gte("date", format(prevStart, "yyyy-MM-dd"))
+      .lt("date", weekStr);
+    const quotas = (data ?? []) as { date: string; period: string; total: number }[];
+    if (!quotas.length) return toast("A semana anterior não tem vagas definidas.", { icon: "ℹ️" });
     const g: Grid = {};
-    for (const s of slots ?? []) {
-      const modality = configs.find((c) => c.id === s.config_id)?.modality ?? "online";
-      const d = Math.round((new Date(`${s.date}T00:00:00`).getTime() - prevStart) / 86_400_000);
-      g[cellKey(modality, d, s.period ?? "")] = s.capacity;
+    for (const q of quotas) {
+      const d = Math.round(
+        (new Date(`${q.date}T00:00:00`).getTime() - prevStart.getTime()) / 86_400_000,
+      );
+      g[cellKey("total", d, q.period)] = q.total;
     }
     setGrid(g);
     toast.success("Vagas copiadas da semana anterior. Revise e salve.");
@@ -266,23 +273,22 @@ function TeamQuotaEditor({
                 </button>
               </div>
 
+              {managerId && <ManagerPublicLink managerId={managerId} />}
+
               <div className="text-xs text-muted-foreground">
-                Total da semana: <b className="text-[var(--navy)]">{total("online")}</b> vagas na{" "}
-                {labels.central} · <b className="text-[var(--navy)]">{total("salao")}</b> no{" "}
-                {labels.plantao}
+                Total da semana: <b className="text-[var(--navy)]">{total("total")}</b> vagas. O
+                gerente decide, ao escalar, quantas ficam na {labels.central} e quantas no{" "}
+                {labels.plantao}.
               </div>
 
               <div className="overflow-x-auto border border-border rounded-xl">
                 <table className="w-full text-sm border-collapse">
                   <thead className="bg-[var(--surface)] text-[var(--navy)] text-xs">
                     <tr>
-                      <th rowSpan={2} className="px-3 py-2 text-left border-b border-border">
-                        Dia
-                      </th>
+                      <th className="px-3 py-2 text-left border-b border-border">Dia</th>
                       {QUOTA_PERIODS.map((p) => (
                         <th
                           key={p.val}
-                          colSpan={2}
                           className="px-2 py-1.5 text-center border-b border-l border-border"
                         >
                           {p.val}{" "}
@@ -291,18 +297,6 @@ function TeamQuotaEditor({
                           </span>
                         </th>
                       ))}
-                    </tr>
-                    <tr>
-                      {QUOTA_PERIODS.map((p) =>
-                        PDVS.map((pdv) => (
-                          <th
-                            key={p.val + pdv.key}
-                            className="px-2 py-1.5 text-center font-semibold border-b border-l border-border whitespace-nowrap"
-                          >
-                            {pdv.key === "central" ? labels.central : labels.plantao}
-                          </th>
-                        )),
-                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -349,8 +343,9 @@ function TeamQuotaEditor({
                 </table>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                As vagas valem para a escala e para o check-in da roleta. Não é possível reduzir
-                abaixo do número de corretores já escalados.
+                As vagas valem para a escala e para o check-in da roleta, somando {labels.central} e{" "}
+                {labels.plantao}. Não é possível reduzir abaixo do número de corretores já escalados
+                no turno.
               </p>
             </>
           )}

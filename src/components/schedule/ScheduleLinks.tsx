@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Copy, Link as LinkIcon, Loader2, MessageCircle, X } from "lucide-react";
@@ -7,6 +7,8 @@ import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { shortenUrl } from "@/lib/shorten.functions";
 import { locationOfModality, usePdvLabels } from "@/hooks/useRoulette";
+import { useAuth } from "@/hooks/useAuth";
+import { ManagerPublicLink } from "./ManagerPublicLink";
 import { QUOTA_PERIODS } from "./TeamQuotaEditor";
 
 /**
@@ -32,6 +34,7 @@ export function ScheduleLinksButton({ managerId }: { managerId: string }) {
 
 function ScheduleLinks({ managerId, onClose }: { managerId: string; onClose: () => void }) {
   const labels = usePdvLabels();
+  const { isSuperAdmin } = useAuth();
   const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(addDays(new Date(), 7), { weekStartsOn: 1 }),
   );
@@ -130,6 +133,8 @@ function ScheduleLinks({ managerId, onClose }: { managerId: string; onClose: () 
             />
           </label>
 
+          {isSuperAdmin && <ManagerPublicLink managerId={managerId} />}
+
           {q.isLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
           {!q.isLoading && (q.data ?? []).length === 0 && (
             <div className="rounded-xl border border-border bg-[var(--surface)] p-6 text-center text-sm text-muted-foreground">
@@ -169,12 +174,12 @@ function ScheduleLinks({ managerId, onClose }: { managerId: string; onClose: () 
                                 {s ? (
                                   <span
                                     className={
-                                      s.used >= s.capacity
-                                        ? "text-muted-foreground"
-                                        : "font-semibold text-[var(--navy)]"
+                                      s.used > 0
+                                        ? "font-semibold text-[var(--navy)]"
+                                        : "text-muted-foreground"
                                     }
                                   >
-                                    {s.used}/{s.capacity}
+                                    {s.used}
                                   </span>
                                 ) : (
                                   <span className="text-muted-foreground/50">—</span>
@@ -188,7 +193,8 @@ function ScheduleLinks({ managerId, onClose }: { managerId: string; onClose: () 
                   </table>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Ocupadas / vagas definidas pelo administrador.
+                  Corretores escalados neste PDV. O total de vagas do turno é definido pelo
+                  administrador e vale para os dois PDVs somados.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button

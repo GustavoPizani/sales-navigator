@@ -15,6 +15,7 @@ import {
   locationOfModality,
   usePdvLabels,
   useRouletteSettings,
+  useShiftPeriods,
   type CheckinStatus,
   type RouletteLocation,
 } from "@/hooks/useRoulette";
@@ -35,6 +36,20 @@ export function BrokerCheckin() {
   const settingsQ = useRouletteSettings();
   const labels = usePdvLabels();
   const cfg = settingsQ.data;
+  const periods = useShiftPeriods();
+  // O admin escolhe quais turnos exigem localização: se o turno com check-in
+  // aberto agora não exige, o GPS nem é pedido.
+  const gpsRequiredNow = () => {
+    if (!cfg) return true;
+    const now = Date.now();
+    const day = format(new Date(), "yyyy-MM-dd");
+    const open = periods.find(
+      (p) =>
+        now >= checkinOpensAt(day, p.start, cfg.checkin_open_before_min).getTime() &&
+        now <= allocationTime(day, p.start, cfg.tolerance_min).getTime(),
+    );
+    return open ? (cfg[`${open.key}_require_gps`] ?? true) : true;
+  };
   const today = format(new Date(), "yyyy-MM-dd");
   const [lastPos, setLastPos] = useState<{ lat: number; lng: number } | null>(null);
   // resultado do check-in feito agora (confirmação em destaque na tela)
@@ -80,12 +95,12 @@ export function BrokerCheckin() {
 
   const checkin = useMutation({
     mutationFn: async () => {
-      const pos = await getPosition();
-      setLastPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      const pos = gpsRequiredNow() ? await getPosition() : null;
+      if (pos) setLastPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       const { data, error } = await supabase.rpc("crm_roulette_checkin", {
-        p_lat: pos.coords.latitude,
-        p_lng: pos.coords.longitude,
-        p_accuracy: pos.coords.accuracy,
+        p_lat: pos?.coords.latitude ?? null,
+        p_lng: pos?.coords.longitude ?? null,
+        p_accuracy: pos?.coords.accuracy ?? null,
       });
       if (error) throw error;
       return data as any;
