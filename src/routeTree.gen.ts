@@ -9,28 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as CadastroRouteImport } from './routes/cadastro'
-import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
-import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
-import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
-import { Route as AuthenticatedDealsRouteImport } from './routes/_authenticated/deals'
-import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
-import { Route as AuthenticatedCheckinLogRouteImport } from './routes/_authenticated/checkin-log'
-import { Route as AuthenticatedCheckinRouteImport } from './routes/_authenticated/checkin'
-import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as CadastroRouteImport } from './routes/cadastro'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedAppointmentsRouteImport } from './routes/_authenticated/appointments'
-import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
-import { Route as AuthenticatedSettingsPermissionsRouteImport } from './routes/_authenticated/settings/permissions'
+import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
+import { Route as AuthenticatedCheckinRouteImport } from './routes/_authenticated/checkin'
+import { Route as AuthenticatedCheckinLogRouteImport } from './routes/_authenticated/checkin-log'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedDealsRouteImport } from './routes/_authenticated/deals'
+import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
+import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
+import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedLeadsLeadIdRouteImport } from './routes/_authenticated/leads.$leadId'
-import { Route as AuthenticatedScheduleClaimTokenRouteImport } from './routes/_authenticated/schedule_.claim.$token'
+import { Route as AuthenticatedSettingsPermissionsRouteImport } from './routes/_authenticated/settings/permissions'
+import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
 import { Route as AuthenticatedDashboardCorretorIdRouteImport } from './routes/_authenticated/dashboard/corretor/$id'
+import { Route as AuthenticatedScheduleClaimTokenRouteImport } from './routes/_authenticated/schedule_.claim.$token'
 
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CadastroRoute = CadastroRouteImport.update({
@@ -38,54 +42,10 @@ const CadastroRoute = CadastroRouteImport.update({
   path: '/cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedRoute = AuthenticatedRouteImport.update({
-  id: '/_authenticated',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
-} as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
-  id: '/team',
-  path: '/team',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
-  id: '/schedule',
-  path: '/schedule',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedDealsRoute = AuthenticatedDealsRouteImport.update({
-  id: '/deals',
-  path: '/deals',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedCheckinLogRoute = AuthenticatedCheckinLogRouteImport.update({
-  id: '/checkin-log',
-  path: '/checkin-log',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedCheckinRoute = AuthenticatedCheckinRouteImport.update({
-  id: '/checkin',
-  path: '/checkin',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
-  id: '/calendar',
-  path: '/calendar',
-  getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedAppointmentsRoute =
   AuthenticatedAppointmentsRouteImport.update({
@@ -93,10 +53,50 @@ const AuthenticatedAppointmentsRoute =
     path: '/appointments',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedSettingsProfileRoute =
-  AuthenticatedSettingsProfileRouteImport.update({
-    id: '/settings/profile',
-    path: '/settings/profile',
+const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedCheckinRoute = AuthenticatedCheckinRouteImport.update({
+  id: '/checkin',
+  path: '/checkin',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedCheckinLogRoute = AuthenticatedCheckinLogRouteImport.update({
+  id: '/checkin-log',
+  path: '/checkin-log',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedDealsRoute = AuthenticatedDealsRouteImport.update({
+  id: '/deals',
+  path: '/deals',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
+  id: '/schedule',
+  path: '/schedule',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedLeadsLeadIdRoute =
+  AuthenticatedLeadsLeadIdRouteImport.update({
+    id: '/leads/$leadId',
+    path: '/leads/$leadId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedSettingsPermissionsRoute =
@@ -105,16 +105,10 @@ const AuthenticatedSettingsPermissionsRoute =
     path: '/settings/permissions',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedLeadsLeadIdRoute =
-  AuthenticatedLeadsLeadIdRouteImport.update({
-    id: '/leads/$leadId',
-    path: '/leads/$leadId',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedScheduleClaimTokenRoute =
-  AuthenticatedScheduleClaimTokenRouteImport.update({
-    id: '/schedule_/claim/$token',
-    path: '/schedule/claim/$token',
+const AuthenticatedSettingsProfileRoute =
+  AuthenticatedSettingsProfileRouteImport.update({
+    id: '/settings/profile',
+    path: '/settings/profile',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedDashboardCorretorIdRoute =
@@ -122,6 +116,12 @@ const AuthenticatedDashboardCorretorIdRoute =
     id: '/corretor/$id',
     path: '/corretor/$id',
     getParentRoute: () => AuthenticatedDashboardRoute,
+  } as any)
+const AuthenticatedScheduleClaimTokenRoute =
+  AuthenticatedScheduleClaimTokenRouteImport.update({
+    id: '/schedule_/claim/$token',
+    path: '/schedule/claim/$token',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -253,18 +253,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cadastro': {
-      id: '/cadastro'
-      path: '/cadastro'
-      fullPath: '/cadastro'
-      preLoaderRoute: typeof CadastroRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -274,60 +267,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/cadastro': {
+      id: '/cadastro'
+      path: '/cadastro'
+      fullPath: '/cadastro'
+      preLoaderRoute: typeof CadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/team': {
-      id: '/_authenticated/team'
-      path: '/team'
-      fullPath: '/team'
-      preLoaderRoute: typeof AuthenticatedTeamRouteImport
-      parentRoute: typeof AuthenticatedRoute
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/schedule': {
-      id: '/_authenticated/schedule'
-      path: '/schedule'
-      fullPath: '/schedule'
-      preLoaderRoute: typeof AuthenticatedScheduleRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/projects': {
-      id: '/_authenticated/projects'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof AuthenticatedProjectsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/deals': {
-      id: '/_authenticated/deals'
-      path: '/deals'
-      fullPath: '/deals'
-      preLoaderRoute: typeof AuthenticatedDealsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/dashboard': {
-      id: '/_authenticated/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/checkin-log': {
-      id: '/_authenticated/checkin-log'
-      path: '/checkin-log'
-      fullPath: '/checkin-log'
-      preLoaderRoute: typeof AuthenticatedCheckinLogRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/checkin': {
-      id: '/_authenticated/checkin'
-      path: '/checkin'
-      fullPath: '/checkin'
-      preLoaderRoute: typeof AuthenticatedCheckinRouteImport
+    '/_authenticated/appointments': {
+      id: '/_authenticated/appointments'
+      path: '/appointments'
+      fullPath: '/appointments'
+      preLoaderRoute: typeof AuthenticatedAppointmentsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/calendar': {
@@ -337,25 +295,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCalendarRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/appointments': {
-      id: '/_authenticated/appointments'
-      path: '/appointments'
-      fullPath: '/appointments'
-      preLoaderRoute: typeof AuthenticatedAppointmentsRouteImport
+    '/_authenticated/checkin': {
+      id: '/_authenticated/checkin'
+      path: '/checkin'
+      fullPath: '/checkin'
+      preLoaderRoute: typeof AuthenticatedCheckinRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/settings/profile': {
-      id: '/_authenticated/settings/profile'
-      path: '/settings/profile'
-      fullPath: '/settings/profile'
-      preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
+    '/_authenticated/checkin-log': {
+      id: '/_authenticated/checkin-log'
+      path: '/checkin-log'
+      fullPath: '/checkin-log'
+      preLoaderRoute: typeof AuthenticatedCheckinLogRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/settings/permissions': {
-      id: '/_authenticated/settings/permissions'
-      path: '/settings/permissions'
-      fullPath: '/settings/permissions'
-      preLoaderRoute: typeof AuthenticatedSettingsPermissionsRouteImport
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/deals': {
+      id: '/_authenticated/deals'
+      path: '/deals'
+      fullPath: '/deals'
+      preLoaderRoute: typeof AuthenticatedDealsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/projects': {
+      id: '/_authenticated/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof AuthenticatedProjectsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/schedule': {
+      id: '/_authenticated/schedule'
+      path: '/schedule'
+      fullPath: '/schedule'
+      preLoaderRoute: typeof AuthenticatedScheduleRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/team': {
+      id: '/_authenticated/team'
+      path: '/team'
+      fullPath: '/team'
+      preLoaderRoute: typeof AuthenticatedTeamRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/leads/$leadId': {
@@ -365,11 +351,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLeadsLeadIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/schedule_/claim/$token': {
-      id: '/_authenticated/schedule_/claim/$token'
-      path: '/schedule/claim/$token'
-      fullPath: '/schedule/claim/$token'
-      preLoaderRoute: typeof AuthenticatedScheduleClaimTokenRouteImport
+    '/_authenticated/settings/permissions': {
+      id: '/_authenticated/settings/permissions'
+      path: '/settings/permissions'
+      fullPath: '/settings/permissions'
+      preLoaderRoute: typeof AuthenticatedSettingsPermissionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/profile': {
+      id: '/_authenticated/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/dashboard/corretor/$id': {
@@ -378,6 +371,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard/corretor/$id'
       preLoaderRoute: typeof AuthenticatedDashboardCorretorIdRouteImport
       parentRoute: typeof AuthenticatedDashboardRoute
+    }
+    '/_authenticated/schedule_/claim/$token': {
+      id: '/_authenticated/schedule_/claim/$token'
+      path: '/schedule/claim/$token'
+      fullPath: '/schedule/claim/$token'
+      preLoaderRoute: typeof AuthenticatedScheduleClaimTokenRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
