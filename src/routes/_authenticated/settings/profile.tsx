@@ -1,13 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Eye, EyeOff, Bell, X } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Bell, X, Camera, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar } from "@/components/Avatar";
-import { useFeatures, FEATURE_DEFS, type FeaturesMap } from "@/hooks/useFeatures";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export const Route = createFileRoute("/_authenticated/settings/profile")({
@@ -21,7 +20,7 @@ const PALETTE = [
   "#0EA5E9",
   "#F43F5E",
   "#10B981",
-  "#C9A84C",
+  "#B28069",
   "#64748B",
 ];
 
@@ -107,60 +106,6 @@ function FeatureToggle({
   );
 }
 
-function ModulesSection() {
-  const { features, saveFeatures } = useFeatures();
-  const [local, setLocal] = useState<FeaturesMap>({ ...features });
-  const [saving, setSaving] = useState(false);
-
-  const hasChanges = FEATURE_DEFS.some((f) => local[f.key] !== features[f.key]);
-
-  const toggle = (key: keyof FeaturesMap, value: boolean) => {
-    setLocal((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await saveFeatures.mutateAsync(local);
-      toast.success("Módulos atualizados!");
-    } catch (e: any) {
-      toast.error(e.message ?? "Erro ao salvar");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-2xl border border-border p-5">
-      <div className="mb-1">
-        <h2 className="text-base font-semibold text-[var(--navy)]">Módulos da equipe</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Escolha quais seções ficam visíveis para você e toda a equipe.
-        </p>
-      </div>
-      <div className="divide-y divide-border">
-        {FEATURE_DEFS.map((f) => (
-          <FeatureToggle
-            key={f.key}
-            label={f.label}
-            description={f.description}
-            icon={f.icon}
-            enabled={local[f.key] ?? true}
-            onChange={(v) => toggle(f.key, v)}
-          />
-        ))}
-      </div>
-      <button
-        onClick={save}
-        disabled={!hasChanges || saving}
-        className="mt-4 w-full h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 transition-opacity"
-      >
-        {saving ? "Salvando…" : "Salvar módulos"}
-      </button>
-    </div>
-  );
-}
-
 function formatLeadTime(min: number): string {
   if (min % 1440 === 0) return `${min / 1440} dia${min / 1440 > 1 ? "s" : ""}`;
   if (min % 60 === 0) return `${min / 60}h`;
@@ -172,9 +117,13 @@ function NotificationsSection() {
   const { supported, subscribed, loading, subscribe, unsubscribe } = usePushNotifications();
   const isManager = isAdmin || isDirector;
 
-  const [reminderMinutes, setReminderMinutes] = useState<number[]>(profile?.reminder_minutes ?? [30]);
+  const [reminderMinutes, setReminderMinutes] = useState<number[]>(
+    profile?.reminder_minutes ?? [30],
+  );
   const [newLeadTime, setNewLeadTime] = useState("");
-  const [shiftReminderTime, setShiftReminderTime] = useState(profile?.shift_reminder_time?.slice(0, 5) ?? "");
+  const [shiftReminderTime, setShiftReminderTime] = useState(
+    profile?.shift_reminder_time?.slice(0, 5) ?? "",
+  );
 
   const remindersChanged =
     JSON.stringify([...reminderMinutes].sort((a, b) => a - b)) !==
@@ -271,7 +220,10 @@ function NotificationsSection() {
                       className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-[var(--surface)] border border-border text-[var(--navy)]"
                     >
                       {formatLeadTime(m)}
-                      <button onClick={() => removeLeadTime(m)} className="text-muted-foreground hover:text-red-500">
+                      <button
+                        onClick={() => removeLeadTime(m)}
+                        className="text-muted-foreground hover:text-red-500"
+                      >
                         <X size={12} />
                       </button>
                     </span>
@@ -311,8 +263,8 @@ function NotificationsSection() {
                 Lembrete de escala (plantão do dia seguinte)
               </label>
               <p className="text-[11px] text-muted-foreground mb-2">
-                Todo dia nesse horário, corretores com plantão marcado pra amanhã recebem um lembrete
-                push (destacando plantão noturno).
+                Todo dia nesse horário, corretores com plantão marcado pra amanhã recebem um
+                lembrete push (destacando plantão noturno).
               </p>
               <div className="flex gap-2">
                 <input
@@ -352,19 +304,157 @@ function NotificationsSection() {
   );
 }
 
+// Reduz a foto para no máximo 512px (JPEG) antes de enviar.
+async function resizeImage(file: File, max = 512): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return await new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("Não foi possível processar a imagem"))),
+      "image/jpeg",
+      0.88,
+    ),
+  );
+}
+
+function PhotoSection() {
+  const { user, profile, refreshProfile } = useAuth();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      if (!file.type.startsWith("image/"))
+        throw new Error("Escolha uma imagem (JPG, PNG ou WebP).");
+      const blob = await resizeImage(file);
+      const path = `${user!.id}/avatar-${Date.now()}.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from("avatars")
+        .upload(path, blob, { contentType: "image/jpeg" });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const old = profile?.avatar_url;
+      const { error } = await supabase
+        .from("profiles")
+        .update({ avatar_url: data.publicUrl })
+        .eq("id", user!.id);
+      if (error) throw error;
+      // remove a foto anterior do storage
+      const oldPath = old?.split("/avatars/")[1];
+      if (oldPath) await supabase.storage.from("avatars").remove([oldPath]);
+    },
+    onSuccess: async () => {
+      await refreshProfile();
+      toast.success("Foto atualizada!");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const removePhoto = useMutation({
+    mutationFn: async () => {
+      const oldPath = profile?.avatar_url?.split("/avatars/")[1];
+      const { error } = await supabase
+        .from("profiles")
+        .update({ avatar_url: null })
+        .eq("id", user!.id);
+      if (error) throw error;
+      if (oldPath) await supabase.storage.from("avatars").remove([oldPath]);
+    },
+    onSuccess: async () => {
+      await refreshProfile();
+      toast.success("Foto removida.");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const busy = upload.isPending || removePhoto.isPending;
+
+  return (
+    <SectionCard title="Foto de perfil">
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="relative group rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]"
+          aria-label="Alterar foto"
+        >
+          <Avatar
+            name={profile?.full_name ?? "?"}
+            color={profile?.color ?? "#B28069"}
+            src={profile?.avatar_url}
+            size={80}
+          />
+          <span className="absolute inset-0 rounded-full bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+            <Camera size={22} />
+          </span>
+          <span className="absolute -bottom-0.5 -right-0.5 h-7 w-7 rounded-full bg-[var(--gold)] text-white flex items-center justify-center ring-2 ring-white">
+            <Camera size={14} />
+          </span>
+        </button>
+        <div className="min-w-0 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            JPG, PNG ou WebP. A foto aparece no menu e nos cards da equipe.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={busy}
+              className="h-9 px-3 rounded-lg bg-[var(--navy)] text-white text-sm font-semibold disabled:opacity-50"
+            >
+              {upload.isPending ? "Enviando…" : profile?.avatar_url ? "Trocar foto" : "Enviar foto"}
+            </button>
+            {profile?.avatar_url && (
+              <button
+                type="button"
+                onClick={() => removePhoto.mutate()}
+                disabled={busy}
+                className="h-9 px-3 rounded-lg bg-red-50 text-red-600 text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 size={14} /> Remover
+              </button>
+            )}
+          </div>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) upload.mutate(file);
+          }}
+        />
+      </div>
+    </SectionCard>
+  );
+}
+
 function ProfileSettingsPage() {
-  const { user, profile, isAdmin, refreshProfile } = useAuth();
+  const { user, profile, isAdmin, isSuperAdmin, refreshProfile } = useAuth();
 
   // — Dados pessoais —
   const [name, setName] = useState(profile?.full_name ?? "");
   const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [teamName, setTeamName] = useState(profile?.team_name ?? "");
+  const isManager = profile?.role !== "broker";
 
   const saveProfile = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error("O nome não pode estar em branco");
       const { error } = await supabase
         .from("profiles")
-        .update({ full_name: name.trim(), phone: phone.trim() || null })
+        .update({
+          full_name: name.trim(),
+          phone: phone.trim() || null,
+          ...(isManager ? { team_name: teamName.trim() || null } : {}),
+        })
         .eq("id", user!.id);
       if (error) throw error;
     },
@@ -405,14 +495,11 @@ function ProfileSettingsPage() {
   });
 
   // — Aparência (admin only) —
-  const [color, setColor] = useState(profile?.color ?? "#C9A84C");
+  const [color, setColor] = useState(profile?.color ?? "#B28069");
 
   const saveColor = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ color })
-        .eq("id", user!.id);
+      const { error } = await supabase.from("profiles").update({ color }).eq("id", user!.id);
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -438,6 +525,9 @@ function ProfileSettingsPage() {
       />
 
       <div className="px-4 pt-4 pb-6 space-y-4">
+        {/* ── Foto ── */}
+        <PhotoSection />
+
         {/* ── Notificações ── */}
         <NotificationsSection />
 
@@ -445,7 +535,9 @@ function ProfileSettingsPage() {
         <SectionCard title="Dados pessoais">
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-muted-foreground font-medium mb-1 block">Nome completo</label>
+              <label className="text-xs text-muted-foreground font-medium mb-1 block">
+                Nome completo
+              </label>
               <input
                 className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border focus:outline-none focus:border-[var(--gold)] text-[var(--navy)]"
                 placeholder="Nome completo"
@@ -461,10 +553,14 @@ function ProfileSettingsPage() {
                 readOnly
                 disabled
               />
-              <p className="text-[11px] text-muted-foreground mt-1">O e-mail não pode ser alterado.</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                O e-mail não pode ser alterado.
+              </p>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground font-medium mb-1 block">Telefone</label>
+              <label className="text-xs text-muted-foreground font-medium mb-1 block">
+                Telefone
+              </label>
               <input
                 className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border focus:outline-none focus:border-[var(--gold)] text-[var(--navy)]"
                 placeholder="(11) 99999-9999"
@@ -472,6 +568,22 @@ function ProfileSettingsPage() {
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
+            {isManager && (
+              <div>
+                <label className="text-xs text-muted-foreground font-medium mb-1 block">
+                  Nome da equipe
+                </label>
+                <input
+                  className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border focus:outline-none focus:border-[var(--gold)] text-[var(--navy)]"
+                  placeholder="Ex.: Online P&G"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Aparece como "Equipe {teamName.trim() || name}" na tela Time.
+                </p>
+              </div>
+            )}
             <button
               onClick={() => saveProfile.mutate()}
               disabled={saveProfile.isPending}
@@ -528,7 +640,12 @@ function ProfileSettingsPage() {
           <SectionCard title="Aparência do perfil">
             <div className="space-y-4">
               <div className="flex items-center gap-4">
-                <Avatar name={profile?.full_name ?? "?"} color={color} size={56} />
+                <Avatar
+                  name={profile?.full_name ?? "?"}
+                  color={color}
+                  src={profile?.avatar_url}
+                  size={56}
+                />
                 <div>
                   <p className="text-sm font-semibold text-[var(--navy)]">{profile?.full_name}</p>
                   <p className="text-xs text-muted-foreground capitalize">{profile?.role}</p>
@@ -564,7 +681,19 @@ function ProfileSettingsPage() {
         )}
 
         {/* ── Módulos (admin only) ── */}
-        {isAdmin && <ModulesSection />}
+        {isSuperAdmin && (
+          <SectionCard title="Permissões e cargos">
+            <p className="text-sm text-muted-foreground mb-3">
+              Defina o que cada cargo vê e edita no sistema e consulte o histórico de alterações.
+            </p>
+            <Link
+              to="/settings/permissions"
+              className="inline-flex h-11 px-5 rounded-xl bg-[var(--navy)] text-white font-semibold items-center"
+            >
+              Abrir permissões
+            </Link>
+          </SectionCard>
+        )}
       </div>
     </div>
   );

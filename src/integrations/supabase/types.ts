@@ -27,12 +27,14 @@ export type Database = {
           google_calendar_link: string | null
           id: string
           include_manager: boolean
+          lead_id: string | null
           owner_id: string
           project_id: string | null
           reminder_sent_minutes: number[]
           start_time: string
           title: string
           type: Database["public"]["Enums"]["appointment_type"]
+          visit_status: string | null
         }
         Insert: {
           client_email?: string | null
@@ -46,12 +48,14 @@ export type Database = {
           google_calendar_link?: string | null
           id?: string
           include_manager?: boolean
+          lead_id?: string | null
           owner_id: string
           project_id?: string | null
           reminder_sent_minutes?: number[]
           start_time: string
           title: string
           type?: Database["public"]["Enums"]["appointment_type"]
+          visit_status?: string | null
         }
         Update: {
           client_email?: string | null
@@ -65,12 +69,14 @@ export type Database = {
           google_calendar_link?: string | null
           id?: string
           include_manager?: boolean
+          lead_id?: string | null
           owner_id?: string
           project_id?: string | null
           reminder_sent_minutes?: number[]
           start_time?: string
           title?: string
           type?: Database["public"]["Enums"]["appointment_type"]
+          visit_status?: string | null
         }
         Relationships: [
           {
@@ -167,8 +173,410 @@ export type Database = {
           },
         ]
       }
+      cargo_permissions: {
+        Row: {
+          cargo_id: string
+          level: string
+          module: string
+        }
+        Insert: {
+          cargo_id: string
+          level: string
+          module: string
+        }
+        Update: {
+          cargo_id?: string
+          level?: string
+          module?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cargo_permissions_cargo_id_fkey"
+            columns: ["cargo_id"]
+            isOneToOne: false
+            referencedRelation: "cargos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cargos: {
+        Row: {
+          base_role: Database["public"]["Enums"]["app_role"]
+          created_at: string
+          id: string
+          is_active: boolean
+          is_system: boolean
+          name: string
+        }
+        Insert: {
+          base_role: Database["public"]["Enums"]["app_role"]
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_system?: boolean
+          name: string
+        }
+        Update: {
+          base_role?: Database["public"]["Enums"]["app_role"]
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_system?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
+      checkin_log: {
+        Row: {
+          accuracy_m: number | null
+          adjusts_id: string | null
+          checkin_id: string | null
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          distance_m: number | null
+          end_time: string
+          event: string
+          event_override: string | null
+          id: string
+          justification: string | null
+          lat: number | null
+          lng: number | null
+          location: string | null
+          location_label: string | null
+          occurred_at: string
+          replaced_names: string | null
+          shift_id: string | null
+          slot_team_name: string | null
+          start_time: string
+          team_manager_id: string | null
+          team_name: string | null
+          turn_date: string
+          user_id: string
+          user_name: string
+        }
+        Insert: {
+          accuracy_m?: number | null
+          adjusts_id?: string | null
+          checkin_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          distance_m?: number | null
+          end_time: string
+          event: string
+          event_override?: string | null
+          id?: string
+          justification?: string | null
+          lat?: number | null
+          lng?: number | null
+          location?: string | null
+          location_label?: string | null
+          occurred_at?: string
+          replaced_names?: string | null
+          shift_id?: string | null
+          slot_team_name?: string | null
+          start_time: string
+          team_manager_id?: string | null
+          team_name?: string | null
+          turn_date: string
+          user_id: string
+          user_name: string
+        }
+        Update: {
+          accuracy_m?: number | null
+          adjusts_id?: string | null
+          checkin_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          distance_m?: number | null
+          end_time?: string
+          event?: string
+          event_override?: string | null
+          id?: string
+          justification?: string | null
+          lat?: number | null
+          lng?: number | null
+          location?: string | null
+          location_label?: string | null
+          occurred_at?: string
+          replaced_names?: string | null
+          shift_id?: string | null
+          slot_team_name?: string | null
+          start_time?: string
+          team_manager_id?: string | null
+          team_name?: string | null
+          turn_date?: string
+          user_id?: string
+          user_name?: string
+        }
+        Relationships: []
+      }
+      funnel_stages: {
+        Row: {
+          color: string
+          created_at: string
+          funnel_id: string
+          id: string
+          kind: string | null
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          funnel_id: string
+          id?: string
+          kind?: string | null
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          funnel_id?: string
+          id?: string
+          kind?: string | null
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_stages_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      funnels: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      lead_notes: {
+        Row: {
+          author_id: string | null
+          content: string
+          created_at: string
+          id: string
+          kind: string
+          lead_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          kind?: string
+          lead_id: string
+        }
+        Update: {
+          author_id?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          broker_id: string
+          campaign: string | null
+          client_code: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          external_id: string | null
+          form_responses: Json | null
+          full_name: string
+          funnel_id: string
+          id: string
+          lost_at: string | null
+          lost_reason: string | null
+          phone: string | null
+          project_id: string | null
+          roulette_id: string | null
+          source: string
+          stage_changed_at: string
+          stage_id: string
+          status: Database["public"]["Enums"]["lead_status"]
+          temperatura: string | null
+          updated_at: string
+          won_at: string | null
+          won_value: number | null
+        }
+        Insert: {
+          broker_id: string
+          campaign?: string | null
+          client_code?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          external_id?: string | null
+          form_responses?: Json | null
+          full_name: string
+          funnel_id: string
+          id?: string
+          lost_at?: string | null
+          lost_reason?: string | null
+          phone?: string | null
+          project_id?: string | null
+          roulette_id?: string | null
+          source?: string
+          stage_changed_at?: string
+          stage_id: string
+          status?: Database["public"]["Enums"]["lead_status"]
+          temperatura?: string | null
+          updated_at?: string
+          won_at?: string | null
+          won_value?: number | null
+        }
+        Update: {
+          broker_id?: string
+          campaign?: string | null
+          client_code?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          external_id?: string | null
+          form_responses?: Json | null
+          full_name?: string
+          funnel_id?: string
+          id?: string
+          lost_at?: string | null
+          lost_reason?: string | null
+          phone?: string | null
+          project_id?: string | null
+          roulette_id?: string | null
+          source?: string
+          stage_changed_at?: string
+          stage_id?: string
+          status?: Database["public"]["Enums"]["lead_status"]
+          temperatura?: string | null
+          updated_at?: string
+          won_at?: string | null
+          won_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permission_audit: {
+        Row: {
+          cargo_id: string | null
+          cargo_name: string | null
+          changed_at: string
+          changed_by: string | null
+          changed_by_name: string | null
+          id: string
+          module: string
+          new_level: string | null
+          old_level: string | null
+        }
+        Insert: {
+          cargo_id?: string | null
+          cargo_name?: string | null
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_name?: string | null
+          id?: string
+          module: string
+          new_level?: string | null
+          old_level?: string | null
+        }
+        Update: {
+          cargo_id?: string | null
+          cargo_name?: string | null
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_name?: string | null
+          id?: string
+          module?: string
+          new_level?: string | null
+          old_level?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
+          avatar_url: string | null
+          cargo_id: string | null
           color: string
           created_at: string
           email: string
@@ -181,9 +589,12 @@ export type Database = {
           reminder_minutes: number[]
           role: Database["public"]["Enums"]["app_role"]
           shift_reminder_time: string | null
+          team_name: string | null
           setor: string | null
         }
         Insert: {
+          avatar_url?: string | null
+          cargo_id?: string | null
           color?: string
           created_at?: string
           email: string
@@ -196,9 +607,12 @@ export type Database = {
           reminder_minutes?: number[]
           role?: Database["public"]["Enums"]["app_role"]
           shift_reminder_time?: string | null
+          team_name?: string | null
           setor?: string | null
         }
         Update: {
+          avatar_url?: string | null
+          cargo_id?: string | null
           color?: string
           created_at?: string
           email?: string
@@ -211,6 +625,7 @@ export type Database = {
           reminder_minutes?: number[]
           role?: Database["public"]["Enums"]["app_role"]
           shift_reminder_time?: string | null
+          team_name?: string | null
           setor?: string | null
         }
         Relationships: [
@@ -231,6 +646,8 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          latitude: number | null
+          longitude: number | null
           manager_id: string
           name: string
           tem_plantao: boolean | null
@@ -242,6 +659,8 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
           manager_id: string
           name: string
           tem_plantao?: boolean | null
@@ -253,6 +672,8 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          latitude?: number | null
+          longitude?: number | null
           manager_id?: string
           name?: string
           tem_plantao?: boolean | null
@@ -301,6 +722,152 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      roulette_settings: {
+        Row: {
+          central_lat: number | null
+          central_lng: number | null
+          central_radius_m: number
+          checkin_open_before_min: number
+          id: number
+          max_accuracy_m: number
+          plantao_lat: number | null
+          plantao_lng: number | null
+          plantao_project_id: string | null
+          plantao_radius_m: number
+          tolerance_min: number
+          updated_at: string
+        }
+        Insert: {
+          central_lat?: number | null
+          central_lng?: number | null
+          central_radius_m?: number
+          checkin_open_before_min?: number
+          id?: number
+          max_accuracy_m?: number
+          plantao_lat?: number | null
+          plantao_lng?: number | null
+          plantao_project_id?: string | null
+          plantao_radius_m?: number
+          tolerance_min?: number
+          updated_at?: string
+        }
+        Update: {
+          central_lat?: number | null
+          central_lng?: number | null
+          central_radius_m?: number
+          checkin_open_before_min?: number
+          id?: number
+          max_accuracy_m?: number
+          plantao_lat?: number | null
+          plantao_lng?: number | null
+          plantao_project_id?: string | null
+          plantao_radius_m?: number
+          tolerance_min?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      roulette_checkins: {
+        Row: {
+          accuracy_m: number | null
+          broker_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          distance_m: number | null
+          end_time: string
+          id: string
+          kind: string
+          lat: number
+          lng: number
+          location: string
+          shift_id: string | null
+          slot_id: string | null
+          start_time: string
+          status: string
+          team_manager_id: string | null
+          turn_date: string
+        }
+        Insert: {
+          accuracy_m?: number | null
+          broker_id: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          distance_m?: number | null
+          end_time: string
+          id?: string
+          kind: string
+          lat: number
+          lng: number
+          location: string
+          shift_id?: string | null
+          slot_id?: string | null
+          start_time: string
+          status: string
+          team_manager_id?: string | null
+          turn_date: string
+        }
+        Update: {
+          accuracy_m?: number | null
+          broker_id?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          distance_m?: number | null
+          end_time?: string
+          id?: string
+          kind?: string
+          lat?: number
+          lng?: number
+          location?: string
+          shift_id?: string | null
+          slot_id?: string | null
+          start_time?: string
+          status?: string
+          team_manager_id?: string | null
+          turn_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roulette_checkins_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roulette_turns: {
+        Row: {
+          end_time: string
+          needs_admin: boolean
+          open_count: number | null
+          processed_at: string | null
+          standby_count: number | null
+          start_time: string
+          turn_date: string
+        }
+        Insert: {
+          end_time: string
+          needs_admin?: boolean
+          open_count?: number | null
+          processed_at?: string | null
+          standby_count?: number | null
+          start_time: string
+          turn_date: string
+        }
+        Update: {
+          end_time?: string
+          needs_admin?: boolean
+          open_count?: number | null
+          processed_at?: string | null
+          standby_count?: number | null
+          start_time?: string
+          turn_date?: string
+        }
+        Relationships: []
       }
       shift_configs: {
         Row: {
@@ -393,6 +960,7 @@ export type Database = {
           end_time: string
           id: string
           manager_id: string
+          missed_at: string | null
           notes: string | null
           reminder_sent_at: string | null
           slot_id: string | null
@@ -405,6 +973,7 @@ export type Database = {
           end_time: string
           id?: string
           manager_id: string
+          missed_at?: string | null
           notes?: string | null
           reminder_sent_at?: string | null
           slot_id?: string | null
@@ -417,6 +986,7 @@ export type Database = {
           end_time?: string
           id?: string
           manager_id?: string
+          missed_at?: string | null
           notes?: string | null
           reminder_sent_at?: string | null
           slot_id?: string | null
@@ -563,6 +1133,7 @@ export type Database = {
           data_visita: string
           id: string
           id_cliente: string | null
+          lead_id: string | null
           nome_cliente: string | null
           produto: string | null
         }
@@ -574,6 +1145,7 @@ export type Database = {
           data_visita?: string
           id?: string
           id_cliente?: string | null
+          lead_id?: string | null
           nome_cliente?: string | null
           produto?: string | null
         }
@@ -585,6 +1157,7 @@ export type Database = {
           data_visita?: string
           id?: string
           id_cliente?: string | null
+          lead_id?: string | null
           nome_cliente?: string | null
           produto?: string | null
         }
@@ -634,12 +1207,60 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      crm_can_access_broker: { Args: { _broker_id: string }; Returns: boolean }
+      crm_checkin_log_adjust: {
+        Args: {
+          p_log_id: string
+          p_justification: string
+          p_event_override?: string
+          p_occurred_at?: string
+        }
+        Returns: string
+      }
+      crm_can: { Args: { _module: string; _min: string }; Returns: boolean }
+      crm_set_team_quota: {
+        Args: { p_manager_id: string; p_week_start: string; p_quota: Json }
+        Returns: Json
+      }
+      crm_roulette_checkin: {
+        Args: { p_lat: number; p_lng: number; p_accuracy: number }
+        Returns: Json
+      }
+      crm_roulette_admin_decide: {
+        Args: { p_checkin_id: string; p_slot_id: string | null }
+        Returns: undefined
+      }
+      crm_slot_open: { Args: { _slot_id: string }; Returns: number }
+      crm_setup_member: {
+        Args: {
+          p_user_id: string
+          p_role: Database["public"]["Enums"]["app_role"]
+          p_manager_id?: string
+          p_team_name?: string
+        }
+        Returns: undefined
+      }
+      is_manager: { Args: { _user_id: string }; Returns: boolean }
+      crm_mark_visit_not_done: {
+        Args: { p_appointment_id: string }
+        Returns: undefined
+      }
+      crm_mark_visit_done: {
+        Args: { p_appointment_id: string }
+        Returns: undefined
+      }
+      crm_is_global: { Args: { _user_id: string }; Returns: boolean }
+      crm_is_subordinate: {
+        Args: { _manager_id: string; _subordinate_id: string }
+        Returns: boolean
+      }
       is_director: { Args: { _user_id: string }; Returns: boolean }
       my_manager_id: { Args: never; Returns: string }
     }
     Enums: {
-      app_role: "admin" | "broker" | "director" | "master"
+      app_role: "admin" | "broker" | "director" | "master" | "hr"
       appointment_type: "visit" | "meeting" | "call" | "follow-up"
+      lead_status: "active" | "won" | "lost"
       task_priority: "high" | "medium" | "low"
     }
     CompositeTypes: {
@@ -768,8 +1389,9 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "broker", "director", "master"],
+      app_role: ["admin", "broker", "director", "master", "hr"],
       appointment_type: ["visit", "meeting", "call", "follow-up"],
+      lead_status: ["active", "won", "lost"],
       task_priority: ["high", "medium", "low"],
     },
   },

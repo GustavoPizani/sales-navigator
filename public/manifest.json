@@ -1,8 +1,8 @@
 {
   "name": "Gestão Comercial",
   "short_name": "GC",
-  "description": "Sales team management for construction company",
-  "theme_color": "#0C2340",
+  "description": "Gestão comercial Paes & Gregori",
+  "theme_color": "#2D2D2D",
   "background_color": "#FFFFFF",
   "display": "standalone",
   "orientation": "portrait",

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireModule } from "@/components/RequireModule";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -15,6 +16,8 @@ import { useDashboardFilters, useDashboardData } from "@/hooks/useDashboard";
 import { DashboardCharts, AtendimentosTable, MiniAvatar, formatBRL, StatusChart, VisitsByProductChart } from "@/components/DashboardShared";
 import { BarChart, Bar, Tooltip, ResponsiveContainer } from "recharts";
 import { AppointmentForm } from "./appointments";
+import { PipelineBoard } from "@/components/pipeline/PipelineBoard";
+import { useDashboardLeads } from "@/hooks/useDashboardLeads";
 
 const STATUSES = ["Prospect", "Em Tratativa", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado", "Contrato Assinado", "Cancelada"];
 
@@ -133,8 +136,17 @@ function KpiDetailModal({
 }
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  component: DashboardPage,
+  component: DashboardPageGuarded,
 });
+
+// Rota bloqueada pela matriz de permissões do cargo.
+function DashboardPageGuarded() {
+  return (
+    <RequireModule modules={["dashboard", "leads"]} redirectHome>
+      <DashboardPage />
+    </RequireModule>
+  );
+}
 
 function DashboardPage() {
   const { user, isAdmin } = useAuth();
@@ -425,6 +437,18 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
   );
 }
 
+type DashboardTab = "graficos" | "corretores" | "atendimentos";
+const DASHBOARD_TAB_KEY = "dashboard:tab";
+
+// Lembra a aba ao voltar da página do lead.
+function readDashboardTab(): DashboardTab {
+  try {
+    const v = window.sessionStorage.getItem(DASHBOARD_TAB_KEY);
+    if (v === "graficos" || v === "corretores" || v === "atendimentos") return v;
+  } catch { /* storage indisponível */ }
+  return "graficos";
+}
+
 function AdminDashboard({ user }: { user: any }) {
   const isAdmin = true;
   const filters = useDashboardFilters();
@@ -435,7 +459,16 @@ function AdminDashboard({ user }: { user: any }) {
   const [insertPreFill, setInsertPreFill] = useState<any | null>(null);
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
   const [brokerSearch, setBrokerSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"graficos" | "corretores" | "atendimentos">("graficos");
+  const { can } = useAuth();
+  const canCharts = can("dashboard");
+  const canLeads = can("leads");
+  const [storedTab, setActiveTabState] = useState<DashboardTab>(readDashboardTab);
+  // módulo oculto para o cargo → a aba correspondente não aparece
+  const activeTab: DashboardTab = !canCharts ? "atendimentos" : !canLeads && storedTab === "atendimentos" ? "graficos" : storedTab;
+  const setActiveTab = (tab: DashboardTab) => {
+    setActiveTabState(tab);
+    try { window.sessionStorage.setItem(DASHBOARD_TAB_KEY, tab); } catch { /* storage indisponível */ }
+  };
   const [registrarVendaAtendimento, setRegistrarVendaAtendimento] = useState<any | null>(null);
   const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume" | "visitas">(null);
 
@@ -447,68 +480,29 @@ function AdminDashboard({ user }: { user: any }) {
     return (brokersQ.data ?? []).filter(b => b.full_name.toLowerCase().includes(brokerSearch.toLowerCase()));
   }, [brokersQ.data, brokerSearch]);
 
-  const { data: atendimentos = [], isPending } = useQuery({
-    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, filters.filterMode, user?.id, teamBrokerIds.join(",")],
+  // Dashboards leem os leads do CRM (hierarquia via RLS quando "todos").
+  const { atendimentos, vendas, statuses, isPending } = useDashboardLeads({
+    brokerIds: filters.appliedBrokerId !== "all" ? [filters.appliedBrokerId] : undefined,
+    from: filters.appliedStartDate,
+    to: filters.appliedEndDate,
+    dateField: filters.filterMode === "atualizacao" ? "updated_at" : "created_at",
+    enabled: !!user,
+  });
+
+  const { data: visitas = [] } = useQuery({
+    queryKey: ["dashboard-visitas", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId],
     queryFn: async () => {
-      const byAtualizacao = filters.filterMode === "atualizacao";
-      const brokerIds = filters.appliedBrokerId !== "all" ? [filters.appliedBrokerId] : teamBrokerIds;
-      if (brokerIds.length === 0) return [];
-
       let q = supabase
-        .from("atendimentos")
-        .select("*, profiles(full_name, color)")
-        .in("broker_id", brokerIds);
-
-      if (byAtualizacao) {
-        q = q
-          .eq("venda", false)
-          .gte("data_atualizacao", filters.appliedStartDate)
-          .lte("data_atualizacao", filters.appliedEndDate);
-      } else {
-        const dateFilter = `and(data.gte.${filters.appliedStartDate},data.lte.${filters.appliedEndDate}),and(data_atualizacao.gte.${filters.appliedStartDate},data_atualizacao.lte.${filters.appliedEndDate},venda.eq.false)`;
-        q = q.or(dateFilter);
-      }
-
+        .from("visitas")
+        .select("*")
+        .gte("data_visita", filters.appliedStartDate)
+        .lte("data_visita", filters.appliedEndDate);
+      if (filters.appliedBrokerId !== "all") q = q.eq("broker_id", filters.appliedBrokerId);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !!user && Array.isArray(brokersQ.data),
-  });
-
-  const { data: vendas = [] } = useQuery({
-    queryKey: ["dashboard-vendas", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, teamBrokerIds.join(",")],
-    queryFn: async () => {
-      const ids = filters.appliedBrokerId !== "all" ? [filters.appliedBrokerId] : teamBrokerIds;
-      if (ids.length === 0) return [];
-      const { data, error } = await supabase
-        .from("vendas")
-        .select("*")
-        .in("broker_id", ids)
-        .eq("status", "approved")
-        .gte("data_venda", filters.appliedStartDate)
-        .lte("data_venda", filters.appliedEndDate);
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: !!user && Array.isArray(brokersQ.data),
-  });
-
-  const { data: visitas = [] } = useQuery({
-    queryKey: ["dashboard-visitas", filters.appliedStartDate, filters.appliedEndDate, filters.appliedBrokerId, teamBrokerIds.join(",")],
-    queryFn: async () => {
-      const ids = filters.appliedBrokerId !== "all" ? [filters.appliedBrokerId] : teamBrokerIds;
-      if (ids.length === 0) return [];
-      const { data, error } = await supabase
-        .from("visitas")
-        .select("*")
-        .in("broker_id", ids)
-        .gte("data_visita", filters.appliedStartDate)
-        .lte("data_visita", filters.appliedEndDate);
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: !!user && Array.isArray(brokersQ.data),
+    enabled: !!user,
   });
 
   const dbData = useDashboardData(atendimentos, vendas, visitas);
@@ -529,9 +523,9 @@ function AdminDashboard({ user }: { user: any }) {
     vendas.map(v => {
       const atend = atendimentosById[v.atendimento_id];
       return {
-        cliente: atend?.nome_cliente || "—",
+        cliente: atend?.nome_cliente || v.nome_cliente || "—",
         corretor: brokersById[v.broker_id] || atend?.profiles?.full_name || "—",
-        unidade: atend?.produto || "—",
+        unidade: atend?.produto || v.produto || "—",
         valor: Number(v.valor) || 0,
       };
     }),
@@ -540,7 +534,7 @@ function AdminDashboard({ user }: { user: any }) {
 
   const tratativasModalItems = useMemo(() =>
     atendimentos
-      .filter(a => a.status === "Em Tratativa")
+      .filter(a => a.em_contato)
       .map(a => ({
         cliente: a.nome_cliente || "—",
         corretor: a.profiles?.full_name || brokersById[a.broker_id] || "—",
@@ -579,16 +573,17 @@ function AdminDashboard({ user }: { user: any }) {
   });
 
   const statusCounts = useMemo(() =>
-    STATUSES.map((s) => {
+    statuses.map(({ name: s, color }) => {
       const filtered = atendimentos.filter((a) => a.status === s);
       const totalValor = filtered.reduce((acc, a) => acc + (Number(a.valor) || 0), 0);
       return { 
         name: s, 
+        color,
         count: filtered.length,
         Valor: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValor)
       };
     }),
-    [atendimentos]
+    [atendimentos, statuses]
   );
 
   const visitsByProduct = useMemo(() => {
@@ -613,7 +608,7 @@ function AdminDashboard({ user }: { user: any }) {
     (brokersQ.data ?? []).forEach(b => {
       map[b.id] = {
         broker: b, total: 0, visitas: 0, vendas: 0, tratativas: 0, volume: 0, monthly: {},
-        statusCounts: Object.fromEntries(STATUSES.map(s => [s, 0]))
+        statusCounts: Object.fromEntries(statuses.map(s => [s.name, 0]))
       };
     });
 
@@ -622,8 +617,8 @@ function AdminDashboard({ user }: { user: any }) {
       const b = map[a.broker_id];
       b.total++;
       if (a.visita) b.visitas++;
-      if (a.status && STATUSES.includes(a.status)) b.statusCounts[a.status]++;
-      if (a.status === "Em Tratativa") b.tratativas += Number(a.valor) || 0;
+      if (a.status && a.status in b.statusCounts) b.statusCounts[a.status]++;
+      if (a.em_contato) b.tratativas++;
       b.monthly[a.data.slice(0, 7)] = (b.monthly[a.data.slice(0, 7)] || 0) + 1;
     });
 
@@ -639,7 +634,7 @@ function AdminDashboard({ user }: { user: any }) {
       const sparkline = Object.entries(b.monthly).sort((a, b) => a[0].localeCompare(b[0])).map(([m, count]) => ({ name: m, count }));
       return { ...b, conversao, sparkline };
     }).sort((a, b) => b.total - a.total);
-  }, [atendimentos, vendas, brokersQ.data, isAdmin]);
+  }, [atendimentos, vendas, brokersQ.data, isAdmin, statuses]);
 
   const selectedBroker = filters.brokerId === "all" ? null : brokersQ.data?.find(b => b.id === filters.brokerId);
 
@@ -763,19 +758,21 @@ function AdminDashboard({ user }: { user: any }) {
       </div>
 
       <div className="px-4 py-3 flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-border bg-white z-10 flex-shrink-0">
-        <button onClick={() => setActiveTab("graficos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "graficos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Gráficos</button>
-        <button onClick={() => setActiveTab("corretores")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "corretores" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Desempenho por Corretor</button>
-        <button onClick={() => setActiveTab("atendimentos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Atendimentos</button>
+        {canCharts && <button onClick={() => setActiveTab("graficos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "graficos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Gráficos</button>}
+        {canCharts && <button onClick={() => setActiveTab("corretores")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "corretores" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Desempenho por Corretor</button>}
+        {canLeads && <button onClick={() => setActiveTab("atendimentos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Atendimentos</button>}
       </div>
 
       <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
-          <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
-          <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} onClick={() => setKpiModal("visitas")} />
-          <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
-          <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
-          <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} />
-        </div>
+        {activeTab !== "atendimentos" && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
+            <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
+            <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} onClick={() => setKpiModal("visitas")} />
+            <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
+            <KpiCard label="Em Contato" value={dbData.emTratativas} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
+            <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} />
+          </div>
+        )}
 
         {activeTab === "graficos" && (
           <>
@@ -814,48 +811,13 @@ function AdminDashboard({ user }: { user: any }) {
         )}
 
         {activeTab === "atendimentos" && (
-          <div className="space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button onClick={handleExport} className="h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors">
-                  <Download size={14} /> Exportar Planilha
-                </button>
-                <CsvImportButton brokers={brokersQ.data ?? []} />
-                <BackfillVisitasButton teamBrokerIds={teamBrokerIds} />
-                <button
-                  onClick={() => { setInsertPreFill(null); setInsertOpen(true); }}
-                  className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5"
-                >
-                  <Plus size={14} strokeWidth={2.5} /> Novo Cliente
-                </button>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-border shadow-sm">
-              {isPending ? (
-                <div className="p-4 space-y-3">
-                  {[1,2,3,4,5,6,7,8].map(i => (
-                    <div key={i} className="flex gap-3">
-                      <div className="h-4 w-20 rounded bg-gray-100 animate-pulse" />
-                      <div className="h-4 flex-1 rounded bg-gray-100 animate-pulse" />
-                      <div className="h-4 w-24 rounded bg-gray-100 animate-pulse" />
-                      <div className="h-4 w-16 rounded bg-gray-100 animate-pulse" />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <AtendimentosTable
-                  atendimentos={atendimentos}
-                  isAdmin={isAdmin}
-                  onRowClick={(a) => setEditingAtendimento(a)}
-                  onRowContextMenu={(e: any, a: any) => {
-                    e.preventDefault();
-                    setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
-                  }}
-                />
-              )}
-            </div>
-          </div>
+          <PipelineBoard
+            brokerId={filters.appliedBrokerId}
+            from={filters.appliedStartDate}
+            to={filters.appliedEndDate}
+            dateField={filters.filterMode === "atualizacao" ? "updated_at" : "created_at"}
+            title="Visão Geral dos Atendimentos"
+          />
         )}
       </div>
 
@@ -915,7 +877,7 @@ function AdminDashboard({ user }: { user: any }) {
           isAdmin
           title={
             kpiModal === "vendas" ? `Total de Vendas (${vendasModalItems.length})` :
-            kpiModal === "tratativas" ? `Em Tratativas (${tratativasModalItems.length})` :
+            kpiModal === "tratativas" ? `Em Contato (${tratativasModalItems.length})` :
             kpiModal === "visitas" ? `Total de Visitas (${visitasModalItems.length})` :
             `Volume de Vendas — ${formatBRL(dbData.volumeVendas)}`
           }
@@ -930,6 +892,7 @@ function AdminDashboard({ user }: { user: any }) {
 
 function BrokerDashboard({ user }: { user: any }) {
   const filters = useDashboardFilters();
+  const { can } = useAuth();
   const [insertOpen, setInsertOpen] = useState(false);
   const [editingAtendimento, setEditingAtendimento] = useState<any | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, atendimento: any } | null>(null);
@@ -938,40 +901,12 @@ function BrokerDashboard({ user }: { user: any }) {
   const [registrarVendaAtendimento, setRegistrarVendaAtendimento] = useState<any | null>(null);
   const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume" | "visitas">(null);
 
-  const { data: atendimentos = [], isPending } = useQuery({
-    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, filters.filterMode, "broker", user?.id],
-    queryFn: async () => {
-      const byAtualizacao = filters.filterMode === "atualizacao";
-      let q = supabase
-        .from("atendimentos")
-        .select("*, profiles(full_name, color)")
-        .eq("broker_id", user!.id);
-      if (byAtualizacao) {
-        q = q.eq("venda", false).gte("data_atualizacao", filters.appliedStartDate).lte("data_atualizacao", filters.appliedEndDate);
-      } else {
-        const dateFilter = `and(data.gte.${filters.appliedStartDate},data.lte.${filters.appliedEndDate}),and(data_atualizacao.gte.${filters.appliedStartDate},data_atualizacao.lte.${filters.appliedEndDate},venda.eq.false)`;
-        q = q.or(dateFilter);
-      }
-      const { data, error } = await q;
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: !!user,
-  });
-
-  const { data: vendas = [] } = useQuery({
-    queryKey: ["dashboard-vendas", filters.appliedStartDate, filters.appliedEndDate, "broker", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("vendas")
-        .select("*")
-        .eq("broker_id", user!.id)
-        .eq("status", "approved")
-        .gte("data_venda", filters.appliedStartDate)
-        .lte("data_venda", filters.appliedEndDate);
-      if (error) throw error;
-      return data ?? [];
-    },
+  // Leads do próprio corretor (RLS), no formato usado pelos KPIs.
+  const { atendimentos, vendas, isPending } = useDashboardLeads({
+    brokerIds: user?.id ? [user.id] : [],
+    from: filters.appliedStartDate,
+    to: filters.appliedEndDate,
+    dateField: filters.filterMode === "atualizacao" ? "updated_at" : "created_at",
     enabled: !!user,
   });
 
@@ -1002,8 +937,8 @@ function BrokerDashboard({ user }: { user: any }) {
     vendas.map(v => {
       const atend = atendimentosById[v.atendimento_id];
       return {
-        cliente: atend?.nome_cliente || "—",
-        unidade: atend?.produto || "—",
+        cliente: atend?.nome_cliente || v.nome_cliente || "—",
+        unidade: atend?.produto || v.produto || "—",
         valor: Number(v.valor) || 0,
       };
     }),
@@ -1028,7 +963,7 @@ function BrokerDashboard({ user }: { user: any }) {
 
   const tratativasModalItems = useMemo(() =>
     atendimentos
-      .filter(a => a.status === "Em Tratativa")
+      .filter(a => a.em_contato)
       .map(a => ({
         cliente: a.nome_cliente || "—",
         unidade: a.produto || "—",
@@ -1075,46 +1010,24 @@ function BrokerDashboard({ user }: { user: any }) {
       </div>
 
       <div className="px-4 pt-4 pb-8 space-y-6">
+        {can("dashboard") && (
         <div className="grid grid-cols-2 gap-3">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} onClick={() => setKpiModal("visitas")} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
-          <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
+          <KpiCard label="Em Contato" value={dbData.emTratativas} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
           <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} /></div>
         </div>
+        )}
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-[var(--navy)]">Visão Geral dos Atendimentos</h2>
-            <button onClick={() => { setInsertPreFill(null); setInsertOpen(true); }} className="h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center gap-1.5">
-              <Plus size={14} strokeWidth={2.5} /> Inserir
-            </button>
-          </div>
-          <div className="bg-white rounded-xl border border-border shadow-sm">
-            {isPending ? (
-              <div className="p-4 space-y-3">
-                {[1,2,3,4,5,6,7,8].map(i => (
-                  <div key={i} className="flex gap-3">
-                    <div className="h-4 w-20 rounded bg-gray-100 animate-pulse" />
-                    <div className="h-4 flex-1 rounded bg-gray-100 animate-pulse" />
-                    <div className="h-4 w-24 rounded bg-gray-100 animate-pulse" />
-                    <div className="h-4 w-16 rounded bg-gray-100 animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <AtendimentosTable
-                atendimentos={atendimentos}
-                isAdmin={false}
-                onRowClick={(a) => setEditingAtendimento(a)}
-                onRowContextMenu={(e: any, a: any) => {
-                  e.preventDefault();
-                  setContextMenu({ x: e.clientX, y: e.clientY, atendimento: a });
-                }}
-              />
-            )}
-          </div>
-        </div>
+        {can("leads") && (
+        <PipelineBoard
+          from={filters.appliedStartDate}
+          to={filters.appliedEndDate}
+          dateField={filters.filterMode === "atualizacao" ? "updated_at" : "created_at"}
+          title="Visão Geral dos Atendimentos"
+        />
+        )}
       </div>
 
       {contextMenu && (
@@ -1171,7 +1084,7 @@ function BrokerDashboard({ user }: { user: any }) {
         <KpiDetailModal
           title={
             kpiModal === "vendas" ? `Total de Vendas (${vendasModalItems.length})` :
-            kpiModal === "tratativas" ? `Em Tratativas (${tratativasModalItems.length})` :
+            kpiModal === "tratativas" ? `Em Contato (${tratativasModalItems.length})` :
             kpiModal === "visitas" ? `Total de Visitas (${visitasModalItems.length})` :
             `Volume de Vendas — ${formatBRL(dbData.volumeVendas)}`
           }
@@ -1673,7 +1586,7 @@ function BrokerPerformanceCard({ bp }: { bp: any }) {
         <div><div className="text-[10px] text-muted-foreground uppercase">Conv.</div><div className="font-bold text-[var(--navy)]">{bp.conversao.toFixed(1)}%</div></div>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-4 text-xs">
-        {STATUSES.map(s => (
+        {Object.keys(bp.statusCounts).map(s => (
           <div key={s} className="flex items-center justify-between">
             <span className="text-muted-foreground truncate mr-2" title={s}>{s}</span>
             <span className="font-semibold text-[var(--navy)]">{bp.statusCounts[s]}</span>
@@ -1684,7 +1597,7 @@ function BrokerPerformanceCard({ bp }: { bp: any }) {
         <div className="h-1.5 w-full bg-gray-100 rounded-full mb-3 mt-1 overflow-hidden">
           <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(bp.conversao, 100)}%`, backgroundColor: bp.broker.color }} />
         </div>
-        <div className="flex justify-between"><span className="text-muted-foreground">Em Tratativas:</span><span className="font-semibold text-[var(--navy)]">{formatBRL(bp.tratativas)}</span></div>
+        <div className="flex justify-between"><span className="text-muted-foreground">Em Contato:</span><span className="font-semibold text-[var(--navy)]">{bp.tratativas}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Volume Vendido:</span><span className="font-semibold text-[var(--navy)]">{formatBRL(bp.volume)}</span></div>
       </div>
       {bp.sparkline && bp.sparkline.length > 0 && (

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireModule } from "@/components/RequireModule";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, endOfMonth, parseISO } from "date-fns";
@@ -11,8 +12,17 @@ import { useBrokers } from "@/hooks/useBrokers";
 import { AppHeader } from "@/components/AppHeader";
 
 export const Route = createFileRoute("/_authenticated/deals")({
-  component: DealsPage,
+  component: DealsPageGuarded,
 });
+
+// Rota bloqueada pela matriz de permissões do cargo.
+function DealsPageGuarded() {
+  return (
+    <RequireModule modules={["leads"]}>
+      <DealsPage />
+    </RequireModule>
+  );
+}
 
 const statusColors = {
   "Prospect": "bg-gray-100 text-gray-700",

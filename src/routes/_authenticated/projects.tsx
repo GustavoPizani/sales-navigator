@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireModule } from "@/components/RequireModule";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,8 +17,17 @@ import { Avatar } from "@/components/Avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_authenticated/projects")({
-  component: ProjectsPage,
+  component: ProjectsPageGuarded,
 });
+
+// Rota bloqueada pela matriz de permissões do cargo.
+function ProjectsPageGuarded() {
+  return (
+    <RequireModule modules={["projects"]}>
+      <ProjectsPage />
+    </RequireModule>
+  );
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Project = {
@@ -526,7 +536,8 @@ async function extractPDFText(file: File): Promise<string> {
 
 // ─── Main page ───────────────────────────────────────────────────────────────
 function ProjectsPage() {
-  const { isAdmin, user } = useAuth();
+  // Catálogo único da empresa: só o admin geral cadastra/edita (gerentes e corretores consultam).
+  const { isSuperAdmin: isAdmin, user } = useAuth();
   const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState<Project | "new" | null>(null);
   const [importing, setImporting] = useState(false);

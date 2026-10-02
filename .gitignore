@@ -43,3 +43,6 @@ supabase/.temp/
 
 # Claude Code local state
 .claude/scheduled_tasks.lock
+
+# Exportações com dados de clientes (não versionar)
+exports/

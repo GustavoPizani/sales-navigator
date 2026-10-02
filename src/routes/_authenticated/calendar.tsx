@@ -1,4 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { RequireModule } from "@/components/RequireModule";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { addDays, format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from "date-fns";
@@ -12,8 +13,17 @@ import { Avatar } from "@/components/Avatar";
 import { AppointmentForm, useOpenAppointmentFromUrl } from "./appointments";
 
 export const Route = createFileRoute("/_authenticated/calendar")({
-  component: CalendarPage,
+  component: CalendarPageGuarded,
 });
+
+// Rota bloqueada pela matriz de permissões do cargo.
+function CalendarPageGuarded() {
+  return (
+    <RequireModule modules={["appointments"]}>
+      <CalendarPage />
+    </RequireModule>
+  );
+}
 
 // Sunday-first week day headers in pt-BR
 const DAY_INITIALS = ["D", "S", "T", "Q", "Q", "S", "S"];

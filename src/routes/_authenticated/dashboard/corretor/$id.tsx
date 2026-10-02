@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { RequireModule } from "@/components/RequireModule";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import { DateRangePicker } from "@/components/DateRangePicker";
@@ -6,11 +7,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
 import { useDashboardFilters, useDashboardData } from "@/hooks/useDashboard";
-import { DashboardCharts, AtendimentosTable, KpiCard, MiniAvatar, formatBRL } from "@/components/DashboardShared";
+import { DashboardCharts, KpiCard, formatBRL } from "@/components/DashboardShared";
+import { PipelineBoard } from "@/components/pipeline/PipelineBoard";
+import { useDashboardLeads } from "@/hooks/useDashboardLeads";
 
 export const Route = createFileRoute("/_authenticated/dashboard/corretor/$id")({
-  component: BrokerDashboardPage,
+  component: BrokerDashboardPageGuarded,
 });
+
+// Rota bloqueada pela matriz de permissões do cargo.
+function BrokerDashboardPageGuarded() {
+  return (
+    <RequireModule modules={["dashboard"]}>
+      <BrokerDashboardPage />
+    </RequireModule>
+  );
+}
 
 function BrokerDashboardPage() {
   const { id } = Route.useParams();
@@ -25,36 +37,28 @@ function BrokerDashboardPage() {
     }
   });
 
-  const { data: atendimentos = [] } = useQuery({
-    queryKey: ["dashboard-atendimentos", filters.appliedStartDate, filters.appliedEndDate, id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("atendimentos")
-        .select("*, profiles(full_name, color)")
-        .gte("data", filters.appliedStartDate)
-        .lte("data", filters.appliedEndDate)
-        .eq("broker_id", id);
-      if (error) throw error;
-      return data;
-    },
+  const { atendimentos, vendas } = useDashboardLeads({
+    brokerIds: [id],
+    from: filters.appliedStartDate,
+    to: filters.appliedEndDate,
+    dateField: "created_at",
   });
 
-  const { data: vendas = [] } = useQuery({
-    queryKey: ["dashboard-vendas", filters.appliedStartDate, filters.appliedEndDate, id],
+  const { data: visitas = [] } = useQuery({
+    queryKey: ["dashboard-visitas", filters.appliedStartDate, filters.appliedEndDate, id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("vendas")
+        .from("visitas")
         .select("*")
         .eq("broker_id", id)
-        .eq("status", "approved")
-        .gte("data_venda", filters.appliedStartDate)
-        .lte("data_venda", filters.appliedEndDate);
+        .gte("data_visita", filters.appliedStartDate)
+        .lte("data_visita", filters.appliedEndDate);
       if (error) throw error;
       return data ?? [];
     },
   });
 
-  const dbData = useDashboardData(atendimentos, vendas);
+  const dbData = useDashboardData(atendimentos, vendas, visitas);
 
   if (!isAdmin) return <div className="p-8 text-center text-red-500">Acesso negado.</div>;
 
@@ -74,13 +78,18 @@ function BrokerDashboardPage() {
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} />
-          <KpiCard label="Em Tratativas" value={formatBRL(dbData.emTratativas)} />
+          <KpiCard label="Em Contato" value={dbData.emTratativas} />
           <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} />
         </div>
 
         <DashboardCharts dbData={dbData} />
 
-        <AtendimentosTable atendimentos={atendimentos} isAdmin={false} />
+        <PipelineBoard
+          brokerId={id}
+          from={filters.appliedStartDate}
+          to={filters.appliedEndDate}
+          title="Atendimentos do corretor"
+        />
       </div>
     </div>
   );

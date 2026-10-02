@@ -82,6 +82,11 @@ export const updateBroker = createServerFn({ method: "POST" })
       .from("profiles").select("role").eq("id", context.userId).single();
     if (!caller || (caller.role !== "admin" && caller.role !== "master")) throw new Error("Forbidden");
     const { id, ...patch } = data;
+    // Usa a service role (ignora RLS): o gerente só altera corretores da própria equipe.
+    if (caller.role === "master") {
+      const { data: target } = await supabaseAdmin.from("profiles").select("manager_id").eq("id", id).single();
+      if (!target || target.manager_id !== context.userId) throw new Error("Forbidden");
+    }
     const { error } = await supabaseAdmin.from("profiles").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
     return { ok: true };

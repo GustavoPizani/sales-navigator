@@ -13,13 +13,15 @@ export function AppHeader({
   left?: ReactNode;
   right?: ReactNode;
 }) {
-  const { isAdmin, signOut, profile } = useAuth();
+  const { isAdmin, isSuperAdmin, signOut, profile } = useAuth();
   useEffect(() => {
     document.title = `${title} — ${profile?.full_name ?? "Sales Navigator"}`;
   }, [title, profile?.full_name]);
 
   return (
-    <header className="bg-[var(--navy)] text-white safe-top sticky top-0 z-30 shadow-sm">
+    <header className="relative bg-[var(--navy)] text-white safe-top sticky top-0 z-30 shadow-sm lg:shadow-none">
+      {/* desktop: canto côncavo que liga o cabeçalho à sidebar */}
+      <span aria-hidden className="app-frame-corner pointer-events-none absolute left-0 top-full hidden lg:block" />
       <div className="px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {left}
@@ -27,21 +29,24 @@ export function AppHeader({
         </div>
         <div className="flex items-center gap-0.5">
           {right}
-          <button
-            onClick={signOut}
-            className="p-2 text-white/70 hover:text-white rounded-lg transition-colors"
-            aria-label="Sair"
-          >
-            <LogOut size={20} />
-          </button>
-          <SettingsMenu isAdmin={isAdmin} />
+          {/* no desktop "Sair" e "Minha conta" ficam na sidebar */}
+          <div className="flex items-center gap-0.5 lg:hidden">
+            <button
+              onClick={signOut}
+              className="p-2 text-white/70 hover:text-white rounded-lg transition-colors"
+              aria-label="Sair"
+            >
+              <LogOut size={20} />
+            </button>
+            <SettingsMenu isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} />
+          </div>
         </div>
       </div>
     </header>
   );
 }
 
-function SettingsMenu({ isAdmin }: { isAdmin: boolean }) {
+function SettingsMenu({ isAdmin, isSuperAdmin }: { isAdmin: boolean; isSuperAdmin: boolean }) {
   const navigate = useNavigate();
   return (
     <DropdownMenu.Root>
@@ -66,6 +71,22 @@ function SettingsMenu({ isAdmin }: { isAdmin: boolean }) {
           >
             Minha Conta
           </DropdownMenu.Item>
+          {isSuperAdmin && (
+            <>
+              <DropdownMenu.Item
+                className="flex items-center px-4 py-2.5 text-sm font-medium hover:bg-[var(--surface)] cursor-pointer outline-none select-none rounded-lg mx-1"
+                onSelect={() => navigate({ to: "/checkin-log" })}
+              >
+                Log de check-ins
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                className="flex items-center px-4 py-2.5 text-sm font-medium hover:bg-[var(--surface)] cursor-pointer outline-none select-none rounded-lg mx-1"
+                onSelect={() => navigate({ to: "/settings/permissions" })}
+              >
+                Permissões
+              </DropdownMenu.Item>
+            </>
+          )}
           {isAdmin && (
             <DropdownMenu.Item
               className="flex items-center px-4 py-2.5 text-sm font-medium hover:bg-[var(--surface)] cursor-pointer outline-none select-none rounded-lg mx-1"

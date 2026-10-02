@@ -60,7 +60,7 @@ export function MiniAvatar({ name, color }: { name?: string; color?: string }) {
 export function DashboardCharts({ dbData }: { dbData: any }) {
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <ChartCard title="Atendimentos x Visitas">
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={dbData.chart1Data} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
@@ -69,8 +69,8 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
               <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
               <Tooltip cursor={{ fill: "transparent" }} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
               <Legend wrapperStyle={{ fontSize: 12, paddingTop: "10px" }} verticalAlign="top" />
-              <Bar dataKey="Sim" fill="#2563EB" radius={[4, 4, 0, 0]}><LabelList dataKey="Sim" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
-              <Bar dataKey="Não" fill="#DC2626" radius={[4, 4, 0, 0]}><LabelList dataKey="Não" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
+              <Bar dataKey="Sim" fill="#B28069" radius={[4, 4, 0, 0]}><LabelList dataKey="Sim" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
+              <Bar dataKey="Não" fill="#A8A8A8" radius={[4, 4, 0, 0]}><LabelList dataKey="Não" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -82,37 +82,13 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
               <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
               <Tooltip cursor={{ fill: "transparent" }} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
               <Legend wrapperStyle={{ fontSize: 12, paddingTop: "10px" }} verticalAlign="top" />
-              <Bar dataKey="Sim" fill="#2563EB" radius={[4, 4, 0, 0]}><LabelList dataKey="Sim" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
-              <Bar dataKey="Não" fill="#DC2626" radius={[4, 4, 0, 0]}><LabelList dataKey="Não" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-        <ChartCard title="Atendimento Online e Salão">
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={dbData.chart3Data} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
-              <Tooltip cursor={{ fill: "transparent" }} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-              <Legend wrapperStyle={{ fontSize: 12, paddingTop: "10px" }} verticalAlign="top" />
-              <Bar dataKey="Salão" fill="#DC2626" radius={[4, 4, 0, 0]}><LabelList dataKey="Salão" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
-              <Bar dataKey="Online" fill="#2563EB" radius={[4, 4, 0, 0]}><LabelList dataKey="Online" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
+              <Bar dataKey="Sim" fill="#B28069" radius={[4, 4, 0, 0]}><LabelList dataKey="Sim" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
+              <Bar dataKey="Não" fill="#A8A8A8" radius={[4, 4, 0, 0]}><LabelList dataKey="Não" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChartCard title="Contratos Gerados no período">
-          <ResponsiveContainer width="100%" height={350}>
-            <BarChart data={dbData.chart4Data} layout="vertical" margin={{ top: 0, right: 80, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
-              <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} tickFormatter={formatBRL} />
-              <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} width={60} />
-              <Tooltip cursor={{ fill: "transparent" }} formatter={(v: number) => formatBRL(v)} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-              <Bar dataKey="valor" fill="#0C2340" radius={[0, 4, 4, 0]} barSize={20}><LabelList dataKey="valor" position="right" formatter={(v: number) => (v > 0 ? formatBRL(v) : "")} style={{ fontSize: 10, fill: "#6B7280" }} /></Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+      <div className="grid grid-cols-1 gap-4">
         <ChartCard title="Vendas no período">
           <ResponsiveContainer width="100%" height={350}>
             <BarChart data={dbData.chart5Data} layout="vertical" margin={{ top: 0, right: 80, left: 0, bottom: 0 }}>
@@ -120,7 +96,7 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
               <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} tickFormatter={formatBRL} />
               <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} width={60} />
               <Tooltip cursor={{ fill: "transparent" }} formatter={(v: number) => formatBRL(v)} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-              <Bar dataKey="valor" fill="#0C2340" radius={[0, 4, 4, 0]} barSize={20}><LabelList dataKey="valor" position="right" formatter={(v: number) => (v > 0 ? formatBRL(v) : "")} style={{ fontSize: 10, fill: "#6B7280" }} /></Bar>
+              <Bar dataKey="valor" fill="#2D2D2D" radius={[0, 4, 4, 0]} barSize={20}><LabelList dataKey="valor" position="right" formatter={(v: number) => (v > 0 ? formatBRL(v) : "")} style={{ fontSize: 10, fill: "#6B7280" }} /></Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -158,7 +134,7 @@ export function StatusChart({ data }: { data: any[] }) {
           />
           <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={22}>
             {filtered.map((entry) => (
-              <Cell key={entry.name} fill={STATUS_HEX[entry.name] ?? "#6B7280"} />
+              <Cell key={entry.name} fill={entry.color ?? STATUS_HEX[entry.name] ?? "#6B7280"} />
             ))}
             <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: "#6B7280", fontWeight: 600 }} formatter={(v: number) => (v > 0 ? v : "")} />
           </Bar>
@@ -183,7 +159,7 @@ export function VisitsByProductChart({ data }: { data: { name: string; visitas: 
             contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
             formatter={(value: any, _name: any, item: any) => [`${value} de ${item.payload.total} atendimentos`, "Visitas"]}
           />
-          <Bar dataKey="visitas" name="Visitas" fill="#0C2340" radius={[0, 4, 4, 0]} barSize={22}>
+          <Bar dataKey="visitas" name="Visitas" fill="#2D2D2D" radius={[0, 4, 4, 0]} barSize={22}>
             <LabelList dataKey="visitas" position="right" style={{ fontSize: 11, fill: "#6B7280", fontWeight: 600 }} formatter={(v: number) => (v > 0 ? v : "")} />
           </Bar>
         </BarChart>

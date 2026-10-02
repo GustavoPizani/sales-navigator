@@ -3,6 +3,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { BottomNav } from "@/components/BottomNav";
+import { SIDEBAR_WIDTH, Sidebar } from "@/components/Sidebar";
 import { PushSubscriber } from "@/components/PushSubscriber";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -13,7 +14,7 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
   const { session, profile, loading, refreshProfile } = useAuth();
   if (loading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Carregando…</div>;
-  if (!session) return <Navigate to="/login" replace />;
+  if (!session) return <RedirectToLogin />;
   if (!profile) return <ProfileLoadFailed onRetry={refreshProfile} />;
   if (!profile.is_active)
     return (
@@ -29,13 +30,61 @@ function AuthenticatedLayout() {
     return <ForcePasswordChange />;
   }
 
+  return <AppShell />;
+}
+
+const SIDEBAR_PREF_KEY = "sidebar:collapsed";
+
+// Desktop: sidebar fixa à esquerda (recolhível, preferência lembrada no navegador).
+// Celular: barra inferior.
+function AppShell() {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(SIDEBAR_PREF_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setCollapsed((c) => {
+      try {
+        window.localStorage.setItem(SIDEBAR_PREF_KEY, c ? "0" : "1");
+      } catch {
+        /* storage indisponível */
+      }
+      return !c;
+    });
+  const offset = collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded;
+
   return (
     <div className="min-h-screen bg-[var(--surface)]">
       <PushSubscriber />
-      <Outlet />
+      <Sidebar collapsed={collapsed} onToggle={toggle} />
+      <div
+        className="min-w-0 transition-[padding] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)] lg:pl-[var(--sidebar-offset)]"
+        style={{ "--sidebar-offset": offset } as React.CSSProperties}
+      >
+        <Outlet />
+      </div>
       <BottomNav />
     </div>
   );
+}
+
+const POST_LOGIN_REDIRECT_KEY = "post-login-redirect";
+
+// Guarda a página que a pessoa tentou abrir (ex.: /checkin?auto=1 vindo do QR
+// code) para voltar a ela depois do login.
+function RedirectToLogin() {
+  try {
+    const target = window.location.pathname + window.location.search;
+    if (target && target !== "/" && !target.startsWith("/login")) {
+      window.sessionStorage.setItem(POST_LOGIN_REDIRECT_KEY, target);
+    }
+  } catch {
+    /* storage indisponível */
+  }
+  return <Navigate to="/login" replace />;
 }
 
 function ProfileLoadFailed({ onRetry }: { onRetry: () => Promise<void> }) {

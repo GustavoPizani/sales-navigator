@@ -32,7 +32,8 @@ export function useDashboardData(atendimentos: any[], vendas: any[] = [], visita
     const monthlyAtend: Record<string, any> = {};
 
     atendimentos.forEach((a) => {
-      if (a.status === "Em Tratativa") emTratativasSum += Number(a.valor) || 0;
+      // "Em Contato": quantidade de leads na etapa Em contato.
+      if (a.em_contato) emTratativasSum++;
 
       const refDate = (!a.venda && a.data_atualizacao) ? a.data_atualizacao : a.data;
       const m = refDate.slice(0, 7);

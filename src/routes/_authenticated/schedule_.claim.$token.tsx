@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { RequireModule } from "@/components/RequireModule";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
@@ -8,11 +9,21 @@ import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
+import { usePdvLabels } from "@/hooks/useRoulette";
 
 // Repare no schedule_ com underline para escapar o layout
 export const Route = createFileRoute("/_authenticated/schedule_/claim/$token")({
-  component: ClaimShiftPage,
+  component: ClaimShiftPageGuarded,
 });
+
+// Rota bloqueada pela matriz de permissões do cargo.
+function ClaimShiftPageGuarded() {
+  return (
+    <RequireModule modules={["schedule"]} min="edit">
+      <ClaimShiftPage />
+    </RequireModule>
+  );
+}
 
 function ClaimShiftPage() {
   const { token } = Route.useParams();
@@ -21,20 +32,7 @@ function ClaimShiftPage() {
   const qc = useQueryClient();
 
   const [claimingId, setClaimingId] = useState<string | null>(null);
-  const [selectedProject, setSelectedProject] = useState("");
-
-  const projectsQ = useQuery({
-    queryKey: ["projects-active"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("projects")
-        .select("id,name")
-        .eq("is_active", true)
-        .eq("tem_plantao", true)
-        .order("name");
-      return (data ?? []) as { id: string; name: string }[];
-    },
-  });
+  const pdvLabels = usePdvLabels();
 
   // Verifica se o usuário abriu fora do PWA
   useEffect(() => {
@@ -77,11 +75,6 @@ function ClaimShiftPage() {
   });
 
   const handleClaim = async (slotId: string) => {
-    if (configQ.data?.modality === 'salao' && !selectedProject) {
-      toast.error("Selecione o plantão antes de garantir a vaga.");
-      return;
-    }
-
     setClaimingId(slotId);
     try {
       const { error } = await supabase.rpc('claim_shift_slot', {
@@ -91,7 +84,7 @@ function ClaimShiftPage() {
 
       if (error) throw error;
       
-      const notesValue = configQ.data?.modality === 'salao' ? selectedProject : 'Central Online';
+      const notesValue = configQ.data?.modality === 'salao' ? pdvLabels.plantao : pdvLabels.central;
       await supabase.from("shifts").update({ notes: notesValue }).eq("slot_id", slotId).eq("broker_id", user!.id);
 
       toast.success("Plantão garantido com sucesso!");
@@ -137,21 +130,12 @@ function ClaimShiftPage() {
         <div className="bg-white p-4 rounded-2xl border border-border shadow-sm">
           <div className="flex flex-col mb-1">
             <h2 className="text-lg font-bold text-[var(--navy)]">
-              {config.modality === 'online' ? 'Central Online' : 'Plantão Físico'}
+              {config.modality === 'online' ? pdvLabels.central : pdvLabels.plantao}
             </h2>
           </div>
           <p className="text-sm text-muted-foreground capitalize">
             Semana de {format(parseISO(config.week_start_date), "dd/MM/yyyy")}
           </p>
-          {config.modality === 'salao' && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Selecione o seu Plantão *</label>
-              <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} className="w-full h-11 px-3 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)] font-medium outline-none focus:border-[var(--gold)]">
-                <option value="">Selecione o plantão...</option>
-                {(projectsQ.data ?? []).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-              </select>
-            </div>
-          )}
         </div>
 
         <div className="space-y-5">

@@ -15,13 +15,16 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
-import { Route as AuthenticatedSalesRouteImport } from './routes/_authenticated/sales'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedDealsRouteImport } from './routes/_authenticated/deals'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedCheckinLogRouteImport } from './routes/_authenticated/checkin-log'
+import { Route as AuthenticatedCheckinRouteImport } from './routes/_authenticated/checkin'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedAppointmentsRouteImport } from './routes/_authenticated/appointments'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
+import { Route as AuthenticatedSettingsPermissionsRouteImport } from './routes/_authenticated/settings/permissions'
+import { Route as AuthenticatedLeadsLeadIdRouteImport } from './routes/_authenticated/leads.$leadId'
 import { Route as AuthenticatedScheduleClaimTokenRouteImport } from './routes/_authenticated/schedule_.claim.$token'
 import { Route as AuthenticatedDashboardCorretorIdRouteImport } from './routes/_authenticated/dashboard/corretor/$id'
 
@@ -54,11 +57,6 @@ const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
   path: '/schedule',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedSalesRoute = AuthenticatedSalesRouteImport.update({
-  id: '/sales',
-  path: '/sales',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
@@ -72,6 +70,16 @@ const AuthenticatedDealsRoute = AuthenticatedDealsRouteImport.update({
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedCheckinLogRoute = AuthenticatedCheckinLogRouteImport.update({
+  id: '/checkin-log',
+  path: '/checkin-log',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedCheckinRoute = AuthenticatedCheckinRouteImport.update({
+  id: '/checkin',
+  path: '/checkin',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
@@ -89,6 +97,18 @@ const AuthenticatedSettingsProfileRoute =
   AuthenticatedSettingsProfileRouteImport.update({
     id: '/settings/profile',
     path: '/settings/profile',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsPermissionsRoute =
+  AuthenticatedSettingsPermissionsRouteImport.update({
+    id: '/settings/permissions',
+    path: '/settings/permissions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedLeadsLeadIdRoute =
+  AuthenticatedLeadsLeadIdRouteImport.update({
+    id: '/leads/$leadId',
+    path: '/leads/$leadId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedScheduleClaimTokenRoute =
@@ -110,12 +130,15 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/appointments': typeof AuthenticatedAppointmentsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
+  '/checkin': typeof AuthenticatedCheckinRoute
+  '/checkin-log': typeof AuthenticatedCheckinLogRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/deals': typeof AuthenticatedDealsRoute
   '/projects': typeof AuthenticatedProjectsRoute
-  '/sales': typeof AuthenticatedSalesRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
+  '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/schedule/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
@@ -126,12 +149,15 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/appointments': typeof AuthenticatedAppointmentsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
+  '/checkin': typeof AuthenticatedCheckinRoute
+  '/checkin-log': typeof AuthenticatedCheckinLogRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/deals': typeof AuthenticatedDealsRoute
   '/projects': typeof AuthenticatedProjectsRoute
-  '/sales': typeof AuthenticatedSalesRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
+  '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/schedule/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
@@ -144,12 +170,15 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/appointments': typeof AuthenticatedAppointmentsRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
+  '/_authenticated/checkin': typeof AuthenticatedCheckinRoute
+  '/_authenticated/checkin-log': typeof AuthenticatedCheckinLogRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/_authenticated/deals': typeof AuthenticatedDealsRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRoute
-  '/_authenticated/sales': typeof AuthenticatedSalesRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
+  '/_authenticated/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
+  '/_authenticated/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/_authenticated/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/_authenticated/schedule_/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
@@ -162,12 +191,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/appointments'
     | '/calendar'
+    | '/checkin'
+    | '/checkin-log'
     | '/dashboard'
     | '/deals'
     | '/projects'
-    | '/sales'
     | '/schedule'
     | '/team'
+    | '/leads/$leadId'
+    | '/settings/permissions'
     | '/settings/profile'
     | '/dashboard/corretor/$id'
     | '/schedule/claim/$token'
@@ -178,12 +210,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/appointments'
     | '/calendar'
+    | '/checkin'
+    | '/checkin-log'
     | '/dashboard'
     | '/deals'
     | '/projects'
-    | '/sales'
     | '/schedule'
     | '/team'
+    | '/leads/$leadId'
+    | '/settings/permissions'
     | '/settings/profile'
     | '/dashboard/corretor/$id'
     | '/schedule/claim/$token'
@@ -195,12 +230,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/appointments'
     | '/_authenticated/calendar'
+    | '/_authenticated/checkin'
+    | '/_authenticated/checkin-log'
     | '/_authenticated/dashboard'
     | '/_authenticated/deals'
     | '/_authenticated/projects'
-    | '/_authenticated/sales'
     | '/_authenticated/schedule'
     | '/_authenticated/team'
+    | '/_authenticated/leads/$leadId'
+    | '/_authenticated/settings/permissions'
     | '/_authenticated/settings/profile'
     | '/_authenticated/dashboard/corretor/$id'
     | '/_authenticated/schedule_/claim/$token'
@@ -257,13 +295,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedScheduleRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/sales': {
-      id: '/_authenticated/sales'
-      path: '/sales'
-      fullPath: '/sales'
-      preLoaderRoute: typeof AuthenticatedSalesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/projects': {
       id: '/_authenticated/projects'
       path: '/projects'
@@ -285,6 +316,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/checkin-log': {
+      id: '/_authenticated/checkin-log'
+      path: '/checkin-log'
+      fullPath: '/checkin-log'
+      preLoaderRoute: typeof AuthenticatedCheckinLogRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/checkin': {
+      id: '/_authenticated/checkin'
+      path: '/checkin'
+      fullPath: '/checkin'
+      preLoaderRoute: typeof AuthenticatedCheckinRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/calendar': {
       id: '/_authenticated/calendar'
       path: '/calendar'
@@ -304,6 +349,20 @@ declare module '@tanstack/react-router' {
       path: '/settings/profile'
       fullPath: '/settings/profile'
       preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/permissions': {
+      id: '/_authenticated/settings/permissions'
+      path: '/settings/permissions'
+      fullPath: '/settings/permissions'
+      preLoaderRoute: typeof AuthenticatedSettingsPermissionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/leads/$leadId': {
+      id: '/_authenticated/leads/$leadId'
+      path: '/leads/$leadId'
+      fullPath: '/leads/$leadId'
+      preLoaderRoute: typeof AuthenticatedLeadsLeadIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/schedule_/claim/$token': {
@@ -341,12 +400,15 @@ const AuthenticatedDashboardRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedAppointmentsRoute: typeof AuthenticatedAppointmentsRoute
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
+  AuthenticatedCheckinRoute: typeof AuthenticatedCheckinRoute
+  AuthenticatedCheckinLogRoute: typeof AuthenticatedCheckinLogRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRouteWithChildren
   AuthenticatedDealsRoute: typeof AuthenticatedDealsRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
-  AuthenticatedSalesRoute: typeof AuthenticatedSalesRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
+  AuthenticatedLeadsLeadIdRoute: typeof AuthenticatedLeadsLeadIdRoute
+  AuthenticatedSettingsPermissionsRoute: typeof AuthenticatedSettingsPermissionsRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
   AuthenticatedScheduleClaimTokenRoute: typeof AuthenticatedScheduleClaimTokenRoute
 }
@@ -354,12 +416,15 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAppointmentsRoute: AuthenticatedAppointmentsRoute,
   AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
+  AuthenticatedCheckinRoute: AuthenticatedCheckinRoute,
+  AuthenticatedCheckinLogRoute: AuthenticatedCheckinLogRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRouteWithChildren,
   AuthenticatedDealsRoute: AuthenticatedDealsRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
-  AuthenticatedSalesRoute: AuthenticatedSalesRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
+  AuthenticatedLeadsLeadIdRoute: AuthenticatedLeadsLeadIdRoute,
+  AuthenticatedSettingsPermissionsRoute: AuthenticatedSettingsPermissionsRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
   AuthenticatedScheduleClaimTokenRoute: AuthenticatedScheduleClaimTokenRoute,
 }

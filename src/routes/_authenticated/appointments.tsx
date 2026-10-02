@@ -1,20 +1,29 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RequireModule } from "@/components/RequireModule";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Plus, ExternalLink, AlertTriangle, Check } from "lucide-react";
+import { Plus, ExternalLink, AlertTriangle, Check, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
-import { AtendimentoForm } from "./dashboard";
 import { CalendarView } from "./calendar";
 
 export const Route = createFileRoute("/_authenticated/appointments")({
-  component: AppointmentsPage,
+  component: AppointmentsPageGuarded,
 });
+
+// Rota bloqueada pela matriz de permissões do cargo.
+function AppointmentsPageGuarded() {
+  return (
+    <RequireModule modules={["appointments"]}>
+      <AppointmentsPage />
+    </RequireModule>
+  );
+}
 
 export type Appt = {
   id: string; owner_id: string; title: string; date: string;
@@ -22,6 +31,10 @@ export type Appt = {
   custom_location: string | null; description: string | null;
   client_name: string | null; client_email: string | null;
   client_id: string | null;
+  /** lead do CRM vinculado; quando presente, os dados do cliente não são editáveis aqui */
+  lead_id?: string | null;
+  /** resultado da visita marcado pelo corretor */
+  visit_status?: "done" | "not_done" | string | null;
   type: "visit" | "meeting" | "call" | "follow-up";
   include_manager: boolean; google_calendar_link: string | null;
 };
@@ -198,18 +211,20 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
   const isOwner = appt?.owner_id === user?.id;
   const readOnly = !!appt && !isOwner && !isManager;
 
-  const [markingVisit, setMarkingVisit] = useState(false);
 
   const [type, setType] = useState<Appt["type"]>(appt?.type ?? "visit");
   const [date, setDate] = useState(appt?.date ?? format(new Date(), "yyyy-MM-dd"));
   const [startT, setStartT] = useState(appt?.start_time.slice(0, 5) ?? "10:00");
   const [endT, setEndT] = useState(appt?.end_time.slice(0, 5) ?? "11:00");
-  const [projectId, setProjectId] = useState<string | "">(appt?.project_id ?? "");
+  const [projectId, setProjectId] = useState<string | "">(appt?.project_id ?? preFill?.project_id ?? "");
   const [customLoc, setCustomLoc] = useState(appt?.custom_location ?? "");
   const [title, setTitle] = useState(appt?.title ?? "");
   const [clientName, setClientName] = useState(appt?.client_name ?? preFill?.client_name ?? "");
   const [clientId, setClientId] = useState(appt?.client_id ?? preFill?.client_id ?? "");
   const [clientEmail, setClientEmail] = useState(appt?.client_email ?? preFill?.client_email ?? "");
+  const leadId = appt?.lead_id ?? preFill?.lead_id ?? null;
+  // Dados do cliente vêm do lead e só o admin os altera, na página do lead.
+  const clientLocked = readOnly || !!leadId;
   const [description, setDescription] = useState(appt?.description ?? "");
   const [savedLink, setSavedLink] = useState<string | null>(appt?.google_calendar_link ?? null);
 
@@ -269,6 +284,7 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
         custom_location: showProjectLocation ? null : (customLoc || null),
         description: description || null, client_name: clientName || null,
         client_email: clientEmail || null, client_id: clientId || null,
+        lead_id: leadId,
         type,
         include_manager: appt ? appt.include_manager : !isManager,
         google_calendar_link: link,
@@ -287,6 +303,7 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
     onSuccess: (link) => {
       qc.invalidateQueries({ queryKey: ["my-appts"] });
       qc.invalidateQueries({ queryKey: ["team-appts"] });
+      if (leadId) invalidateLead();
       if (!appt) {
         window.open(link, "_blank");
         toast.success("Agendamento criado!");
@@ -322,22 +339,34 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
     },
   });
 
-  if (markingVisit && appt) {
-    return (
-      <AtendimentoForm 
-        userId={user!.id} 
-        onClose={onClose} 
-        preFill={{
-            appointment_id: appt.id,
-            nome_cliente: appt.client_name || "",
-            email: appt.client_email || "",
-            id_cliente: appt.client_id || "",
-            broker_id: appt.owner_id,
-            produto: selectedProject?.name || "",
-        }} 
-      />
-    );
+  function invalidateLead() {
+    qc.invalidateQueries({ queryKey: ["leads"] });
+    qc.invalidateQueries({ queryKey: ["lead", leadId] });
+    qc.invalidateQueries({ queryKey: ["lead-notes", leadId] });
+    qc.invalidateQueries({ queryKey: ["lead-appts", leadId] });
+    qc.invalidateQueries({ queryKey: ["dashboard-visitas"] });
+    qc.invalidateQueries({ queryKey: ["dashboard-leads"] });
   }
+
+  // Resultado da visita (RPC): realizada → lead vai para "Visita realizada";
+  // não realizada → lead volta para "Em contato". Ambos anotam no histórico.
+  const markVisit = useMutation({
+    mutationFn: async (done: boolean) => {
+      const { error } = await supabase.rpc(done ? "crm_mark_visit_done" : "crm_mark_visit_not_done", {
+        p_appointment_id: appt!.id,
+      });
+      if (error) throw error;
+      return done;
+    },
+    onSuccess: (done) => {
+      qc.invalidateQueries({ queryKey: ["my-appts"] });
+      qc.invalidateQueries({ queryKey: ["team-appts"] });
+      invalidateLead();
+      toast.success(done ? "Visita registrada como realizada!" : "Visita registrada como não realizada.");
+      onClose();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto" onClick={onClose}>
@@ -368,10 +397,10 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
             <input disabled={readOnly} className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Local" value={customLoc} onChange={(e) => setCustomLoc(e.target.value)} />
           )}
 
-          <input disabled={readOnly} className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Nome do cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+          <input disabled={clientLocked} className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Nome do cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} />
           <div className="grid grid-cols-2 gap-2">
-            <input disabled={readOnly} className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="ID do cliente" value={clientId} onChange={(e) => setClientId(e.target.value)} />
-            <input disabled={readOnly} type="email" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="E-mail do cliente" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
+            <input disabled={clientLocked} className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="ID do cliente" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+            <input disabled={clientLocked} type="email" className="h-12 px-3 rounded-xl bg-[var(--surface)] border border-border disabled:opacity-60 disabled:cursor-not-allowed" placeholder="E-mail do cliente" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
           </div>
 
           <textarea disabled={readOnly} className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border min-h-[80px] disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Descrição (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -395,14 +424,37 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
             </div>
           )}
 
-          {appt && !readOnly && (
-            <button 
-              type="button"
-              onClick={() => setMarkingVisit(true)}
-              className="w-full h-12 rounded-xl bg-green-50 border border-green-200 text-green-700 font-bold mb-2 flex items-center justify-center gap-2"
-            >
-              <Check size={18} /> Marcar como visita realizada
-            </button>
+          {appt && !readOnly && appt.lead_id && (
+            <div className="space-y-2 mb-2">
+              {appt.visit_status && (
+                <p className={`text-xs text-center font-semibold ${appt.visit_status === "done" ? "text-green-700" : "text-red-700"}`}>
+                  {appt.visit_status === "done" ? "Visita marcada como realizada" : "Visita marcada como não realizada"}
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => markVisit.mutate(true)}
+                  disabled={markVisit.isPending || appt.visit_status === "done"}
+                  className="h-12 rounded-xl bg-green-50 border border-green-200 text-green-700 font-bold text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Check size={16} /> Visita realizada
+                </button>
+                <button
+                  type="button"
+                  onClick={() => markVisit.mutate(false)}
+                  disabled={markVisit.isPending || appt.visit_status === "not_done"}
+                  className="h-12 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <X size={16} /> Não realizada
+                </button>
+              </div>
+            </div>
+          )}
+          {appt && !readOnly && !appt.lead_id && (
+            <p className="text-xs text-muted-foreground text-center mb-2">
+              Para registrar a visita, agende pela página do lead.
+            </p>
           )}
 
           <div className="flex gap-2 pt-2 border-t border-border">

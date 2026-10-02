@@ -1,4 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { RequireModule } from "@/components/RequireModule";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Phone, MessageCircle, Mail, MoreVertical, ChevronDown, ChevronRight, Check, Trash2, Copy, Link, KeyRound } from "lucide-react";
@@ -7,6 +8,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar } from "@/components/Avatar";
@@ -14,8 +16,17 @@ import { deleteUser } from "@/lib/admin.functions";
 import { useBrokers } from "@/hooks/useBrokers";
 
 export const Route = createFileRoute("/_authenticated/team")({
-  component: TeamPage,
+  component: TeamPageGuarded,
 });
+
+// Rota bloqueada pela matriz de permissões do cargo.
+function TeamPageGuarded() {
+  return (
+    <RequireModule modules={["team"]}>
+      <TeamPage />
+    </RequireModule>
+  );
+}
 
 type Profile = {
   id: string;
@@ -24,18 +35,27 @@ type Profile = {
   phone: string | null;
   color: string;
   role: string;
-  setor: "Online" | "Salão";
   is_active: boolean;
+  manager_id: string | null;
+  team_name: string | null;
+  avatar_url: string | null;
+  cargo_id?: string | null;
 };
 
-type BrokerWithManager = Profile & {
-  manager: { full_name: string; color: string } | null;
-};
+/** Equipe = um gerente (role "master"). */
+type TeamOption = { id: string; label: string };
+
+const teamLabel = (m: Pick<Profile, "team_name" | "full_name">) => m.team_name || m.full_name;
+
+function randomTempPassword() {
+  return "PeG@" + Math.floor(100000 + Math.random() * 900000);
+}
 
 function TeamPage() {
-  const { isAdmin, isDirector } = useAuth();
+  const { isAdmin, isDirector, isSuperAdmin } = useAuth();
   if (!isAdmin && !isDirector) return <Navigate to="/dashboard" replace />;
-  return isAdmin ? <AdminTeamView /> : <DirectorTeamView />;
+  // admin: todas as equipes; gerente: a própria equipe
+  return isSuperAdmin ? <TeamsAdminView /> : <AdminTeamView />;
 }
 
 function AdminTeamView() {
@@ -77,7 +97,7 @@ function AdminTeamView() {
 
   return (
     <div className="pb-nav">
-      <AppHeader title={`Equipe ${profile?.full_name ?? ""}`} />
+      <AppHeader title={`Equipe ${profile?.team_name || profile?.full_name || ""}`} />
 
       <div className="px-4 pt-4 space-y-3">
         <button
@@ -144,182 +164,251 @@ function AdminTeamView() {
   );
 }
 
-function DirectorTeamView() {
-  const [inactiveOpen, setInactiveOpen] = useState(false);
-  const [addManager, setAddManager] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<Profile | null>(null);
-  const { profile } = useAuth();
+/** Visão do admin: todas as equipes (um gerente cada) e seus corretores. */
+function TeamsAdminView() {
   const qc = useQueryClient();
+  const [addManager, setAddManager] = useState(false);
+  const [addHr, setAddHr] = useState(false);
+  // undefined = fechado; null = sem equipe pré-selecionada; id = equipe
+  const [addBroker, setAddBroker] = useState<string | null | undefined>(undefined);
+  const [editing, setEditing] = useState<Profile | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Profile | null>(null);
+  const [resetPasswordProfile, setResetPasswordProfile] = useState<Profile | null>(null);
+  const [openTeams, setOpenTeams] = useState<Record<string, boolean>>({});
+  const { profile } = useAuth();
 
   const managersQ = useQuery({
     queryKey: ["team-managers"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id,full_name,email,phone,color,role,is_active")
-        .eq("role", "admin")
+        .select("id,full_name,email,phone,color,role,is_active,manager_id,team_name,avatar_url,cargo_id")
+        .eq("role", "master")
+        .order("team_name")
+        .order("full_name");
+      if (error) throw error;
+      return (data ?? []) as Profile[];
+    },
+  });
+  const brokersQ = useBrokers({ select: "*", includeInactive: true });
+  // RH: acessa o log de check-ins e os módulos liberados na matriz de permissões
+  const hrQ = useQuery({
+    queryKey: ["team-hr"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,full_name,email,phone,color,role,is_active,manager_id,team_name,avatar_url,cargo_id")
+        .eq("role", "hr")
         .order("full_name");
       if (error) throw error;
       return (data ?? []) as Profile[];
     },
   });
 
-  const deleteManager = useMutation({
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["team-hr"] });
+    qc.invalidateQueries({ queryKey: ["team-managers"] });
+    qc.invalidateQueries({ queryKey: ["brokers-active"] });
+  };
+  const toggleActive = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { error } = await supabase.from("profiles").update({ is_active: !is_active }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      invalidate();
+      toast.success(vars.is_active ? "Usuário desativado" : "Usuário reativado");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const deleteProfile = useMutation({
     mutationFn: (id: string) => deleteUser({ data: { id } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team-managers"] });
-      toast.success("Gerente excluído");
+      invalidate();
+      toast.success("Usuário removido");
     },
     onError: (e: any) => toast.error(e.message),
   });
 
-  const brokersQ = useQuery({
-    queryKey: ["team-director"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*, manager:manager_id(full_name, color)")
-        .eq("role", "broker")
-        .order("full_name");
-      if (error) throw error;
-      return (data ?? []) as unknown as BrokerWithManager[];
-    },
-  });
+  const managers = managersQ.data ?? [];
+  const brokers = (brokersQ.data ?? []) as Profile[];
+  const managerIds = new Set(managers.map((m) => m.id));
+  const teams: TeamOption[] = managers.filter((m) => m.is_active).map((m) => ({ id: m.id, label: teamLabel(m) }));
+  const noTeam = brokers.filter((b) => !b.manager_id || !managerIds.has(b.manager_id));
 
-  const active = (brokersQ.data ?? []).filter((b) => b.is_active);
-  const inactive = (brokersQ.data ?? []).filter((b) => !b.is_active);
+  const brokerCard = (b: Profile) => (
+    <BrokerCard
+      key={b.id}
+      broker={b}
+      onEdit={() => setEditing(b)}
+      onToggleActive={() => toggleActive.mutate({ id: b.id, is_active: b.is_active })}
+      onDelete={() => setConfirmDelete(b)}
+      onResetPassword={() => setResetPasswordProfile(b)}
+    />
+  );
 
   return (
     <div className="pb-nav">
-      <AppHeader title={`Equipe ${profile?.full_name ?? ""}`} />
-      <div className="px-4 pt-4 space-y-3">
-        {/* Managers section */}
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Gerentes</p>
+      <AppHeader title={`Equipes ${profile?.team_name || "P&G"}`} />
+      <div className="px-4 pt-4 space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <button
             onClick={() => setAddManager(true)}
-            className="h-8 px-3 rounded-lg bg-[var(--gold)] text-[var(--navy)] font-semibold text-xs flex items-center gap-1"
+            className="h-12 rounded-xl bg-[var(--navy)] text-white font-bold text-sm flex items-center justify-center gap-2"
           >
-            <Plus size={13} strokeWidth={2.5} /> Adicionar gerente
+            <Plus size={16} strokeWidth={2.5} /> Adicionar gerente
+          </button>
+          <button
+            onClick={() => setAddBroker(null)}
+            className="h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm flex items-center justify-center gap-2"
+          >
+            <Plus size={16} strokeWidth={2.5} /> Adicionar corretor
+          </button>
+          <button
+            onClick={() => setAddHr(true)}
+            className="h-12 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm flex items-center justify-center gap-2 col-span-2 sm:col-span-1"
+          >
+            <Plus size={16} strokeWidth={2.5} /> Adicionar RH
           </button>
         </div>
-        {managersQ.isPending && <p className="text-center text-muted-foreground text-sm py-4">Carregando...</p>}
-        {(managersQ.data ?? []).map((m) => (
-          <div key={m.id} className={`bg-white rounded-2xl border border-border p-4 flex items-center gap-3 ${!m.is_active ? "opacity-60" : ""}`}>
-            <Avatar name={m.full_name} color={m.color} size={44} />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-[var(--navy)] truncate">{m.full_name}</p>
-              <p className="text-xs text-muted-foreground">{m.phone ?? m.email}</p>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 inline-block mt-1">Gerente</span>
-            </div>
-            <div className="flex gap-1">
-              {m.phone && (
-                <a href={`tel:${m.phone}`} className="w-9 h-9 rounded-xl bg-[var(--surface)] flex items-center justify-center text-muted-foreground">
-                  <Phone size={15} />
-                </a>
-              )}
-              {m.phone?.replace(/\D/g, "") && (
-                <a href={`https://wa.me/${m.phone!.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
-                  className="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center text-green-600">
-                  <MessageCircle size={15} />
-                </a>
-              )}
-              <button
-                onClick={() => setConfirmDelete(m)}
-                className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-100"
-                aria-label="Excluir gerente"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          </div>
-        ))}
 
-        <div className="pt-2">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Corretores</p>
-          {brokersQ.isPending && <p className="text-center text-muted-foreground text-sm py-4">Carregando...</p>}
-          {active.map((broker) => (
-            <DirectorBrokerCard key={broker.id} broker={broker} />
-          ))}
-          {inactive.length > 0 && (
-            <Collapsible.Root open={inactiveOpen} onOpenChange={setInactiveOpen}>
-              <Collapsible.Trigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground py-2 w-full">
-                {inactiveOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                Inativos ({inactive.length})
-              </Collapsible.Trigger>
-              <Collapsible.Content className="space-y-3">
-                {inactive.map((broker) => (
-                  <DirectorBrokerCard key={broker.id} broker={broker} />
-                ))}
-              </Collapsible.Content>
-            </Collapsible.Root>
-          )}
-        </div>
+        {managersQ.isPending && <p className="text-center text-muted-foreground text-sm py-4">Carregando...</p>}
+        {!managersQ.isPending && managers.length === 0 && (
+          <p className="text-center text-muted-foreground py-8 text-sm">
+            Nenhuma equipe ainda. Comece adicionando os gerentes.
+          </p>
+        )}
+
+        {managers.map((m) => {
+          const team = brokers.filter((b) => b.manager_id === m.id);
+          const activeCount = team.filter((b) => b.is_active).length;
+          const open = openTeams[m.id] ?? true;
+          return (
+            <section
+              key={m.id}
+              className={`bg-white rounded-2xl border border-border overflow-hidden ${!m.is_active ? "opacity-60" : ""}`}
+            >
+              <div className="flex items-center gap-2 p-4 border-b border-border bg-[var(--surface)]/60">
+                <button
+                  type="button"
+                  onClick={() => setOpenTeams((o) => ({ ...o, [m.id]: !open }))}
+                  className="flex flex-1 min-w-0 items-center gap-3 text-left"
+                  aria-expanded={open}
+                >
+                  {open ? (
+                    <ChevronDown size={16} className="flex-shrink-0" />
+                  ) : (
+                    <ChevronRight size={16} className="flex-shrink-0" />
+                  )}
+                  <Avatar name={m.full_name} color={m.color} src={m.avatar_url} size={40} />
+                  <div className="min-w-0">
+                    <p className="font-bold text-[var(--navy)] truncate">Equipe {teamLabel(m)}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      Gerente: {m.full_name} · {activeCount} corretor{activeCount === 1 ? "" : "es"}
+                      {!m.is_active && " · inativo"}
+                    </p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setAddBroker(m.id)}
+                  className="h-9 w-9 flex-shrink-0 rounded-xl bg-[var(--gold)]/15 text-[var(--gold-dark)] flex items-center justify-center"
+                  aria-label={`Adicionar corretor na equipe ${teamLabel(m)}`}
+                  title="Adicionar corretor nesta equipe"
+                >
+                  <Plus size={16} />
+                </button>
+                <MemberMenu
+                  isActive={m.is_active}
+                  onEdit={() => setEditing(m)}
+                  onToggleActive={() => toggleActive.mutate({ id: m.id, is_active: m.is_active })}
+                  onDelete={() => setConfirmDelete(m)}
+                  onResetPassword={() => setResetPasswordProfile(m)}
+                />
+              </div>
+              {open && (
+                <div className="p-3 space-y-2">
+                  {team.length === 0 ? (
+                    <p className="text-center text-xs text-muted-foreground py-3">Nenhum corretor nesta equipe.</p>
+                  ) : (
+                    team.map(brokerCard)
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        })}
+
+        {noTeam.length > 0 && (
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Sem equipe ({noTeam.length})
+            </p>
+            {noTeam.map(brokerCard)}
+          </section>
+        )}
+
+        {(hrQ.data ?? []).length > 0 && (
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              RH ({(hrQ.data ?? []).length})
+            </p>
+            {(hrQ.data ?? []).map((u) => (
+              <BrokerCard
+                key={u.id}
+                broker={u}
+                roleLabel="RH"
+                onEdit={() => setEditing(u)}
+                onToggleActive={() => toggleActive.mutate({ id: u.id, is_active: u.is_active })}
+                onDelete={() => setConfirmDelete(u)}
+                onResetPassword={() => setResetPasswordProfile(u)}
+              />
+            ))}
+          </section>
+        )}
       </div>
 
       {addManager && <AddManagerSheet onClose={() => setAddManager(false)} />}
+      {addHr && (
+        <AddManagerSheet
+          kind="hr"
+          onClose={() => {
+            setAddHr(false);
+            qc.invalidateQueries({ queryKey: ["team-hr"] });
+          }}
+        />
+      )}
+      {addBroker !== undefined && (
+        <AddBrokerSheet teams={teams} defaultTeamId={addBroker} onClose={() => setAddBroker(undefined)} />
+      )}
+      {editing && <EditBrokerSheet profile={editing} teams={teams} onClose={() => setEditing(null)} />}
       <DeleteConfirmModal
         name={confirmDelete?.full_name ?? ""}
         open={!!confirmDelete}
         onCancel={() => setConfirmDelete(null)}
-        onConfirm={() => { deleteManager.mutate(confirmDelete!.id); setConfirmDelete(null); }}
+        onConfirm={() => {
+          deleteProfile.mutate(confirmDelete!.id);
+          setConfirmDelete(null);
+        }}
       />
-    </div>
-  );
-}
-
-function DirectorBrokerCard({ broker }: { broker: BrokerWithManager }) {
-  const phoneDigits = broker.phone?.replace(/\D/g, "");
-  return (
-    <div className={`bg-white rounded-2xl border border-border p-4 flex items-center gap-3 ${!broker.is_active ? "opacity-60" : ""}`}>
-      <Avatar name={broker.full_name} color={broker.color} size={48} />
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-[var(--navy)] truncate">{broker.full_name}</p>
-        <p className="text-xs text-muted-foreground">{broker.phone ?? broker.email}</p>
-        <div className="mt-1 flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{broker.setor}</span>
-          {broker.is_active ? (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Ativo</span>
-          ) : (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Inativo</span>
-          )}
-          {broker.manager ? (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: broker.manager.color }} />
-              {broker.manager.full_name}
-            </span>
-          ) : (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-400">Sem gerente</span>
-          )}
-        </div>
-      </div>
-      <div className="flex gap-1">
-        {broker.phone && (
-          <a href={`tel:${broker.phone}`} className="w-9 h-9 rounded-xl bg-[var(--surface)] flex items-center justify-center text-muted-foreground">
-            <Phone size={15} />
-          </a>
-        )}
-        {phoneDigits && (
-          <a href={`https://wa.me/${phoneDigits}`} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center text-green-600">
-            <MessageCircle size={15} />
-          </a>
-        )}
-        <a href={`mailto:${broker.email}`} className="w-9 h-9 rounded-xl bg-[var(--surface)] flex items-center justify-center text-muted-foreground">
-          <Mail size={15} />
-        </a>
-      </div>
+      <ResetPasswordModal
+        profile={resetPasswordProfile}
+        open={!!resetPasswordProfile}
+        onCancel={() => setResetPasswordProfile(null)}
+      />
     </div>
   );
 }
 
 function BrokerCard({
   broker,
+  roleLabel = "Corretor",
   onEdit,
   onToggleActive,
   onDelete,
   onResetPassword,
 }: {
   broker: Profile;
+  roleLabel?: string;
   onEdit: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
@@ -333,15 +422,12 @@ function BrokerCard({
         !broker.is_active ? "opacity-60" : ""
       }`}
     >
-      <Avatar name={broker.full_name} color={broker.color} size={48} />
+      <Avatar name={broker.full_name} color={broker.color} src={broker.avatar_url} size={48} />
 
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-[var(--navy)] truncate">{broker.full_name}</p>
-        <p className="text-xs text-muted-foreground capitalize">Corretor · {broker.phone ?? broker.email}</p>
+        <p className="text-xs text-muted-foreground">{roleLabel} · {broker.phone ?? broker.email}</p>
         <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-            {broker.setor}
-          </span>
           {broker.is_active ? (
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
               Ativo
@@ -382,54 +468,78 @@ function BrokerCard({
         </a>
       </div>
 
-      {/* 3-dot menu */}
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button
-            className="w-9 h-9 rounded-xl bg-[var(--surface)] flex items-center justify-center text-muted-foreground"
-            aria-label="Opções"
-          >
-            <MoreVertical size={16} />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            align="end"
-            sideOffset={4}
-            style={{ zIndex: 999 }}
-            className="bg-white rounded-2xl shadow-2xl border border-border py-1.5 min-w-[150px]"
-          >
-            <DropdownMenu.Item
-              className="px-4 py-2.5 text-sm font-medium text-[var(--navy)] cursor-pointer hover:bg-[var(--surface)] outline-none select-none rounded-lg mx-1"
-              onSelect={onEdit}
-            >
-              Editar
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              className="px-4 py-2.5 text-sm font-medium text-[var(--navy)] cursor-pointer hover:bg-[var(--surface)] outline-none select-none rounded-lg mx-1 flex items-center gap-2"
-              onSelect={onResetPassword}
-            >
-              <KeyRound size={14} /> Redefinir Senha
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              className={`px-4 py-2.5 text-sm font-medium cursor-pointer outline-none select-none rounded-lg mx-1 ${
-                broker.is_active ? "text-orange-600 hover:bg-orange-50" : "text-green-700 hover:bg-green-50"
-              }`}
-              onSelect={onToggleActive}
-            >
-              {broker.is_active ? "Desativar" : "Reativar"}
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator className="my-1 h-px bg-border mx-2" />
-            <DropdownMenu.Item
-              className="px-4 py-2.5 text-sm font-medium text-red-600 cursor-pointer hover:bg-red-50 outline-none select-none rounded-lg mx-1 flex items-center gap-2"
-              onSelect={onDelete}
-            >
-              <Trash2 size={14} /> Excluir
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      <MemberMenu
+        isActive={broker.is_active}
+        onEdit={onEdit}
+        onToggleActive={onToggleActive}
+        onDelete={onDelete}
+        onResetPassword={onResetPassword}
+      />
     </div>
+  );
+}
+
+/** Menu de ações de um membro (editar, senha, ativar/desativar, excluir). */
+function MemberMenu({
+  isActive,
+  onEdit,
+  onToggleActive,
+  onDelete,
+  onResetPassword,
+}: {
+  isActive: boolean;
+  onEdit: () => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+  onResetPassword: () => void;
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          className="w-9 h-9 rounded-xl bg-[var(--surface)] flex items-center justify-center text-muted-foreground"
+          aria-label="Opções"
+        >
+          <MoreVertical size={16} />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          style={{ zIndex: 999 }}
+          className="bg-white rounded-2xl shadow-2xl border border-border py-1.5 min-w-[150px]"
+        >
+          <DropdownMenu.Item
+            className="px-4 py-2.5 text-sm font-medium text-[var(--navy)] cursor-pointer hover:bg-[var(--surface)] outline-none select-none rounded-lg mx-1"
+            onSelect={onEdit}
+          >
+            Editar
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            className="px-4 py-2.5 text-sm font-medium text-[var(--navy)] cursor-pointer hover:bg-[var(--surface)] outline-none select-none rounded-lg mx-1 flex items-center gap-2"
+            onSelect={onResetPassword}
+          >
+            <KeyRound size={14} /> Redefinir Senha
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            className={`px-4 py-2.5 text-sm font-medium cursor-pointer outline-none select-none rounded-lg mx-1 ${
+              isActive ? "text-orange-600 hover:bg-orange-50" : "text-green-700 hover:bg-green-50"
+            }`}
+            onSelect={onToggleActive}
+          >
+            {isActive ? "Desativar" : "Reativar"}
+          </DropdownMenu.Item>
+          <DropdownMenu.Separator className="my-1 h-px bg-border mx-2" />
+          <DropdownMenu.Item
+            className="px-4 py-2.5 text-sm font-medium text-red-600 cursor-pointer hover:bg-red-50 outline-none select-none rounded-lg mx-1 flex items-center gap-2"
+            onSelect={onDelete}
+          >
+            <Trash2 size={14} /> Excluir
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
@@ -447,7 +557,7 @@ function ResetPasswordModal({
   
   useEffect(() => {
     if (open) {
-      setTempPassword("Setin@" + Math.floor(100000 + Math.random() * 900000));
+      setTempPassword(randomTempPassword());
       setSuccess(false);
     }
   }, [open]);
@@ -524,11 +634,11 @@ function buildWhatsAppLink(phone: string, name: string, email: string, tempPassw
   return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
 }
 
-function SuccessSheet({ name, roleLabel, email, phone, tempPassword, onClose }: {
-  name: string; roleLabel: string; email: string; phone: string; tempPassword: string; onClose: () => void;
+function SuccessSheet({ name, roleLabel, email, phone, tempPassword, teamLabel: team, onClose }: {
+  name: string; roleLabel: string; email: string; phone: string; tempPassword: string; teamLabel?: string; onClose: () => void;
 }) {
   const { profile } = useAuth();
-  const waLink = buildWhatsAppLink(phone, name, email, tempPassword, roleLabel, profile?.full_name ?? "seu gerente");
+  const waLink = buildWhatsAppLink(phone, name, email, tempPassword, roleLabel, team ?? profile?.team_name ?? profile?.full_name ?? "seu gerente");
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end">
       <div className="bg-white w-full rounded-t-2xl p-5 safe-bottom" onClick={(e) => e.stopPropagation()}>
@@ -560,20 +670,30 @@ function SuccessSheet({ name, roleLabel, email, phone, tempPassword, onClose }: 
   );
 }
 
-function AddBrokerSheet({ onClose }: { onClose: () => void }) {
+function AddBrokerSheet({
+  onClose,
+  teams,
+  defaultTeamId,
+}: {
+  onClose: () => void;
+  /** admin: equipes disponíveis (gerentes); gerente: não informa (usa a própria) */
+  teams?: TeamOption[];
+  defaultTeamId?: string | null;
+}) {
   const qc = useQueryClient();
   const { profile } = useAuth();
+  const [teamId, setTeamId] = useState<string>(defaultTeamId ?? teams?.[0]?.id ?? "");
+  const teamName = teams ? teams.find((t) => t.id === teamId)?.label : undefined;
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [color, setColor] = useState("#C9A84C");
-  const [setor, setSetor] = useState<"Online" | "Salão">("Online");
-  const [tempPassword] = useState(() => "Setin@" + Math.floor(100000 + Math.random() * 900000));
+  const [color, setColor] = useState("#B28069");
+  const [tempPassword] = useState(() => randomTempPassword());
   const [created, setCreated] = useState<{ name: string; email: string; phone: string } | null>(null);
 
-  const inviteLink = profile?.id
-    ? `${window.location.origin}/cadastro?m=${profile.id}`
-    : null;
+  // convite vincula o corretor à equipe (gerente) escolhida
+  const inviteManagerId = teams ? teamId : profile?.id;
+  const inviteLink = inviteManagerId ? `${window.location.origin}/cadastro?m=${inviteManagerId}` : null;
 
   const copyInviteLink = () => {
     if (!inviteLink) return;
@@ -596,28 +716,30 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
         options: {
           data: {
             full_name: name,
-            role: "broker",
-            color,
             phone: phone || null,
             force_password_change: true,
           },
         },
       });
       if (error) throw error;
+      if (!data.user) throw new Error("Não foi possível criar o usuário.");
+      if (teams && !teamId) throw new Error("Escolha a equipe do corretor.");
 
-      if (data.user) {
-        await (supabase.from("profiles") as any).update({
-          full_name: name,
-          color,
-          phone: phone || null,
-          role: "broker",
-          setor,
-          manager_id: profile?.id ?? null,
-        }).eq("id", data.user.id);
-      }
+      // papel e equipe são definidos no banco, com checagem de permissão
+      const { error: setupErr } = await supabase.rpc("crm_setup_member", {
+        p_user_id: data.user.id,
+        p_role: "broker",
+        p_manager_id: teams ? teamId : undefined,
+      });
+      if (setupErr) throw setupErr;
+      const { error: upErr } = await supabase
+        .from("profiles")
+        .update({ full_name: name, color, phone: phone || null })
+        .eq("id", data.user.id);
+      if (upErr) throw upErr;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team-director"] });
+      qc.invalidateQueries({ queryKey: ["team-managers"] });
       qc.invalidateQueries({ queryKey: ["brokers-active"] });
       setCreated({ name, email, phone });
     },
@@ -625,7 +747,7 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
   });
 
   if (created) {
-    return <SuccessSheet name={created.name} roleLabel="Corretor" email={created.email} phone={created.phone} tempPassword={tempPassword} onClose={onClose} />;
+    return <SuccessSheet name={created.name} roleLabel="Corretor" email={created.email} phone={created.phone} tempPassword={tempPassword} teamLabel={teamName} onClose={onClose} />;
   }
 
   return (
@@ -635,6 +757,27 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-[var(--navy)] mb-4">Adicionar corretor</h3>
+
+        {teams && (
+          <div className="mb-4">
+            <label className="text-xs text-muted-foreground font-medium mb-1 block">Equipe</label>
+            {teams.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Cadastre um gerente antes de adicionar corretores.</p>
+            ) : (
+              <select
+                value={teamId}
+                onChange={(e) => setTeamId(e.target.value)}
+                className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+              >
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    Equipe {t.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
 
         {inviteLink && (
           <div className="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-200">
@@ -683,18 +826,6 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
           />
 
           <div>
-            <label className="text-xs text-muted-foreground font-medium mb-2 block">Setor</label>
-            <select
-              value={setor}
-              onChange={(e) => setSetor(e.target.value as "Online" | "Salão")}
-              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
-            >
-              <option value="Online">Online</option>
-              <option value="Salão">Salão</option>
-            </select>
-          </div>
-
-          <div>
             <p className="text-xs text-muted-foreground font-medium mb-2">Cor do perfil (HEX)</p>
             <div className="flex items-center gap-3">
               <input
@@ -735,7 +866,7 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
             </button>
             <button
               onClick={() => m.mutate()}
-              disabled={!name || !email || m.isPending}
+              disabled={!name || !email || m.isPending || (!!teams && !teamId)}
               className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
             >
               {m.isPending ? "Criando…" : "Criar corretor"}
@@ -747,12 +878,14 @@ function AddBrokerSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-function AddManagerSheet({ onClose }: { onClose: () => void }) {
+function AddManagerSheet({ onClose, kind = "master" }: { onClose: () => void; kind?: "master" | "hr" }) {
+  const isHr = kind === "hr";
   const qc = useQueryClient();
+  const [teamName, setTeamName] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [tempPassword] = useState(() => "Setin@" + Math.floor(100000 + Math.random() * 900000));
+  const [tempPassword] = useState(() => randomTempPassword());
   const [created, setCreated] = useState<{ name: string; email: string; phone: string } | null>(null);
 
   const m = useMutation({
@@ -769,22 +902,25 @@ function AddManagerSheet({ onClose }: { onClose: () => void }) {
         options: {
           data: {
             full_name: name,
-            role: "admin",
-            color: "#1E2D5A",
             phone: phone || null,
             force_password_change: true,
           },
         },
       });
       if (error) throw error;
+      if (!data.user) throw new Error("Não foi possível criar o usuário.");
 
-      if (data.user) {
-        await supabase.from("profiles").update({
-          full_name: name,
-          phone: phone || null,
-          role: "admin",
-        }).eq("id", data.user.id);
-      }
+      const { error: setupErr } = await supabase.rpc("crm_setup_member", {
+        p_user_id: data.user.id,
+        p_role: kind,
+        p_team_name: isHr ? undefined : teamName.trim() || undefined,
+      });
+      if (setupErr) throw setupErr;
+      const { error: upErr } = await supabase
+        .from("profiles")
+        .update({ full_name: name, phone: phone || null, color: "#7E5845" })
+        .eq("id", data.user.id);
+      if (upErr) throw upErr;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["team-managers"] });
@@ -794,7 +930,7 @@ function AddManagerSheet({ onClose }: { onClose: () => void }) {
   });
 
   if (created) {
-    return <SuccessSheet name={created.name} roleLabel="Gerente" email={created.email} phone={created.phone} tempPassword={tempPassword} onClose={onClose} />;
+    return <SuccessSheet name={created.name} roleLabel={isHr ? "RH" : "Gerente"} email={created.email} phone={created.phone} tempPassword={tempPassword} teamLabel={isHr ? "Paes & Gregori" : teamName.trim() || created.name} onClose={onClose} />;
   }
 
   return (
@@ -803,8 +939,22 @@ function AddManagerSheet({ onClose }: { onClose: () => void }) {
         className="bg-white w-full rounded-t-2xl p-5 safe-bottom max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold text-[var(--navy)] mb-4">Adicionar gerente</h3>
+        <h3 className="text-lg font-semibold text-[var(--navy)] mb-4">
+          {isHr ? "Adicionar usuário de RH" : "Adicionar gerente"}
+        </h3>
         <div className="space-y-3">
+          {isHr ? (
+            <p className="text-xs text-muted-foreground">
+              O RH acessa o log de check-ins e os módulos que você liberar em Permissões. Não vê leads por padrão.
+            </p>
+          ) : (
+            <input
+              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+              placeholder="Nome da equipe (ex.: Online P&G)"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+            />
+          )}
           <input
             className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
             placeholder="Nome completo"
@@ -834,7 +984,7 @@ function AddManagerSheet({ onClose }: { onClose: () => void }) {
               className="w-full h-12 px-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 font-mono font-bold text-lg text-center tracking-wider select-all cursor-copy"
               title="Clique para selecionar e copiar"
             />
-            <p className="text-[11px] text-muted-foreground mt-2 text-center">O gerente deverá definir uma nova senha no primeiro acesso.</p>
+            <p className="text-[11px] text-muted-foreground mt-2 text-center">O usuário deverá definir uma nova senha no primeiro acesso.</p>
           </div>
 
           <div className="flex gap-2 pt-1">
@@ -849,7 +999,7 @@ function AddManagerSheet({ onClose }: { onClose: () => void }) {
               disabled={!name || !email || m.isPending}
               className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
             >
-              {m.isPending ? "Criando…" : "Criar gerente"}
+              {m.isPending ? "Criando…" : isHr ? "Criar usuário de RH" : "Criar gerente"}
             </button>
           </div>
         </div>
@@ -858,27 +1008,56 @@ function AddManagerSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-function EditBrokerSheet({ profile, onClose }: { profile: Profile; onClose: () => void }) {
+function EditBrokerSheet({
+  profile,
+  teams,
+  onClose,
+}: {
+  profile: Profile;
+  /** admin: permite mover o corretor de equipe */
+  teams?: TeamOption[];
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
+  const isManagerProfile = profile.role === "master";
   const [name, setName] = useState(profile.full_name);
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [color, setColor] = useState(profile.color);
-  const [setor, setSetor] = useState<"Online" | "Salão">(profile.setor ?? "Online");
+  const [teamName, setTeamName] = useState(profile.team_name ?? "");
+  const [managerId, setManagerId] = useState(profile.manager_id ?? "");
+  const [cargoId, setCargoId] = useState(profile.cargo_id ?? "");
+  // admin: cargos do mesmo tipo (o tipo define quais dados a pessoa enxerga)
+  const cargosQ = useQuery({
+    queryKey: ["cargos-of-role", profile.role],
+    enabled: !!teams,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cargos")
+        .select("id,name")
+        .eq("base_role", profile.role as Database["public"]["Enums"]["app_role"])
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const m = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("profiles").update({
-        full_name: name,
-        phone: phone || null,
-        color,
-        setor,
-      }).eq("id", profile.id);
+      const patch: Database["public"]["Tables"]["profiles"]["Update"] = { full_name: name, phone: phone || null, color };
+      if (isManagerProfile) patch.team_name = teamName.trim() || null;
+      // cargo: só o admin (o banco também bloqueia para os demais)
+      if (teams && cargoId && cargoId !== profile.cargo_id) patch.cargo_id = cargoId;
+      // mover de equipe: só o admin (o banco também bloqueia para os demais)
+      if (teams && profile.role === "broker" && managerId && managerId !== profile.manager_id) patch.manager_id = managerId;
+      const { error } = await supabase.from("profiles").update(patch).eq("id", profile.id);
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team-director"] });
+      qc.invalidateQueries({ queryKey: ["team-managers"] });
+      qc.invalidateQueries({ queryKey: ["team-hr"] });
       qc.invalidateQueries({ queryKey: ["brokers-active"] });
-      toast.success("Corretor atualizado");
+      toast.success("Usuário atualizado");
       onClose();
     },
     onError: (e: any) => toast.error(e.message),
@@ -891,10 +1070,56 @@ function EditBrokerSheet({ profile, onClose }: { profile: Profile; onClose: () =
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 mb-4">
-          <Avatar name={name} color={color} size={44} />
-          <h3 className="text-lg font-semibold text-[var(--navy)]">Editar corretor</h3>
+          <Avatar name={name} color={color} src={profile.avatar_url} size={44} />
+          <h3 className="text-lg font-semibold text-[var(--navy)]">
+            {isManagerProfile ? "Editar gerente" : profile.role === "hr" ? "Editar usuário de RH" : "Editar corretor"}
+          </h3>
         </div>
         <div className="space-y-3">
+          {isManagerProfile && (
+            <div>
+              <label className="text-xs text-muted-foreground font-medium mb-1 block">Nome da equipe</label>
+              <input
+                className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+                placeholder="Ex.: Online P&G"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+              />
+            </div>
+          )}
+          {teams && (cargosQ.data ?? []).length > 1 && (
+            <div>
+              <label className="text-xs text-muted-foreground font-medium mb-1 block">Cargo</label>
+              <select
+                value={cargoId}
+                onChange={(e) => setCargoId(e.target.value)}
+                className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+              >
+                {(cargosQ.data ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {teams && profile.role === "broker" && (
+            <div>
+              <label className="text-xs text-muted-foreground font-medium mb-1 block">Equipe</label>
+              <select
+                value={managerId}
+                onChange={(e) => setManagerId(e.target.value)}
+                className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
+              >
+                {!teams.some((t) => t.id === managerId) && <option value={managerId}>Sem equipe</option>}
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    Equipe {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <input
             className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
             placeholder="Nome completo"
@@ -913,19 +1138,7 @@ function EditBrokerSheet({ profile, onClose }: { profile: Profile; onClose: () =
           />
 
           <div>
-            <label className="text-xs text-muted-foreground font-medium mb-2 block">Setor</label>
-            <select
-              value={setor}
-              onChange={(e) => setSetor(e.target.value as "Online" | "Salão")}
-              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border"
-            >
-              <option value="Online">Online</option>
-              <option value="Salão">Salão</option>
-            </select>
-          </div>
-
-          <div>
-            <p className="text-xs text-muted-foreground font-medium mb-2">Cor do perfil (HEX)</p>
+            <p className="text-xs text-muted-foreground font-medium mb-2">{isManagerProfile ? "Cor da equipe (aparece na escala)" : "Cor do perfil (HEX)"}</p>
             <div className="flex items-center gap-3">
               <input
                 type="color"

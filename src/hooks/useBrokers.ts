@@ -9,10 +9,10 @@ interface UseBrokersOptions {
 }
 
 /**
- * Returns brokers scoped to the current user:
- * - director → all brokers (visão global)
- * - master / admin (manager) → only brokers where manager_id = profile.id
- * - broker → empty (not applicable)
+ * Corretores visíveis para o usuário:
+ * - admin / diretor → todos (todas as equipes)
+ * - gerente (master) → só os da própria equipe (manager_id = gerente)
+ * - corretor → vazio (não se aplica)
  */
 export function useBrokers({
   select = "id,full_name,color,role,is_active,phone,email,setor",
@@ -35,8 +35,8 @@ export function useBrokers({
         q = q.eq("is_active", true);
       }
 
-      // master e admin (gerentes) veem apenas sua própria equipe; director vê todos
-      if (profile?.role === "admin" || profile?.role === "master") {
+      // gerente vê só a própria equipe; admin e diretor veem todas
+      if (profile?.role === "master") {
         q = (q as any).eq("manager_id", profile.id);
       }
 
