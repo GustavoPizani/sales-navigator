@@ -3,7 +3,19 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AtSign, Calendar, Check, Loader2, Lock, Plus, Send, UserPlus, X } from "lucide-react";
+import {
+  AtSign,
+  Calendar,
+  Check,
+  Copy,
+  Loader2,
+  Lock,
+  MessageCircle,
+  Plus,
+  Send,
+  UserPlus,
+  X,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import { publicSchedule, type PublicSlot } from "@/lib/publicSchedule";
 import { inviteMessage } from "@/components/team/PendingInvites";
@@ -23,6 +35,10 @@ function PublicSchedulePage() {
   const [name, setName] = useState("");
   // e-mail corporativo: só a parte antes de @pgvendas.com.br
   const [emailLocal, setEmailLocal] = useState("");
+  // enquanto o gerente não mexe no e-mail, ele acompanha o nome digitado
+  const [emailTouched, setEmailTouched] = useState(false);
+  // convite aberto (corretor pré-cadastrado)
+  const [inviteFor, setInviteFor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const q = useQuery({
@@ -83,6 +99,7 @@ function PublicSchedulePage() {
       const id = await publicSchedule.addBroker(token, n, emailLocal.trim());
       setName("");
       setEmailLocal("");
+      setEmailTouched(false);
       setSelectedId(id);
     });
   };
@@ -191,7 +208,10 @@ function PublicSchedulePage() {
           <form onSubmit={addBroker} className="flex flex-col sm:flex-row gap-2">
             <input
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!emailTouched) setEmailLocal(emailFromName(e.target.value));
+              }}
               placeholder="Nome do corretor"
               maxLength={80}
               className="flex-1 min-w-0 h-11 px-3 rounded-xl border border-border bg-white text-sm"
@@ -199,9 +219,12 @@ function PublicSchedulePage() {
             <div className="flex-1 min-w-0 h-11 flex items-center rounded-xl border border-border bg-white text-sm overflow-hidden focus-within:border-[var(--gold)]">
               <input
                 value={emailLocal}
-                onChange={(e) =>
-                  setEmailLocal(e.target.value.replace(/@.*$/, "").replace(/\s/g, "").toLowerCase())
-                }
+                onChange={(e) => {
+                  setEmailTouched(true);
+                  setEmailLocal(
+                    e.target.value.replace(/@.*$/, "").replace(/\s/g, "").toLowerCase(),
+                  );
+                }}
                 placeholder="e-mail"
                 maxLength={60}
                 autoCapitalize="none"
@@ -252,39 +275,19 @@ function PublicSchedulePage() {
                         {countByBroker.get(b.id) ?? 0}
                       </span>
                     </button>
-                    {!b.email && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const v = window.prompt(
-                            `E-mail de ${b.name} (antes de @pgvendas.com.br):`,
-                          );
-                          if (v && v.trim())
-                            run(
-                              `email-${b.id}`,
-                              () => publicSchedule.setEmail(token, b.id, v.trim()),
-                              "E-mail salvo.",
-                            );
-                        }}
-                        aria-label={`Informar o e-mail de ${b.name}`}
-                        title="Falta o e-mail"
-                        className="h-9 px-1 inline-flex items-center text-red-600"
-                      >
-                        <AtSign size={13} />
-                      </button>
-                    )}
-                    {b.invite_token && b.email && (
-                      <a
-                        href={`https://wa.me/?text=${encodeURIComponent(inviteMessage(b.name, b.invite_token))}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Enviar convite de cadastro para ${b.name}`}
-                        title="Enviar convite de cadastro no WhatsApp"
-                        className="h-9 px-1 inline-flex items-center opacity-60 hover:opacity-100"
-                      >
-                        <Send size={13} />
-                      </a>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setInviteFor(b.id)}
+                      aria-label={
+                        b.email
+                          ? `Convite de cadastro de ${b.name}`
+                          : `Informar o e-mail de ${b.name}`
+                      }
+                      title={b.email ? "Convite de cadastro" : "Falta o e-mail"}
+                      className={`h-9 px-1 inline-flex items-center ${b.email ? "opacity-60 hover:opacity-100" : "text-red-600"}`}
+                    >
+                      {b.email ? <Send size={13} /> : <AtSign size={13} />}
+                    </button>
                     <button
                       type="button"
                       onClick={() => removeBroker(b.id)}
@@ -404,6 +407,150 @@ function PublicSchedulePage() {
               </div>
             ))}
           </section>
+        )}
+      </div>
+
+      {inviteFor &&
+        (() => {
+          const b = brokers.find((x) => x.id === inviteFor);
+          if (!b) return null;
+          return (
+            <InviteSheet
+              broker={b}
+              onSaveEmail={(local) =>
+                run(
+                  `email-${b.id}`,
+                  () => publicSchedule.setEmail(token, b.id, local),
+                  "E-mail salvo.",
+                )
+              }
+              saving={busy === `email-${b.id}`}
+              onClose={() => setInviteFor(null)}
+            />
+          );
+        })()}
+    </div>
+  );
+}
+
+/** "Ana Paula Souza" → "ana.souza" (primeiro e último nome, sem acentos). */
+function emailFromName(name: string) {
+  const parts = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "";
+  return parts.length === 1 ? parts[0] : `${parts[0]}.${parts[parts.length - 1]}`;
+}
+
+/**
+ * Convite de cadastro de um corretor pré-cadastrado: confirma o e-mail
+ * (@pgvendas.com.br) e mostra a mensagem para copiar ou abrir no WhatsApp.
+ */
+function InviteSheet({
+  broker,
+  onSaveEmail,
+  saving,
+  onClose,
+}: {
+  broker: { id: string; name: string; email?: string | null; invite_token?: string };
+  onSaveEmail: (local: string) => void;
+  saving: boolean;
+  onClose: () => void;
+}) {
+  const [local, setLocal] = useState(
+    broker.email ? broker.email.split("@")[0] : emailFromName(broker.name),
+  );
+  const message =
+    broker.email && broker.invite_token
+      ? `${inviteMessage(broker.name, broker.invite_token)}\n\nSeu e-mail de acesso: ${broker.email}`
+      : "";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-[var(--navy)]">Convite de {broker.name}</h3>
+          <button onClick={onClose} className="text-muted-foreground" aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1">
+            E-mail de acesso
+          </label>
+          <div className="flex gap-2">
+            <div className="flex-1 min-w-0 h-11 flex items-center rounded-xl border border-border bg-white text-sm overflow-hidden focus-within:border-[var(--gold)]">
+              <input
+                value={local}
+                onChange={(e) =>
+                  setLocal(e.target.value.replace(/@.*$/, "").replace(/\s/g, "").toLowerCase())
+                }
+                autoCapitalize="none"
+                autoCorrect="off"
+                className="flex-1 min-w-0 h-full px-3 outline-none"
+                aria-label="E-mail (antes de @pgvendas.com.br)"
+              />
+              <span className="pr-3 text-muted-foreground whitespace-nowrap">@pgvendas.com.br</span>
+            </div>
+            {(!broker.email || broker.email.split("@")[0] !== local) && (
+              <button
+                type="button"
+                disabled={!local.trim() || saving}
+                onClick={() => onSaveEmail(local.trim())}
+                className="h-11 px-4 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={16} className="animate-spin" /> : "Salvar"}
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Sugerido a partir do nome; ajuste se precisar. O corretor se cadastra com este e-mail.
+          </p>
+        </div>
+
+        {message ? (
+          <>
+            <textarea
+              readOnly
+              value={message}
+              rows={6}
+              className="w-full rounded-xl border border-border bg-[var(--surface)] p-3 text-sm text-[var(--navy)] resize-none"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(message);
+                  toast.success("Texto copiado!");
+                }}
+                className="h-11 rounded-xl bg-white border border-border text-[var(--navy)] text-sm font-semibold inline-flex items-center justify-center gap-2"
+              >
+                <Copy size={15} /> Copiar texto
+              </button>
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(message)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="h-11 rounded-xl bg-green-600 text-white text-sm font-semibold inline-flex items-center justify-center gap-2"
+              >
+                <MessageCircle size={15} /> Abrir WhatsApp
+              </a>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">Salve o e-mail para liberar o convite.</p>
         )}
       </div>
     </div>
