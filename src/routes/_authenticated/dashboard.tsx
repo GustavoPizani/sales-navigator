@@ -767,9 +767,9 @@ function AdminDashboard({ user }: { user: any }) {
         {activeTab !== "atendimentos" && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
             <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
+            <KpiCard label="Em Contato" value={dbData.emTratativas} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
             <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} onClick={() => setKpiModal("visitas")} />
             <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
-            <KpiCard label="Em Contato" value={dbData.emTratativas} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
             <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} />
           </div>
         )}
@@ -1013,9 +1013,9 @@ function BrokerDashboard({ user }: { user: any }) {
         {can("dashboard") && (
         <div className="grid grid-cols-2 gap-3">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
+          <KpiCard label="Em Contato" value={dbData.emTratativas} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} onClick={() => setKpiModal("visitas")} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
-          <KpiCard label="Em Contato" value={dbData.emTratativas} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
           <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} /></div>
         </div>
         )}

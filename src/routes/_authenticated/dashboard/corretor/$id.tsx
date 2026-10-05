@@ -76,9 +76,9 @@ function BrokerDashboardPage() {
       <div className="px-4 pt-6 pb-8 space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} />
+          <KpiCard label="Em Contato" value={dbData.emTratativas} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} />
-          <KpiCard label="Em Contato" value={dbData.emTratativas} />
           <KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} />
         </div>
 

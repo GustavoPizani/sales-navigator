@@ -34,7 +34,12 @@ const inputStyle: React.CSSProperties = {
 function CadastroPage() {
   const nav = useNavigate();
   const search = Route.useSearch() as Record<string, string>;
-  const managerId = search.m ?? null;
+  // convite de corretor pré-cadastrado pelo link da escala (?c=token)
+  const pendingToken = search.c ?? null;
+  const [inviteManagerId, setInviteManagerId] = useState<string | null>(null);
+  // e-mail corporativo definido pelo gerente no pré-cadastro (não editável)
+  const [inviteEmail, setInviteEmail] = useState<string | null>(null);
+  const managerId = search.m ?? inviteManagerId;
 
   const [managerName, setManagerName] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -54,7 +59,26 @@ function CadastroPage() {
   }, []);
 
   useEffect(() => {
-    if (!managerId) return;
+    if (!pendingToken) return;
+    (supabase as any)
+      .rpc("crm_pending_invite", { p_token: pendingToken })
+      .then(({ data }: { data: { full_name: string; email: string | null; manager_id: string; manager_name: string } | null }) => {
+        if (!data) {
+          setError("Este convite já foi usado ou não existe mais. Peça um novo ao seu gerente.");
+          return;
+        }
+        setName((n) => n || data.full_name);
+        if (data.email) {
+          setEmail(data.email);
+          setInviteEmail(data.email);
+        }
+        setInviteManagerId(data.manager_id);
+        setManagerName(data.manager_name);
+      });
+  }, [pendingToken]);
+
+  useEffect(() => {
+    if (!managerId || pendingToken) return;
     supabase
       .from("profiles")
       .select("full_name")
@@ -87,7 +111,13 @@ function CadastroPage() {
         password,
         options: {
           // o banco cria o perfil como corretor na equipe de quem convidou (manager_id)
-          data: { full_name: name, phone: phone || null, manager_id: managerId },
+          data: {
+            full_name: name,
+            phone: phone || null,
+            manager_id: managerId,
+            // o banco liga a conta ao pré-cadastro e passa os turnos já escalados
+            ...(pendingToken ? { pending_token: pendingToken } : {}),
+          },
           emailRedirectTo: window.location.origin,
         },
       });
@@ -188,6 +218,8 @@ function CadastroPage() {
                 style={inputStyle}
                 placeholder="seu@email.com"
                 value={email}
+                readOnly={!!inviteEmail}
+                title={inviteEmail ? "E-mail definido pelo seu gerente" : undefined}
                 onChange={(e) => setEmail(e.target.value)}
                 onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(178,128,105,0.6)")}
                 onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")}

@@ -3,9 +3,10 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Calendar, Check, Loader2, Lock, Plus, UserPlus, X } from "lucide-react";
+import { AtSign, Calendar, Check, Loader2, Lock, Plus, Send, UserPlus, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { publicSchedule, type PublicSlot } from "@/lib/publicSchedule";
+import { inviteMessage } from "@/components/team/PendingInvites";
 
 // Página pública (sem login): o gerente abre o link individual gerado pelo
 // admin, digita o nome dos corretores e os distribui nos turnos da equipe.
@@ -20,6 +21,8 @@ function PublicSchedulePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modality, setModality] = useState<"online" | "salao" | null>(null);
   const [name, setName] = useState("");
+  // e-mail corporativo: só a parte antes de @pgvendas.com.br
+  const [emailLocal, setEmailLocal] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
   const q = useQuery({
@@ -75,10 +78,11 @@ function PublicSchedulePage() {
   const addBroker = async (e: React.FormEvent) => {
     e.preventDefault();
     const n = name.trim();
-    if (!n) return;
+    if (!n || !emailLocal.trim()) return;
     await run("add", async () => {
-      const id = await publicSchedule.addBroker(token, n);
+      const id = await publicSchedule.addBroker(token, n, emailLocal.trim());
       setName("");
+      setEmailLocal("");
       setSelectedId(id);
     });
   };
@@ -180,9 +184,11 @@ function PublicSchedulePage() {
         <section className="bg-white p-4 rounded-2xl border border-border shadow-sm">
           <h2 className="font-bold text-[var(--navy)]">1. Corretores da equipe</h2>
           <p className="text-sm text-muted-foreground mb-3">
-            Digite o nome de cada corretor. Depois toque em um nome para escalar.
+            Digite o nome e o e-mail @pgvendas.com.br de cada corretor. Depois toque em um nome para
+            escalar. Pelo ícone de envio, mande o convite para ele finalizar o cadastro e já entrar
+            com os turnos escalados.
           </p>
-          <form onSubmit={addBroker} className="flex gap-2">
+          <form onSubmit={addBroker} className="flex flex-col sm:flex-row gap-2">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -190,9 +196,24 @@ function PublicSchedulePage() {
               maxLength={80}
               className="flex-1 min-w-0 h-11 px-3 rounded-xl border border-border bg-white text-sm"
             />
+            <div className="flex-1 min-w-0 h-11 flex items-center rounded-xl border border-border bg-white text-sm overflow-hidden focus-within:border-[var(--gold)]">
+              <input
+                value={emailLocal}
+                onChange={(e) =>
+                  setEmailLocal(e.target.value.replace(/@.*$/, "").replace(/\s/g, "").toLowerCase())
+                }
+                placeholder="e-mail"
+                maxLength={60}
+                autoCapitalize="none"
+                autoCorrect="off"
+                className="flex-1 min-w-0 h-full px-3 outline-none"
+                aria-label="E-mail do corretor (antes de @pgvendas.com.br)"
+              />
+              <span className="pr-3 text-muted-foreground whitespace-nowrap">@pgvendas.com.br</span>
+            </div>
             <button
               type="submit"
-              disabled={!name.trim() || busy === "add"}
+              disabled={!name.trim() || !emailLocal.trim() || busy === "add"}
               className="h-11 px-4 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50"
             >
               {busy === "add" ? (
@@ -231,6 +252,39 @@ function PublicSchedulePage() {
                         {countByBroker.get(b.id) ?? 0}
                       </span>
                     </button>
+                    {!b.email && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const v = window.prompt(
+                            `E-mail de ${b.name} (antes de @pgvendas.com.br):`,
+                          );
+                          if (v && v.trim())
+                            run(
+                              `email-${b.id}`,
+                              () => publicSchedule.setEmail(token, b.id, v.trim()),
+                              "E-mail salvo.",
+                            );
+                        }}
+                        aria-label={`Informar o e-mail de ${b.name}`}
+                        title="Falta o e-mail"
+                        className="h-9 px-1 inline-flex items-center text-red-600"
+                      >
+                        <AtSign size={13} />
+                      </button>
+                    )}
+                    {b.invite_token && b.email && (
+                      <a
+                        href={`https://wa.me/?text=${encodeURIComponent(inviteMessage(b.name, b.invite_token))}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Enviar convite de cadastro para ${b.name}`}
+                        title="Enviar convite de cadastro no WhatsApp"
+                        className="h-9 px-1 inline-flex items-center opacity-60 hover:opacity-100"
+                      >
+                        <Send size={13} />
+                      </a>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeBroker(b.id)}

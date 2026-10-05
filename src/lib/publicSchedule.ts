@@ -29,7 +29,8 @@ export type PublicSchedule = {
   plantao: string;
   weeks: string[];
   week: string | null;
-  brokers: { id: string; name: string }[];
+  /** invite_token: convite para o corretor finalizar o cadastro */
+  brokers: { id: string; name: string; email?: string | null; invite_token?: string }[];
   slots: PublicSlot[];
 };
 
@@ -42,8 +43,19 @@ async function call<T>(fn: string, args: Record<string, unknown>): Promise<T> {
 export const publicSchedule = {
   load: (token: string, week?: string | null) =>
     call<PublicSchedule | null>("crm_public_schedule", { p_token: token, p_week: week ?? null }),
-  addBroker: (token: string, name: string) =>
-    call<string>("crm_public_schedule_add_broker", { p_token: token, p_name: name }),
+  /** email: só a parte antes do @ (o domínio @pgvendas.com.br é fixo) */
+  addBroker: (token: string, name: string, email: string) =>
+    call<string>("crm_public_schedule_add_broker", {
+      p_token: token,
+      p_name: name,
+      p_email: email,
+    }),
+  setEmail: (token: string, brokerId: string, email: string) =>
+    call<void>("crm_public_schedule_set_email", {
+      p_token: token,
+      p_broker_id: brokerId,
+      p_email: email,
+    }),
   removeBroker: (token: string, brokerId: string) =>
     call<void>("crm_public_schedule_remove_broker", { p_token: token, p_broker_id: brokerId }),
   assign: (token: string, slotId: string, brokerId: string) =>

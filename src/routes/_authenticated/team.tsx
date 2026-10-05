@@ -15,6 +15,7 @@ import { Avatar } from "@/components/Avatar";
 import { deleteUser } from "@/lib/admin.functions";
 import { useBrokers } from "@/hooks/useBrokers";
 import { PermissionsPanel } from "@/components/team/PermissionsPanel";
+import { PendingInvites } from "@/components/team/PendingInvites";
 
 export const Route = createFileRoute("/_authenticated/team")({
   component: TeamPageGuarded,
@@ -108,6 +109,8 @@ function AdminTeamView() {
           <Plus size={16} strokeWidth={2.5} />
           Adicionar corretor
         </button>
+
+        <PendingInvites />
 
         {active.length === 0 && inactive.length === 0 && (
           <p className="text-center text-muted-foreground py-12 text-sm">
@@ -532,6 +535,15 @@ function UsersTab() {
           );
         })}
       </div>
+
+      {(kindFilter === "all" || kindFilter === "broker") && (
+        <PendingInvites
+          teamLabel={(id) => {
+            const m = managers.find((x) => x.id === id);
+            return m ? teamLabel(m) : "—";
+          }}
+        />
+      )}
 
       {noTeam.length > 0 && (
         <section className="space-y-2">
