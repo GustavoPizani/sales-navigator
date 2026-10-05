@@ -80,11 +80,22 @@ function LoginPage() {
         if (err) throw err;
         toast.success("Conta criada. Você é o administrador!");
       } else {
-        const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+        // senha copiada do WhatsApp costuma vir com espaço no fim
+        const { error: err } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password: password.trim(),
+        });
         if (err) throw err;
       }
     } catch (err: any) {
-      setError(err.message || "Falha na autenticação");
+      const msg: string = err.message || "";
+      setError(
+        /invalid login credentials/i.test(msg)
+          ? "E-mail ou senha incorretos. Confira a senha (letras maiúsculas e minúsculas contam)."
+          : /email not confirmed/i.test(msg)
+            ? "E-mail ainda não confirmado. Fale com o seu gestor."
+            : msg || "Falha na autenticação",
+      );
     } finally {
       setBusy(false);
     }
