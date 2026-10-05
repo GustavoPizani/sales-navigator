@@ -232,21 +232,40 @@ export function CheckinRules() {
             />
           </label>
           <label className="block">
-            <span className="text-xs text-muted-foreground font-medium">
-              Tolerância após o início (min)
-            </span>
-            <input
-              type="number"
-              min={0}
-              max={240}
-              className={inputCls}
-              value={form.tolerance_min}
-              onChange={num("tolerance_min")}
-            />
+            <span className="text-xs text-muted-foreground font-medium">Check-in fecha (min)</span>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={0}
+                max={240}
+                className={inputCls}
+                value={Math.abs(form.tolerance_min)}
+                onChange={(e) => {
+                  const v = Math.max(0, Number(e.target.value) || 0);
+                  set("tolerance_min", form.tolerance_min < 0 ? -v : v);
+                }}
+              />
+              <select
+                className={inputCls}
+                value={form.tolerance_min < 0 ? "before" : "after"}
+                onChange={(e) =>
+                  set(
+                    "tolerance_min",
+                    e.target.value === "before"
+                      ? -Math.abs(form.tolerance_min)
+                      : Math.abs(form.tolerance_min),
+                  )
+                }
+                aria-label="Antes ou depois do início"
+              >
+                <option value="before">antes do início</option>
+                <option value="after">depois do início</option>
+              </select>
+            </div>
           </label>
           <label className="block">
             <span className="text-xs text-muted-foreground font-medium">
-              Lembrete antes do turno (min)
+              Lembrete antes de fechar (min)
             </span>
             <input
               type="number"
@@ -260,8 +279,8 @@ export function CheckinRules() {
         </div>
         <p className="text-[11px] text-muted-foreground">
           O lembrete é um aviso no celular para quem está escalado e ainda não fez check-in; tocar
-          nele abre a tela de Check-in (0 desliga). No fim da tolerância o check-in fecha e as vagas
-          são alocadas: primeiro a equipe (mesmo local, por ordem de check-in), depois o geral. Se
+          nele abre a tela de Check-in (0 desliga). Quando o check-in fecha, as vagas são alocadas
+          (sorteio): primeiro a equipe (mesmo local, por ordem de check-in), depois o geral. Se
           houver mais stand-by que vagas, você decide.
         </p>
       </section>

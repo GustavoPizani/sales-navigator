@@ -83,6 +83,17 @@ export function getPosition(): Promise<GeolocationPosition> {
   });
 }
 
+/**
+ * Fechamento do check-in em texto. tolerance_min negativo = fecha antes do
+ * início (ex.: -5 → "5 min antes do início").
+ */
+export function closeLabel(toleranceMin: number) {
+  if (toleranceMin === 0) return "no início do turno";
+  return toleranceMin < 0
+    ? `${-toleranceMin} min antes do início`
+    : `${toleranceMin} min depois do início`;
+}
+
 /** Horário (local) em que o turno é processado: início + tolerância. */
 export function allocationTime(turnDate: string, startTime: string, toleranceMin: number) {
   const d = new Date(`${turnDate}T${hhmm(startTime)}:00`);

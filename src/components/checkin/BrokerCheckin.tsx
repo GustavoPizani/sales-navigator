@@ -10,6 +10,7 @@ import {
   STATUS_INFO,
   allocationTime,
   checkinOpensAt,
+  closeLabel,
   getPosition,
   hhmm,
   locationOfModality,
@@ -20,11 +21,12 @@ import {
   type RouletteLocation,
 } from "@/hooks/useRoulette";
 import { LazyMap, type MapPlace } from "./LazyMap";
+import { LocationPermission } from "./LocationPermission";
 
 const STATUS_HINT: Record<CheckinStatus, string> = {
   validated: "Presença confirmada: você está na roleta neste turno.",
   allocated: "Vaga confirmada: você está na roleta neste turno.",
-  standby: "Você está em stand-by. A alocação acontece no fim da tolerância.",
+  standby: "Você está em stand-by. A alocação acontece quando o check-in fecha.",
   waiting_admin: "Há mais stand-by do que vagas. O administrador vai decidir.",
   not_allocated: "Você ficou fora da roleta neste turno.",
 };
@@ -157,6 +159,7 @@ export function BrokerCheckin() {
 
   return (
     <div className="space-y-3">
+      <LocationPermission required={gpsRequiredNow()} />
       <div className="bg-white rounded-2xl border border-border p-4">
         <div className="flex items-start gap-3">
           <div className="h-10 w-10 rounded-xl bg-[var(--gold)]/15 text-[var(--gold-dark)] flex items-center justify-center flex-shrink-0">
@@ -186,7 +189,7 @@ export function BrokerCheckin() {
         {cfg && (
           <p className="mt-2 text-[11px] text-center text-muted-foreground">
             O check-in abre {cfg.checkin_open_before_min} min antes do turno e fecha{" "}
-            {cfg.tolerance_min} min após o início.
+            {closeLabel(cfg.tolerance_min)}.
           </p>
         )}
       </div>
