@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { addDays, differenceInDays, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2, MessageCircle, FileDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2, MessageCircle, FileDown, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -804,7 +804,8 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
     }
   };
   const chipColor = (b: any) => (teams ? teamById.get(b.manager_id)?.color ?? "#A8A8A8" : b.color);
-  const [editing, setEditing] = useState<{ broker: any; date: string; shift?: Shift } | null>(null);
+  const [editing, setEditing] = useState<{ broker: any; date: string; shift?: Shift; initialPeriod?: "manha" | "tarde" | "noite" } | null>(null);
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
   const brokerIds = useMemo(() => new Set(brokers.map((b) => b.id)), [brokers]);
   // Vagas restantes do turno: o total vale para os dois PDVs somados (o gerente
   // escolhe o PDV de cada corretor), então conta Central + Plantão.
@@ -817,148 +818,155 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
     const occupiedPending = allPending.reduce((sum, pb) => sum + pb.shifts.filter((ps) => ids.has(ps.slot_id)).length, 0);
     return Math.max(0, capacity - occupied - occupiedPending);
   };
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const noBrokers = brokers.length === 0 && pending.length === 0;
+
+  // Uma seção por turno (Manhã, Tarde, Noite); dentro, as equipes e seus corretores.
   return (
     <>
-      <div className="overflow-x-auto -mx-4 px-4">
-        <table className="min-w-full text-xs border-separate border-spacing-1">
-          <thead>
-            <tr>
-              <th className="text-left pb-1"></th>
-              {days.map((d) => {
-                const ds = format(d, "yyyy-MM-dd");
-                const remaining = (["manha", "tarde", "noite"] as const).map((pv) => remainingFor(ds, pv));
-                const hasAny = remaining.some((r) => r !== null);
-                return (
-                  <th key={d.toISOString()} className="text-center font-semibold text-[var(--navy)] pb-1 min-w-[60px]">
-                    <div>{format(d, "EEE", { locale: ptBR })}</div>
-                    <div className="text-muted-foreground font-normal">{format(d, "d")}</div>
-                    {hasAny && (
-                      <div className="text-[9px] font-normal text-muted-foreground/60 leading-tight mt-0.5 whitespace-nowrap">
-                        M{remaining[0] ?? "–"} T{remaining[1] ?? "–"} N{remaining[2] ?? "–"}
-                      </div>
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map((g) => (
-              <Fragment key={g.team?.id ?? "sem-equipe"}>
-                {teams && (
-                  <tr>
-                    <td colSpan={days.length + 1} className="pt-2">
-                      <div
-                        className="flex items-center gap-2 rounded-lg px-2 py-1 text-[11px] font-bold text-white"
-                        style={{ backgroundColor: g.team?.color ?? "#A8A8A8" }}
-                      >
-                        Equipe {g.team?.label ?? "sem gerente"} · {g.brokers.length + g.pending.length}
-                      </div>
-                    </td>
-                  </tr>
+      {noBrokers && (
+        <p className="text-center text-sm text-muted-foreground py-6">Adicione corretores na aba Time.</p>
+      )}
+      {!noBrokers && (
+        <div className="space-y-4">
+          {PERIODS.map((per) => {
+            const isClosed = closed[per.val] ?? false;
+            const periodTotal = days.reduce((sum, d) => sum + (remainingFor(format(d, "yyyy-MM-dd"), per.val) ?? 0), 0);
+            return (
+              <section key={per.val} className="bg-white rounded-2xl border border-border overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setClosed((c) => ({ ...c, [per.val]: !isClosed }))}
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-[var(--navy)] text-white"
+                  aria-expanded={!isClosed}
+                >
+                  <span className="flex items-center gap-2 font-bold">
+                    {isClosed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                    {per.label}
+                    <span className="font-normal text-white/70 text-sm">{per.start}–{per.end}</span>
+                  </span>
+                  <span className="text-xs text-white/80">{periodTotal} vaga{periodTotal === 1 ? "" : "s"} livre{periodTotal === 1 ? "" : "s"} na semana</span>
+                </button>
+                {!isClosed && (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-[var(--surface)]">
+                          <th className="sticky left-0 z-10 bg-[var(--surface)] text-left px-3 py-2 font-semibold text-muted-foreground border-b border-border min-w-[120px]">
+                            Corretor
+                          </th>
+                          {days.map((d) => {
+                            const ds = format(d, "yyyy-MM-dd");
+                            const rem = remainingFor(ds, per.val);
+                            return (
+                              <th
+                                key={ds}
+                                className={`px-1 py-2 text-center font-semibold border-b border-l border-border min-w-[72px] ${ds === todayStr ? "text-[var(--gold-dark)]" : "text-[var(--navy)]"}`}
+                              >
+                                <div className="capitalize">{format(d, "EEE d", { locale: ptBR })}</div>
+                                <div className={`text-[10px] font-normal ${rem === null ? "text-muted-foreground/50" : rem === 0 ? "text-red-600" : "text-green-700"}`}>
+                                  {rem === null ? "sem vagas" : `${rem} livre${rem === 1 ? "" : "s"}`}
+                                </div>
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groups.map((g) => (
+                          <Fragment key={g.team?.id ?? "sem-equipe"}>
+                            {teams && (
+                              <tr>
+                                <td colSpan={days.length + 1} className="p-0">
+                                  <div
+                                    className="sticky left-0 inline-flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold text-white w-full"
+                                    style={{ backgroundColor: g.team?.color ?? "#A8A8A8" }}
+                                  >
+                                    Equipe {g.team?.label ?? "sem gerente"} · {g.brokers.length + g.pending.length}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            {g.brokers.map((b) => (
+                              <tr key={b.id} className="hover:bg-[var(--surface)]/60">
+                                <td className="sticky left-0 z-10 bg-white px-3 py-1.5 border-b border-border">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: b.color }} />
+                                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{b.full_name.split(" ").slice(0, 2).join(" ")}</span>
+                                  </div>
+                                </td>
+                                {days.map((d) => {
+                                  const ds = format(d, "yyyy-MM-dd");
+                                  const sh = shifts.find((x) => x.broker_id === b.id && x.date === ds && derivePeriod(x.start_time) === per.val);
+                                  return (
+                                    <td key={ds} className="p-1 border-b border-l border-border text-center align-middle">
+                                      {sh ? (
+                                        <button
+                                          onClick={() => setEditing({ broker: b, date: ds, shift: sh })}
+                                          className="w-full h-9 rounded-lg px-1 text-[10px] font-semibold text-white truncate hover:opacity-90"
+                                          style={{ background: chipColor(b) }}
+                                          title={sh.notes || "Central"}
+                                        >
+                                          {sh.notes || "Central"}
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => setEditing({ broker: b, date: ds, initialPeriod: per.val })}
+                                          className="w-full h-9 rounded-lg flex items-center justify-center text-muted-foreground/60 border border-dashed border-border hover:bg-[var(--surface)] hover:text-[var(--navy)]"
+                                          aria-label={`Escalar ${b.full_name} em ${per.label}`}
+                                        >
+                                          <Plus size={13} />
+                                        </button>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                            {g.pending.map((p) => (
+                              <tr key={p.id}>
+                                <td className="sticky left-0 z-10 bg-white px-3 py-1.5 border-b border-border">
+                                  <div className="flex items-center gap-1.5" title={`${p.full_name} — preenchido pelo link do gerente, ainda sem cadastro`}>
+                                    <span className="w-2.5 h-2.5 rounded-full border border-dashed border-muted-foreground flex-shrink-0" />
+                                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{p.full_name.split(" ").slice(0, 2).join(" ")}</span>
+                                    <span className="text-[9px] text-muted-foreground whitespace-nowrap">sem cadastro</span>
+                                    <button onClick={() => removePending(p)} aria-label={`Remover ${p.full_name}`} className="text-muted-foreground hover:text-red-600">
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                </td>
+                                {days.map((d) => {
+                                  const ds = format(d, "yyyy-MM-dd");
+                                  const has = p.shifts.some((ps) => {
+                                    const sl = slotById.get(ps.slot_id);
+                                    return sl && sl.date === ds && derivePeriod(sl.start_time) === per.val;
+                                  });
+                                  return (
+                                    <td key={ds} className="p-1 border-b border-l border-border text-center align-middle">
+                                      {has && (
+                                        <div
+                                          className="w-full h-9 rounded-lg flex items-center justify-center text-[10px] font-semibold border border-dashed"
+                                          style={{ borderColor: g.team?.color ?? "#A8A8A8", color: g.team?.color ?? "#6B6B6B" }}
+                                        >
+                                          pré
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
-            {g.brokers.map((b) => (
-              <tr key={b.id}>
-                <td className="pr-2 py-1 align-middle">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: b.color }} />
-                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{b.full_name.split(" ")[0]}</span>
-                  </div>
-                </td>
-                {days.map((d) => {
-                  const ds = format(d, "yyyy-MM-dd");
-                  const dayShifts = shifts.filter((x) => x.broker_id === b.id && x.date === ds);
-                  return (
-                    <td key={ds} className="align-middle p-0.5">
-                      <div className="flex flex-col gap-1 min-h-[48px] justify-center">
-                        {dayShifts.map((s) => (
-                          <button
-                            key={s.id}
-                            onClick={() => setEditing({ broker: b, date: ds, shift: s })}
-                            className="w-full rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1 py-1 transition-opacity hover:opacity-90"
-                            style={{
-                              background: chipColor(b),
-                              color: "#FFFFFF",
-                            }}>
-                            <span className="text-center leading-tight">
-                              <span className="block font-bold">{derivePeriod(s.start_time) === "manha" ? "M" : (derivePeriod(s.start_time) === "tarde" ? "T" : "N")}</span>
-                              <span className="block truncate max-w-[48px] text-[9px] opacity-90">{s.notes || "Online"}</span>
-                            </span>
-                          </button>
-                        ))}
-                        {dayShifts.length === 0 && (
-                          <button
-                            onClick={() => setEditing({ broker: b, date: ds })}
-                            className="w-full h-12 rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1 transition-colors hover:bg-gray-50"
-                            style={{
-                              background: "#FFFFFF",
-                              color: "var(--muted-foreground)",
-                              border: "1px dashed var(--border)",
-                            }}>
-                            <Plus size={14} />
-                          </button>
-                        )}
-                        {dayShifts.length > 0 && dayShifts.length < 3 && (
-                          <button
-                            onClick={() => setEditing({ broker: b, date: ds })}
-                            className="w-full h-5 rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1 transition-colors hover:bg-gray-100"
-                            style={{
-                              background: "#FFFFFF",
-                              color: "var(--muted-foreground)",
-                              border: "1px dashed var(--border)",
-                            }}>
-                            <Plus size={10} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-            {g.pending.map((p) => (
-              <tr key={p.id}>
-                <td className="pr-2 py-1 align-middle">
-                  <div className="flex items-center gap-1.5" title={`${p.full_name} — preenchido pelo link do gerente, ainda sem cadastro`}>
-                    <span className="w-2.5 h-2.5 rounded-full border border-dashed border-muted-foreground" />
-                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{p.full_name.split(" ")[0]}</span>
-                    <span className="text-[9px] text-muted-foreground whitespace-nowrap">sem cadastro</span>
-                    <button onClick={() => removePending(p)} aria-label={`Remover ${p.full_name}`} className="text-muted-foreground hover:text-red-600">
-                      <X size={11} />
-                    </button>
-                  </div>
-                </td>
-                {days.map((d) => {
-                  const ds = format(d, "yyyy-MM-dd");
-                  const daySlots = p.shifts.map((ps) => slotById.get(ps.slot_id)).filter((sl) => sl && sl.date === ds);
-                  return (
-                    <td key={ds} className="align-middle p-0.5">
-                      <div className="flex flex-col gap-1 min-h-[48px] justify-center">
-                        {daySlots.map((sl) => (
-                          <div
-                            key={sl!.id}
-                            className="w-full rounded-lg flex items-center justify-center text-[10px] font-semibold leading-tight px-1 py-1 border border-dashed"
-                            style={{ borderColor: g.team?.color ?? "#A8A8A8", color: g.team?.color ?? "#6B6B6B" }}>
-                            <span className="text-center leading-tight">
-                              <span className="block font-bold">{derivePeriod(sl!.start_time) === "manha" ? "M" : (derivePeriod(sl!.start_time) === "tarde" ? "T" : "N")}</span>
-                              <span className="block text-[9px] opacity-90">pré</span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-              </Fragment>
-            ))}
-            {brokers.length === 0 && pending.length === 0 && (
-              <tr><td colSpan={8} className="text-center text-muted-foreground py-6">Adicione corretores na aba Time.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
       {editing && (
         <ShiftEditor
           {...editing}
@@ -992,9 +1000,9 @@ function derivePeriod(startTime?: string): "manha" | "tarde" | "noite" | null {
   return best.val;
 }
 
-function ShiftEditor({ broker, date, shift, modality, managerId, onClose }: { broker: any; date: string; shift?: Shift; modality: "online" | "salao"; managerId: string; onClose: () => void }) {
+function ShiftEditor({ broker, date, shift, initialPeriod, modality, managerId, onClose }: { broker: any; date: string; shift?: Shift; initialPeriod?: "manha" | "tarde" | "noite"; modality: "online" | "salao"; managerId: string; onClose: () => void }) {
   const qc = useQueryClient();
-  const [period, setPeriod] = useState<"manha" | "tarde" | "noite" | null>(derivePeriod(shift?.start_time));
+  const [period, setPeriod] = useState<"manha" | "tarde" | "noite" | null>(derivePeriod(shift?.start_time) ?? initialPeriod ?? null);
   const [plantao, setPlantao] = useState(shift?.notes ?? "");
 
   const projectsQ = useQuery({

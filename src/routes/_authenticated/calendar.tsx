@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { addDays, format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, CalendarDays, ChevronLeft, ChevronRight, List, Plus, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
@@ -42,6 +42,11 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
   const [editing, setEditing] = useState<any | "new" | null>(null);
   const [dayModalOpen, setDayModalOpen] = useState(false);
   useOpenAppointmentFromUrl(setEditing);
+  // Visualização: calendário do mês ou lista filtrada por período
+  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [listFrom, setListFrom] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [listTo, setListTo] = useState(format(addDays(new Date(), 30), "yyyy-MM-dd"));
+  const [order, setOrder] = useState<"asc" | "desc">("asc");
 
   const monthStart = startOfMonth(month);
   const monthEnd = endOfMonth(month);
@@ -52,12 +57,15 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
   const brokersQ = useBrokers({ enabled: mode === "team" });
   const allBrokerIds = useMemo(() => (brokersQ.data ?? []).map((p) => p.id), [brokersQ.data]);
 
+  // período consultado: o mês visível (calendário) ou o filtro de datas (lista)
+  const rangeFrom = view === "list" ? listFrom : format(gridStart, "yyyy-MM-dd");
+  const rangeTo = view === "list" ? listTo : format(gridEnd, "yyyy-MM-dd");
   const apptsQ = useQuery({
-    queryKey: ["team-appts", mode, profile?.id, format(monthStart, "yyyy-MM"), filterBrokers.join(",")],
-    enabled: mode === "team" || !!profile?.id,
+    queryKey: ["team-appts", mode, profile?.id, rangeFrom, rangeTo, filterBrokers.join(",")],
+    enabled: (mode === "team" || !!profile?.id) && !!rangeFrom && !!rangeTo,
     queryFn: async () => {
       let q = supabase.from("appointments").select("*")
-        .gte("date", format(gridStart, "yyyy-MM-dd")).lte("date", format(gridEnd, "yyyy-MM-dd"));
+        .gte("date", rangeFrom).lte("date", rangeTo);
       if (mode === "own") {
         q = q.eq("owner_id", profile!.id);
       } else if (filterBrokers.length > 0) {
@@ -123,6 +131,22 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
 
   const dayAppts = (byDay[selectedDay] ?? []).sort((a, b) => a.start_time.localeCompare(b.start_time));
 
+  const listAppts = useMemo(() => {
+    const sorted = [...filteredAppts].sort((a, b) =>
+      `${a.date} ${a.start_time}`.localeCompare(`${b.date} ${b.start_time}`),
+    );
+    return order === "asc" ? sorted : sorted.reverse();
+  }, [filteredAppts, order]);
+  const listByDay = useMemo(() => {
+    const groups: { date: string; items: any[] }[] = [];
+    listAppts.forEach((a) => {
+      const last = groups[groups.length - 1];
+      if (last && last.date === a.date) last.items.push(a);
+      else groups.push({ date: a.date, items: [a] });
+    });
+    return groups;
+  }, [listAppts]);
+
   const numWeeks = days.length / 7;
 
   return (
@@ -130,12 +154,59 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
       <AppHeader title={title} />
 
       <div className="flex-1 min-h-0 flex flex-col px-4 pt-3 pb-nav gap-2">
+        {/* Calendário ou lista */}
+        <div className="inline-flex self-start rounded-lg border border-border bg-white p-0.5 flex-shrink-0" role="tablist">
+          {([
+            ["calendar", "Calendário", CalendarDays],
+            ["list", "Lista", List],
+          ] as const).map(([key, label, Icon]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={view === key}
+              onClick={() => setView(key)}
+              className={`h-8 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5 ${
+                view === key ? "bg-[var(--navy)] text-white" : "text-muted-foreground"
+              }`}
+            >
+              <Icon size={15} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {view === "list" && (
+          <div className="flex flex-wrap items-end gap-2 flex-shrink-0">
+            <label className="block">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase block mb-0.5">De</span>
+              <input type="date" value={listFrom} max={listTo} onChange={(e) => e.target.value && setListFrom(e.target.value)}
+                className="h-9 px-2 rounded-lg bg-white border border-border text-sm" />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase block mb-0.5">Até</span>
+              <input type="date" value={listTo} min={listFrom} onChange={(e) => e.target.value && setListTo(e.target.value)}
+                className="h-9 px-2 rounded-lg bg-white border border-border text-sm" />
+            </label>
+            <button
+              type="button"
+              onClick={() => setOrder((o) => (o === "asc" ? "desc" : "asc"))}
+              className="h-9 px-3 rounded-lg bg-white border border-border text-sm text-[var(--navy)] inline-flex items-center gap-1.5"
+              title="Inverter a ordem"
+            >
+              {order === "asc" ? <ArrowUpNarrowWide size={15} /> : <ArrowDownWideNarrow size={15} />}
+              {order === "asc" ? "Mais antigos primeiro" : "Mais novos primeiro"}
+            </button>
+          </div>
+        )}
+
         {/* Month navigation */}
+        {view === "calendar" && (
         <div className="flex items-center justify-between flex-shrink-0">
           <button onClick={() => setMonth(addDays(monthStart, -1))} className="p-2 rounded-lg bg-white border border-border"><ChevronLeft size={18} /></button>
           <p className="font-semibold text-[var(--navy)] capitalize">{format(month, "MMMM yyyy", { locale: ptBR })}</p>
           <button onClick={() => setMonth(addDays(monthEnd, 1))} className="p-2 rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
         </div>
+        )}
 
         {/* Filter chips (team mode only) */}
         {mode === "team" && (
@@ -155,7 +226,39 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
           </div>
         )}
 
+        {view === "list" && (
+          <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 pb-24 space-y-4">
+            {apptsQ.isPending && <p className="text-sm text-muted-foreground text-center py-8">Carregando…</p>}
+            {!apptsQ.isPending && listByDay.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-12">Nenhum agendamento nesse período.</p>
+            )}
+            {listByDay.map((g) => (
+              <section key={g.date}>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 capitalize">
+                  {format(new Date(g.date + "T00:00:00"), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                </h3>
+                <div className="space-y-2">
+                  {[...g.items].sort((a, b) => order === "asc" ? a.start_time.localeCompare(b.start_time) : b.start_time.localeCompare(a.start_time)).map((a) => {
+                    const broker = brokerForAppt(a);
+                    return (
+                      <button key={a.id} onClick={() => setEditing(a)} className="w-full text-left bg-white rounded-xl p-3 border border-border flex items-start gap-3">
+                        {broker && <Avatar name={broker.full_name} color={broker.color} size={36} />}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-[var(--navy)] truncate">{a.title}</p>
+                          <p className="text-xs text-muted-foreground">{a.start_time.slice(0, 5)}–{a.end_time.slice(0, 5)}{broker ? ` · ${broker.full_name}` : ""}</p>
+                          {a.client_name && <p className="text-xs text-muted-foreground">Cliente: {a.client_name}</p>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+
         {/* Calendar grid — fills all remaining space */}
+        {view === "calendar" && (
         <div
           className="flex-1 min-h-0 grid grid-cols-7 gap-1"
           style={{ gridTemplateRows: `auto repeat(${numWeeks}, 1fr)` }}
@@ -180,6 +283,7 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
             );
           })}
         </div>
+        )}
       </div>
 
       <button onClick={() => { setEditing("new"); setDayModalOpen(false); }}

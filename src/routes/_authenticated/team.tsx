@@ -811,13 +811,29 @@ function ResetPasswordModal({
             <input type="text" readOnly value={tempPassword} className="w-full h-12 px-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 font-mono font-bold text-lg text-center tracking-wider select-all cursor-copy mt-2" title="Clique para selecionar e copiar" />
             <p className="text-[11px] text-muted-foreground mt-2">Ele(a) deverá cadastrar uma nova senha ao fazer login.</p>
             <div className="w-full mt-4 space-y-2">
-               <button onClick={() => {
-                 const msg = `Olá ${profile.full_name}! Sua senha foi redefinida.\n\nAcesso: ${window.location.origin}\nNova senha temporária: ${tempPassword}\n\nVocê precisará criar uma nova senha ao fazer login.`;
-                 navigator.clipboard.writeText(msg);
-                 toast.success("Mensagem copiada!");
-               }} className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold flex items-center justify-center gap-2">
-                 <Copy size={18} /> Copiar Mensagem
-               </button>
+               {(() => {
+                 const msg = `Olá ${profile.full_name}! Sua senha foi redefinida.\n\nAcesso: ${window.location.origin}\nE-mail: ${profile.email}\nNova senha temporária: ${tempPassword}\n\nVocê precisará criar uma nova senha ao fazer login.`;
+                 const digits = profile.phone?.replace(/\D/g, "");
+                 return (
+                   <>
+                     {/* sem telefone: abre o WhatsApp para escolher o contato */}
+                     <a
+                       href={`https://wa.me/${digits ?? ""}?text=${encodeURIComponent(msg)}`}
+                       target="_blank"
+                       rel="noreferrer"
+                       className="w-full h-12 rounded-xl bg-green-500 text-white font-semibold flex items-center justify-center gap-2"
+                     >
+                       <MessageCircle size={18} /> Enviar nova senha no WhatsApp
+                     </a>
+                     <button onClick={() => {
+                       navigator.clipboard.writeText(msg);
+                       toast.success("Mensagem copiada!");
+                     }} className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold flex items-center justify-center gap-2">
+                       <Copy size={18} /> Copiar Mensagem
+                     </button>
+                   </>
+                 );
+               })()}
                <button onClick={onCancel} className="w-full h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Fechar</button>
             </div>
           </div>
