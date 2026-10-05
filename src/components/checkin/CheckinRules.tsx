@@ -217,7 +217,7 @@ export function CheckinRules() {
 
       <section className="bg-white rounded-2xl border border-border p-4 space-y-3">
         <h3 className="text-sm font-semibold text-[var(--navy)]">Check-in</h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="block">
             <span className="text-xs text-muted-foreground font-medium">
               Check-in abre antes do turno (min)
@@ -244,11 +244,25 @@ export function CheckinRules() {
               onChange={num("tolerance_min")}
             />
           </label>
+          <label className="block">
+            <span className="text-xs text-muted-foreground font-medium">
+              Lembrete antes do turno (min)
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={240}
+              className={inputCls}
+              value={form.checkin_reminder_min ?? 10}
+              onChange={num("checkin_reminder_min")}
+            />
+          </label>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          No fim da tolerância o check-in fecha e as vagas são alocadas: primeiro a equipe (mesmo
-          local, por ordem de check-in), depois o geral. Se houver mais stand-by que vagas, você
-          decide.
+          O lembrete é um aviso no celular para quem está escalado e ainda não fez check-in; tocar
+          nele abre a tela de Check-in (0 desliga). No fim da tolerância o check-in fecha e as vagas
+          são alocadas: primeiro a equipe (mesmo local, por ordem de check-in), depois o geral. Se
+          houver mais stand-by que vagas, você decide.
         </p>
       </section>
 

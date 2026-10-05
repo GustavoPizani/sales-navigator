@@ -730,6 +730,7 @@ export type Database = {
           central_lng: number | null
           central_radius_m: number
           checkin_open_before_min: number
+          checkin_reminder_min: number
           id: number
           max_accuracy_m: number
           plantao_address: string | null
@@ -755,6 +756,7 @@ export type Database = {
           central_lng?: number | null
           central_radius_m?: number
           checkin_open_before_min?: number
+          checkin_reminder_min?: number
           id?: number
           max_accuracy_m?: number
           plantao_address?: string | null
@@ -780,6 +782,7 @@ export type Database = {
           central_lng?: number | null
           central_radius_m?: number
           checkin_open_before_min?: number
+          checkin_reminder_min?: number
           id?: number
           max_accuracy_m?: number
           plantao_address?: string | null

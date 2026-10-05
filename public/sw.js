@@ -47,9 +47,19 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const url = e.notification.data?.url || "/";
   e.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clients) => {
       for (const client of clients) {
         if (client.url.includes(url) && "focus" in client) return client.focus();
+      }
+      // app já aberto em outra tela: leva para a tela da notificação
+      const open = clients.find((c) => "navigate" in c);
+      if (open) {
+        try {
+          const nav = await open.navigate(url);
+          return (nav || open).focus();
+        } catch {
+          /* navegação bloqueada: abre uma janela nova */
+        }
       }
       if (self.clients.openWindow) return self.clients.openWindow(url);
     })
