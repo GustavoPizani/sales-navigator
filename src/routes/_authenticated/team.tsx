@@ -810,9 +810,25 @@ function ResetPasswordModal({
 
   if (!open || !profile) return null;
 
+  // mensagem com a nova senha (já aparece antes de confirmar)
+  const resetMsg = `Olá ${profile.full_name}! Sua senha foi redefinida.\n\nAcesso: ${window.location.origin}\nE-mail: ${profile.email}\nNova senha temporária: ${tempPassword}\n\nVocê precisará criar uma nova senha ao fazer login.`;
+  const waUrl = `https://wa.me/${profile.phone?.replace(/\D/g, "") ?? ""}?text=${encodeURIComponent(resetMsg)}`;
+  // redefine e abre o WhatsApp num passo só (a janela é aberta antes da
+  // chamada ao banco para o navegador não bloquear o pop-up)
+  const confirmAndSend = async () => {
+    const w = window.open("", "_blank");
+    try {
+      await m.mutateAsync();
+      if (w) w.location.href = waUrl;
+      else window.open(waUrl, "_blank");
+    } catch {
+      w?.close();
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end" onClick={onCancel}>
-      <div className="bg-white w-full rounded-t-2xl p-5 safe-bottom" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white w-full rounded-t-2xl p-5 safe-bottom max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {success ? (
           <div className="flex flex-col items-center text-center gap-3 py-4">
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
@@ -824,7 +840,7 @@ function ResetPasswordModal({
             <p className="text-[11px] text-muted-foreground mt-2">Ele(a) deverá cadastrar uma nova senha ao fazer login.</p>
             <div className="w-full mt-4 space-y-2">
                {(() => {
-                 const msg = `Olá ${profile.full_name}! Sua senha foi redefinida.\n\nAcesso: ${window.location.origin}\nE-mail: ${profile.email}\nNova senha temporária: ${tempPassword}\n\nVocê precisará criar uma nova senha ao fazer login.`;
+                 const msg = resetMsg;
                  const digits = profile.phone?.replace(/\D/g, "");
                  return (
                    <>
@@ -860,9 +876,20 @@ function ResetPasswordModal({
               <p className="text-xs text-muted-foreground font-medium mb-2 text-center">Nova Senha Temporária</p>
               <input type="text" readOnly value={tempPassword} className="w-full h-12 px-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 font-mono font-bold text-lg text-center tracking-wider select-all cursor-copy" title="Clique para selecionar e copiar" />
             </div>
-            <div className="flex gap-2 w-full mt-6">
-              <button onClick={onCancel} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium text-sm">Cancelar</button>
-              <button onClick={() => m.mutate()} disabled={m.isPending} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-bold text-sm disabled:opacity-50">{m.isPending ? "Redefinindo..." : "Confirmar"}</button>
+            <div className="w-full mt-4 text-left">
+              <p className="text-xs text-muted-foreground font-medium mb-2">Mensagem que será enviada</p>
+              <textarea readOnly value={resetMsg} rows={6} onFocus={(e) => e.currentTarget.select()}
+                className="w-full rounded-xl border border-border bg-[var(--surface)] p-3 text-sm text-[var(--navy)] resize-none" />
+            </div>
+            <div className="w-full mt-3 space-y-2">
+              <button onClick={confirmAndSend} disabled={m.isPending}
+                className="w-full h-12 rounded-xl bg-green-500 text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                <MessageCircle size={18} /> {m.isPending ? "Redefinindo..." : "Confirmar e enviar no WhatsApp"}
+              </button>
+              <div className="flex gap-2">
+                <button onClick={onCancel} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium text-sm">Cancelar</button>
+                <button onClick={() => m.mutate()} disabled={m.isPending} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-bold text-sm disabled:opacity-50">{m.isPending ? "Redefinindo..." : "Só confirmar"}</button>
+              </div>
             </div>
           </div>
         )}
