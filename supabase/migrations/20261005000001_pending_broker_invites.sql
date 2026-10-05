@@ -205,7 +205,7 @@ CREATE OR REPLACE FUNCTION public.crm_public_schedule_add_broker(p_token TEXT, p
 RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   _m UUID := public.crm_schedule_link_manager(p_token);
-  _name TEXT := regexp_replace(trim(coalesce(p_name, '')), 's+', ' ', 'g');
+  _name TEXT := regexp_replace(trim(coalesce(p_name, '')), '\s+', ' ', 'g');
   _email TEXT;
   _id UUID;
 BEGIN
