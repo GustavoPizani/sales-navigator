@@ -6,7 +6,7 @@ import {
   Plus, MapPin, Edit2, EyeOff, Eye, Sparkles, Upload, X,
   Loader2, CheckSquare, Square, ChevronDown, Files, Download, ZoomIn, ZoomOut,
   Search, ArrowUpAZ, ArrowDownAZ, Share2, FileText, ArrowRight, BedDouble, Ruler,
-  Car, Bike, Footprints, Image as ImageIcon, RefreshCw, Trash2, ArrowLeft, ClipboardPaste, Save, Star,
+  Car, Bike, Footprints, Image as ImageIcon, RefreshCw, Trash2, ArrowLeft, ClipboardPaste, Save,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import JSZip from "jszip";
@@ -2743,6 +2743,9 @@ function ProjectForm({
   const [featuresText, setFeaturesText] = useState((rich?.amenities ?? []).join(", "));
   const [typologies, setTypologies] = useState<FormTypology[]>(rich?.typologies ?? []);
   const [images, setImages] = useState<FormImage[]>([]);
+  // a galeria de imagens ainda não está na tela; por enquanto só a foto de capa
+  // da ficha. Sem alteração, as fotos salvas ficam como estão.
+  const [imagesTouched, setImagesTouched] = useState(false);
   // campos próprios deste sistema (fichas, plantão)
   const [entrega, setEntrega] = useState(rich?.entrega ?? "");
   const [diferencial, setDiferencial] = useState(rich?.diferencial ?? "");
@@ -2805,11 +2808,13 @@ function ProjectForm({
     e.target.value = "";
     if (!files.length) return;
     const compressed = await Promise.all(files.map(compressImage));
-    setImages((prev) => [...prev, ...compressed.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+    // foto de capa da ficha: a nova substitui a atual
+    setImagesTouched(true);
+    setImages((prev) => [
+      ...compressed.slice(0, 1).map((file) => ({ file, preview: URL.createObjectURL(file) })),
+      ...prev.slice(1),
+    ]);
   };
-  // a primeira imagem da lista é sempre a capa
-  const setCover = (i: number) => setImages((prev) => [prev[i], ...prev.filter((_, idx) => idx !== i)]);
-  const removeImage = (i: number) => setImages((prev) => prev.filter((_, idx) => idx !== i));
 
   const handlePlanta = async (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.files?.[0];
@@ -2889,8 +2894,10 @@ function ProjectForm({
       };
 
       // 2. fotos (a primeira é a capa) e plantas
-      const imagePaths: string[] = [];
-      for (const img of images) imagePaths.push(img.path ?? (await upload("fotos", img.file!)));
+      const previousImages = rich?.images ?? (rich?.coverImagePath ? [rich.coverImagePath] : []);
+      const imagePaths: string[] = imagesTouched ? [] : previousImages;
+      if (imagesTouched)
+        for (const img of images) imagePaths.push(img.path ?? (await upload("fotos", img.file!)));
       const savedTypologies: Typology[] = [];
       for (const t of typologies.filter((x) => x.type.trim())) {
         const { plantaFile, plantaPreview: _p, ...rest } = t;
@@ -2901,7 +2908,7 @@ function ProjectForm({
       }
 
       // 3. fotos removidas saem do storage
-      const removed = (rich?.images ?? []).filter((p) => !imagePaths.includes(p));
+      const removed = imagesTouched ? previousImages.filter((p) => !imagePaths.includes(p)) : [];
       if (removed.length) await supabase.storage.from("project-docs").remove(removed);
 
       const desc: RichDesc = {
@@ -2957,7 +2964,7 @@ function ProjectForm({
 
   return (
     <div className="fixed inset-0 z-50 bg-[var(--surface)] overflow-y-auto">
-      <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-5 pb-24">
+      <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-5 pb-24">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -2994,8 +3001,8 @@ function ProjectForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="lg:col-span-2 space-y-5">
+        <div>
+          <div className="space-y-5">
             <section className={CARD}>
               <h2 className="font-bold text-[var(--navy)]">Informações Gerais</h2>
               <div>
@@ -3138,6 +3145,22 @@ function ProjectForm({
                       <input className={INPUT} value={estrutura} onChange={(e) => setEstrutura(e.target.value)} />
                     </div>
                   </div>
+                  <div>
+                    <label className={LABEL}>Foto de capa (ficha)</label>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-20 rounded-xl border border-border bg-[var(--surface)] flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {images[0] ? (
+                          <img src={images[0].preview} alt="Capa" className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon size={22} className="text-muted-foreground/40" />
+                        )}
+                      </div>
+                      <label className="h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm font-medium text-[var(--navy)] inline-flex items-center gap-2 cursor-pointer">
+                        <Upload size={14} /> {images[0] ? "Trocar foto" : "Enviar foto"}
+                        <input type="file" accept="image/*" className="hidden" onChange={handleImages} />
+                      </label>
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className={LABEL}>Distâncias</label>
@@ -3193,48 +3216,6 @@ function ProjectForm({
             </section>
           </div>
 
-          <div className="space-y-5">
-            <section className={CARD}>
-              <h2 className="font-bold text-[var(--navy)]">Imagens</h2>
-              <label className="flex items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-xl cursor-pointer hover:bg-[var(--surface)]">
-                <div className="text-center">
-                  <Upload className="mx-auto text-muted-foreground" size={28} />
-                  <p className="text-sm text-muted-foreground mt-1">Clique para enviar</p>
-                </div>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImages} />
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {images.map((img, i) => (
-                  <div key={img.preview} className="relative group">
-                    <img src={img.preview} alt={`Imagem ${i + 1}`} className="w-full h-24 object-cover rounded-md" />
-                    {i === 0 ? (
-                      <span className="absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--navy)] text-white">
-                        Capa
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setCover(i)}
-                        title="Tornar capa"
-                        className="absolute top-1 left-1 h-6 w-6 rounded bg-white/90 text-[var(--navy)] flex items-center justify-center lg:opacity-0 group-hover:opacity-100"
-                      >
-                        <Star size={14} />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => removeImage(i)}
-                      title="Remover"
-                      className="absolute top-1 right-1 h-6 w-6 rounded bg-red-600 text-white flex items-center justify-center lg:opacity-0 group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                A primeira imagem é a capa (usada também na ficha). Use a estrela para trocar.
-              </p>
-            </section>
-          </div>
         </div>
       </div>
 
