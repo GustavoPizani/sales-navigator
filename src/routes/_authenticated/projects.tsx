@@ -2636,6 +2636,15 @@ function ImportModal({
 // ─── Project form ─────────────────────────────────────────────────────────────
 const INPUT = "w-full h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm";
 
+/** Status a partir do texto de entrega já salvo ("PRONTO", "Breve Lançamento", "ago-26", "Em obras"). */
+function statusFromEntrega(entrega?: string): string | undefined {
+  if (!entrega?.trim()) return undefined;
+  const e = entrega.toLowerCase();
+  if (e.includes("pronto")) return "PRONTO";
+  if (e.includes("lançamento") || e.includes("lancamento")) return "LANCAMENTO";
+  return "EM_OBRAS";
+}
+
 const STATUS_OPTIONS = [
   { value: "LANCAMENTO", label: "Lançamento" },
   { value: "EM_OBRAS", label: "Em Obras" },
@@ -2738,8 +2747,11 @@ function ProjectForm({
   const [name, setName] = useState(project?.name ?? "");
   const [propertyType, setPropertyType] = useState(rich?.propertyType ?? "Apartamento");
   const [address, setAddress] = useState(project?.address ?? "");
-  const [city, setCity] = useState(project?.city ?? "São Paulo");
-  const [status, setStatus] = useState<string>(rich?.status ?? "LANCAMENTO");
+  // a cidade já vem no endereço; mantém a do cadastro (ou São Paulo) sem campo próprio
+  const [city] = useState(project?.city ?? "São Paulo");
+  // Status e previsão de entrega são uma informação só (rich.entrega é o que
+  // os cards e a ficha mostram); imóveis antigos só têm o texto de entrega.
+  const [status, setStatus] = useState<string>(statusFromEntrega(rich?.entrega) ?? rich?.status ?? "LANCAMENTO");
   const [featuresText, setFeaturesText] = useState((rich?.amenities ?? []).join(", "));
   const [typologies, setTypologies] = useState<FormTypology[]>(rich?.typologies ?? []);
   const [images, setImages] = useState<FormImage[]>([]);
@@ -2747,13 +2759,15 @@ function ProjectForm({
   // da ficha. Sem alteração, as fotos salvas ficam como estão.
   const [imagesTouched, setImagesTouched] = useState(false);
   // campos próprios deste sistema (fichas, plantão)
-  const [entrega, setEntrega] = useState(rich?.entrega ?? "");
+  // previsão (ex: ago-26): só faz sentido para imóvel em obras
+  const [entrega, setEntrega] = useState(
+    statusFromEntrega(rich?.entrega) === "EM_OBRAS" && !/obra/i.test(rich?.entrega ?? "") ? (rich?.entrega ?? "") : "",
+  );
   const [diferencial, setDiferencial] = useState(rich?.diferencial ?? "");
   const [estrutura, setEstrutura] = useState(rich?.estrutura ?? "");
   const [distances, setDistances] = useState<DistanceItem[]>(rich?.distances ?? []);
   const [active, setActive] = useState(project?.is_active ?? true);
   const [temPlantao, setTemPlantao] = useState(project?.tem_plantao ?? false);
-  const [showExtras, setShowExtras] = useState(false);
 
   // importar de texto
   const [importOpen, setImportOpen] = useState(false);
@@ -2915,7 +2929,12 @@ function ProjectForm({
         neighborhood: rich?.neighborhood,
         propertyType: propertyType.trim() || undefined,
         status,
-        entrega: entrega || (status === "PRONTO" ? "PRONTO" : undefined),
+        entrega:
+          status === "PRONTO"
+            ? "PRONTO"
+            : status === "LANCAMENTO"
+              ? "Breve Lançamento"
+              : entrega.trim() || "Em obras",
         diferencial: diferencial || undefined,
         estrutura: estrutura || undefined,
         typologies: savedTypologies,
@@ -3028,15 +3047,99 @@ function ProjectForm({
                   onChange={(e) => setFeaturesText(e.target.value)}
                 />
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={LABEL}>Status</label>
+                  <select className={INPUT} value={status} onChange={(e) => setStatus(e.target.value)}>
+                    {STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {status === "EM_OBRAS" && (
+                  <div>
+                    <label className={LABEL}>Previsão de entrega (ex: ago-26)</label>
+                    <input className={INPUT} value={entrega} onChange={(e) => setEntrega(e.target.value)} />
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={LABEL}>Diferencial (ex: 60m do Metrô)</label>
+                  <input className={INPUT} value={diferencial} onChange={(e) => setDiferencial(e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Estrutura de atendimento</label>
+                  <input className={INPUT} value={estrutura} onChange={(e) => setEstrutura(e.target.value)} />
+                </div>
+              </div>
               <div>
-                <label className={LABEL}>Status</label>
-                <select className={INPUT} value={status} onChange={(e) => setStatus(e.target.value)}>
-                  {STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                <label className={LABEL}>Foto de capa (ficha)</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 h-20 rounded-xl border border-border bg-[var(--surface)] flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {images[0] ? (
+                      <img src={images[0].preview} alt="Capa" className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon size={22} className="text-muted-foreground/40" />
+                    )}
+                  </div>
+                  <label className="h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm font-medium text-[var(--navy)] inline-flex items-center gap-2 cursor-pointer">
+                    <Upload size={14} /> {images[0] ? "Trocar foto" : "Enviar foto"}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImages} />
+                  </label>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className={LABEL}>Distâncias</label>
+                  <button
+                    onClick={addDistance}
+                    className="text-xs font-semibold text-[var(--navy)] flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface)] border border-border"
+                  >
+                    <Plus size={12} /> Adicionar
+                  </button>
+                </div>
+                {distances.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <select
+                      className="h-10 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm flex-shrink-0"
+                      value={d.mode}
+                      onChange={(e) => updateDistance(i, "mode", e.target.value as DistanceMode)}
+                    >
+                      <option value="carro">Carro</option>
+                      <option value="pe">A pé</option>
+                      <option value="bike">Bike</option>
+                    </select>
+                    <input
+                      className={`${INPUT} flex-1`}
+                      placeholder="Ex: Shopping Bourbon"
+                      value={d.label}
+                      onChange={(e) => updateDistance(i, "label", e.target.value)}
+                    />
+                    <input
+                      type="number"
+                      className="w-16 h-10 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm flex-shrink-0"
+                      placeholder="min"
+                      value={d.minutes || ""}
+                      onChange={(e) => updateDistance(i, "minutes", parseInt(e.target.value) || 0)}
+                    />
+                    <button onClick={() => removeDistance(i)} className="p-1.5 text-red-400 hover:text-red-600 flex-shrink-0">
+                      <X size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
+                  <span className="text-sm font-medium text-[var(--navy)]">Ativo</span>
+                  <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="w-5 h-5 accent-[var(--gold)] cursor-pointer" />
+                </label>
+                <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
+                  <span className="text-sm font-medium text-[var(--navy)]">Tem Plantão</span>
+                  <input type="checkbox" checked={temPlantao} onChange={(e) => setTemPlantao(e.target.checked)} className="w-5 h-5 accent-[var(--gold)] cursor-pointer" />
+                </label>
               </div>
             </section>
 
@@ -3115,105 +3218,6 @@ function ProjectForm({
               ))}
             </section>
 
-            <section className={CARD}>
-              <button
-                type="button"
-                onClick={() => setShowExtras((v) => !v)}
-                className="w-full flex items-center justify-between"
-                aria-expanded={showExtras}
-              >
-                <h2 className="font-bold text-[var(--navy)]">Ficha e plantão</h2>
-                <ChevronDown size={18} className={`text-muted-foreground transition-transform ${showExtras ? "rotate-180" : ""}`} />
-              </button>
-              {showExtras && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className={LABEL}>Cidade</label>
-                      <input className={INPUT} value={city} onChange={(e) => setCity(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL}>Previsão de entrega (ex: PRONTO, ago-26)</label>
-                      <input className={INPUT} value={entrega} onChange={(e) => setEntrega(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL}>Diferencial (ex: 60m do Metrô)</label>
-                      <input className={INPUT} value={diferencial} onChange={(e) => setDiferencial(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL}>Estrutura de atendimento</label>
-                      <input className={INPUT} value={estrutura} onChange={(e) => setEstrutura(e.target.value)} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className={LABEL}>Foto de capa (ficha)</label>
-                    <div className="flex items-center gap-3">
-                      <div className="w-20 h-20 rounded-xl border border-border bg-[var(--surface)] flex items-center justify-center overflow-hidden flex-shrink-0">
-                        {images[0] ? (
-                          <img src={images[0].preview} alt="Capa" className="w-full h-full object-cover" />
-                        ) : (
-                          <ImageIcon size={22} className="text-muted-foreground/40" />
-                        )}
-                      </div>
-                      <label className="h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm font-medium text-[var(--navy)] inline-flex items-center gap-2 cursor-pointer">
-                        <Upload size={14} /> {images[0] ? "Trocar foto" : "Enviar foto"}
-                        <input type="file" accept="image/*" className="hidden" onChange={handleImages} />
-                      </label>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className={LABEL}>Distâncias</label>
-                      <button
-                        onClick={addDistance}
-                        className="text-xs font-semibold text-[var(--navy)] flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface)] border border-border"
-                      >
-                        <Plus size={12} /> Adicionar
-                      </button>
-                    </div>
-                    {distances.map((d, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <select
-                          className="h-10 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm flex-shrink-0"
-                          value={d.mode}
-                          onChange={(e) => updateDistance(i, "mode", e.target.value as DistanceMode)}
-                        >
-                          <option value="carro">Carro</option>
-                          <option value="pe">A pé</option>
-                          <option value="bike">Bike</option>
-                        </select>
-                        <input
-                          className={`${INPUT} flex-1`}
-                          placeholder="Ex: Shopping Bourbon"
-                          value={d.label}
-                          onChange={(e) => updateDistance(i, "label", e.target.value)}
-                        />
-                        <input
-                          type="number"
-                          className="w-16 h-10 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm flex-shrink-0"
-                          placeholder="min"
-                          value={d.minutes || ""}
-                          onChange={(e) => updateDistance(i, "minutes", parseInt(e.target.value) || 0)}
-                        />
-                        <button onClick={() => removeDistance(i)} className="p-1.5 text-red-400 hover:text-red-600 flex-shrink-0">
-                          <X size={15} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
-                      <span className="text-sm font-medium text-[var(--navy)]">Ativo</span>
-                      <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="w-5 h-5 accent-[var(--gold)] cursor-pointer" />
-                    </label>
-                    <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
-                      <span className="text-sm font-medium text-[var(--navy)]">Tem Plantão</span>
-                      <input type="checkbox" checked={temPlantao} onChange={(e) => setTemPlantao(e.target.checked)} className="w-5 h-5 accent-[var(--gold)] cursor-pointer" />
-                    </label>
-                  </div>
-                </div>
-              )}
-            </section>
           </div>
 
         </div>
