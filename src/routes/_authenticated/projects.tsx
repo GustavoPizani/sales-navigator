@@ -92,7 +92,7 @@ const DISTANCE_MODE_LABEL: Record<DistanceMode, string> = {
 
 function headlineForEntrega(entrega?: string): string {
   if (!entrega) return "Confira esse imóvel";
-  if (entrega === "PRONTO") return "Pronto para Morar";
+  if (/pronto/i.test(entrega)) return "Pronto para Morar";
   if (entrega.toLowerCase().includes("lançamento")) return "Breve Lançamento";
   return `Entrega ${entrega}`;
 }
@@ -100,7 +100,7 @@ function headlineForEntrega(entrega?: string): string {
 function coverRibbonLabel(entrega?: string): string | null {
   if (!entrega) return null;
   const e = entrega.toLowerCase();
-  if (entrega === "PRONTO") return "PRONTO";
+  if (/pronto/i.test(entrega)) return "PRONTO";
   if (e.includes("obra")) return "EM OBRAS";
   if (e.includes("lançamento")) return "LANÇAMENTO";
   return null;
@@ -170,10 +170,18 @@ function fmtBRL(v?: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 }
 
+/** Texto do selo de status no card: sempre escrito do mesmo jeito. */
+function entregaLabel(entrega: string): string {
+  if (/pronto/i.test(entrega)) return "Pronto";
+  if (/lan[çc]amento/i.test(entrega)) return "Lançamento";
+  if (/obra/i.test(entrega)) return "Em obras";
+  return `Entrega ${entrega}`;
+}
+
 function entregaBadge(entrega?: string) {
   if (!entrega) return null;
-  if (entrega === "PRONTO") return "bg-green-100 text-green-700";
-  if (entrega.toLowerCase().includes("lançamento")) return "bg-purple-100 text-purple-700";
+  if (/pronto/i.test(entrega)) return "bg-green-100 text-green-700";
+  if (/lan[çc]amento/i.test(entrega)) return "bg-purple-100 text-purple-700";
   return "bg-amber-100 text-amber-700";
 }
 
@@ -1251,7 +1259,7 @@ function ProjectCard({
               </p>
               {rich?.entrega && (
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${entregaBadge(rich.entrega)}`}>
-                  {rich.entrega}
+                  {entregaLabel(rich.entrega)}
                 </span>
               )}
               {project.tem_plantao && (
@@ -1267,7 +1275,7 @@ function ProjectCard({
 
             <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
               <MapPin size={12} />
-              {rich?.neighborhood ?? project.city}
+              {rich?.neighborhood || project.city}
             </p>
             <p className="text-xs text-muted-foreground truncate">{project.address}</p>
 
