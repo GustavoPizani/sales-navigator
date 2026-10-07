@@ -4,6 +4,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { AuthSplash } from "@/components/AuthSplash";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -102,6 +103,10 @@ function LoginPage() {
   };
 
   const canSignup = hasUsers === false;
+
+  // Sessão salva ainda sendo conferida, ou já logado (indo para o app): não
+  // mostra o formulário, para o login não "piscar" a cada abertura.
+  if (loading || session) return <AuthSplash />;
 
   return (
     <div className="h-screen overflow-hidden flex relative" style={{ background: "#1E1E1E", color: "white" }}>

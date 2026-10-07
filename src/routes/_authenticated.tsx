@@ -2,6 +2,7 @@ import { createFileRoute, Navigate, Outlet } from "@tanstack/react-router";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { AuthSplash } from "@/components/AuthSplash";
 import { BottomNav } from "@/components/BottomNav";
 import { SIDEBAR_WIDTH, Sidebar } from "@/components/Sidebar";
 import { PushSubscriber } from "@/components/PushSubscriber";
@@ -13,7 +14,7 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   const { session, profile, loading, refreshProfile } = useAuth();
-  if (loading) return <div className="min-h-screen grid place-items-center text-muted-foreground">Carregando…</div>;
+  if (loading) return <AuthSplash />;
   if (!session) return <RedirectToLogin />;
   if (!profile) return <ProfileLoadFailed onRetry={refreshProfile} />;
   if (!profile.is_active)
