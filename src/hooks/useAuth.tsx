@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_LEVELS, type ModuleKey, type PermissionLevel } from "@/lib/modules";
@@ -52,6 +52,31 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 type Levels = Partial<Record<ModuleKey, PermissionLevel>>;
 
+// Perfil e permissões da última sessão, guardados no aparelho para o app abrir
+// na hora. São só para montar a tela: o banco confere tudo de novo em cada
+// consulta, e os dados são atualizados em segundo plano logo depois.
+const CACHE_KEY = "auth:profile-cache";
+type Cached = { profile: Profile; levels: Levels | null };
+
+function readCache(uid: string): Cached | null {
+  try {
+    const raw = window.localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as Cached;
+    return c?.profile?.id === uid ? c : null;
+  } catch {
+    return null;
+  }
+}
+function writeCache(c: Cached | null) {
+  try {
+    if (c) window.localStorage.setItem(CACHE_KEY, JSON.stringify(c));
+    else window.localStorage.removeItem(CACHE_KEY);
+  } catch {
+    /* storage indisponível */
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -59,30 +84,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [levels, setLevels] = useState<Levels | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadProfile = async (uid: string) => {
-    const { data, error } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
-    if (error) console.error("Failed to load profile:", error);
-    const base = (data as (Omit<Profile, "cargo_name"> & { cargo_id?: string | null }) | null) ?? null;
-    if (!base) {
-      setProfile(null);
-      setLevels(null);
-      return;
+  // perfil + cargo + permissões em uma única consulta
+  const fetchProfile = async (uid: string) => {
+    const { data, error } = await (supabase as any)
+      .from("profiles")
+      .select("*, cargo:cargos(name, cargo_permissions(module, level))")
+      .eq("id", uid)
+      .maybeSingle();
+    if (error) {
+      // banco sem a tabela de cargos (migration antiga): só o perfil
+      const plain = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+      if (plain.error) console.error("Failed to load profile:", plain.error);
+      return plain.data ? { ...(plain.data as object), cargo: null } : null;
     }
-    let cargoName: string | null = null;
-    let loaded: Levels | null = null;
-    if (base.cargo_id) {
-      const [{ data: cargo }, { data: perms, error: pErr }] = await Promise.all([
-        supabase.from("cargos").select("name").eq("id", base.cargo_id).maybeSingle(),
-        supabase.from("cargo_permissions").select("module, level").eq("cargo_id", base.cargo_id),
-      ]);
-      cargoName = cargo?.name ?? null;
-      if (!pErr && perms) {
-        loaded = {};
-        for (const p of perms) loaded[p.module as ModuleKey] = p.level as PermissionLevel;
+    return data;
+  };
+
+  // evita carregar o mesmo perfil duas vezes ao mesmo tempo (o Supabase avisa
+  // a sessão inicial por dois caminhos)
+  const inFlight = useRef<{ uid: string; promise: Promise<void> } | null>(null);
+  const loadProfile = (uid: string): Promise<void> => {
+    if (inFlight.current?.uid === uid) return inFlight.current.promise;
+    const promise = (async () => {
+      const row = (await fetchProfile(uid)) as
+        | (Omit<Profile, "cargo_name"> & {
+            cargo_id?: string | null;
+            cargo?: { name: string; cargo_permissions: { module: string; level: string }[] } | null;
+          })
+        | null;
+      if (!row) {
+        setProfile(null);
+        setLevels(null);
+        writeCache(null);
+        return;
       }
-    }
-    setProfile({ ...base, cargo_id: base.cargo_id ?? null, cargo_name: cargoName });
-    setLevels(loaded);
+      const { cargo, ...base } = row;
+      let loaded: Levels | null = null;
+      if (cargo?.cargo_permissions) {
+        loaded = {};
+        for (const p of cargo.cargo_permissions)
+          loaded[p.module as ModuleKey] = p.level as PermissionLevel;
+      }
+      const next: Profile = {
+        ...(base as Omit<Profile, "cargo_name">),
+        cargo_id: base.cargo_id ?? null,
+        cargo_name: cargo?.name ?? null,
+      };
+      setProfile(next);
+      setLevels(loaded);
+      writeCache({ profile: next, levels: loaded });
+    })().finally(() => {
+      if (inFlight.current?.promise === promise) inFlight.current = null;
+    });
+    inFlight.current = { uid, promise };
+    return promise;
   };
 
   useEffect(() => {
@@ -93,14 +148,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setProfile(null);
         setLevels(null);
+        writeCache(null);
       }
     });
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
-      if (data.session?.user) await loadProfile(data.session.user.id);
+      const uid = data.session?.user?.id;
+      if (uid) {
+        const cached = readCache(uid);
+        if (cached) {
+          // abre na hora com os dados guardados e atualiza em segundo plano
+          setProfile(cached.profile);
+          setLevels(cached.levels);
+          setLoading(false);
+          void loadProfile(uid);
+          return;
+        }
+        await loadProfile(uid);
+      }
       setLoading(false);
     });
     return () => sub.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isSuperAdmin = profile?.role === "admin" || profile?.role === "director";
@@ -130,7 +199,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     level,
     can,
     canSeeCheckinLog: isSuperAdmin || profile?.role === "hr",
-    signOut: async () => { await supabase.auth.signOut(); },
+    signOut: async () => {
+      writeCache(null);
+      await supabase.auth.signOut();
+    },
     refreshProfile: async () => { if (session?.user) await loadProfile(session.user.id); },
   };
 

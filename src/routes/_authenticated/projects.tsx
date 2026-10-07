@@ -278,6 +278,8 @@ function sleep(ms: number) {
 async function geminiErrorMessage(res: Response): Promise<string> {
   const body = await res.json().catch(() => null);
   const msg = body?.error?.message;
+  if (res.status === 503)
+    return "A IA do Google está sobrecarregada agora. Já tentamos algumas vezes; aguarde alguns minutos e tente de novo.";
   return msg ? `Erro ${res.status} na API Gemini: ${msg}` : `Erro ${res.status} na API Gemini`;
 }
 
@@ -300,6 +302,7 @@ function parseGeminiJson(data: any): any {
 }
 
 // Retries on 429 (rate limit) honoring the Retry-After header, with exponential backoff as fallback.
+// Also retries when the model is overloaded or briefly unavailable (500/502/503/504), a few times.
 async function fetchGemini(
   apiKey: string,
   systemPrompt: string,
@@ -321,6 +324,12 @@ async function fetchGemini(
       }),
     });
 
+    const overloaded = [500, 502, 503, 504].includes(res.status);
+    if (overloaded) {
+      if (attempt >= 4) return res;
+      await sleep(Math.min(2000 * 2 ** attempt, 20000));
+      continue;
+    }
     if (res.status !== 429 || attempt >= maxRetries) return res;
 
     const retryAfter = Number(res.headers.get("retry-after"));
