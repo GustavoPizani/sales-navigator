@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
       const payload = {
         title: `⏰ Agendamento ${label}`,
         body: `${owner?.full_name ?? "Corretor"} — ${project?.name ?? "imóvel"}`,
-        url: `/agendamentos?open=${a.id}`,
+        url: `/appointments?open=${a.id}`,
       };
 
       await sendPushToUser(managerId, payload);

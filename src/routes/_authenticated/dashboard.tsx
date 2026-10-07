@@ -18,6 +18,7 @@ import { BarChart, Bar, Tooltip, ResponsiveContainer } from "recharts";
 import { AppointmentForm } from "./appointments";
 import { PipelineBoard } from "@/components/pipeline/PipelineBoard";
 import { useDashboardLeads } from "@/hooks/useDashboardLeads";
+import { confirmDialog } from "@/components/ConfirmDialog";
 
 const STATUSES = ["Prospect", "Em Tratativa", "Proposta em Análise", "Proposta Aprovada", "Contrato Gerado", "Contrato Assinado", "Cancelada"];
 
@@ -63,8 +64,8 @@ function KpiCard({ label, value, isLoading, onClick }: { label: string; value: s
       ) : (
         <div className={`font-bold text-white mb-1 whitespace-nowrap ${valueClasses}`}>{value}</div>
       )}
-      <div className="text-[10px] sm:text-xs font-semibold text-[var(--gold)] uppercase tracking-wide leading-tight">{label}</div>
-      {onClick && <div className="text-[9px] text-white/30 mt-1 uppercase tracking-wide">ver detalhes</div>}
+      <div className="text-xs sm:text-xs font-semibold text-[var(--gold)] uppercase tracking-wide leading-tight">{label}</div>
+      {onClick && <div className="text-[11px] text-white/30 mt-1 uppercase tracking-wide">ver detalhes</div>}
     </div>
   );
 }
@@ -77,7 +78,7 @@ function KpiDetailModal({
   onItemClick,
 }: {
   title: string;
-  items: { cliente: string; corretor?: string; unidade: string; valor?: number; data?: string; idCliente?: string; debug?: string; atendimento?: any }[];
+  items: { cliente: string; corretor?: string; unidade: string; valor?: number; data?: string; idCliente?: string; atendimento?: any }[];
   onClose: () => void;
   isAdmin?: boolean;
   onItemClick?: (atendimento: any) => void;
@@ -120,9 +121,6 @@ function KpiDetailModal({
                     )}
                     {item.idCliente && (
                       <span className="text-xs text-muted-foreground">ID Cliente: <span className="font-medium text-[var(--navy)]">{item.idCliente}</span></span>
-                    )}
-                    {item.debug && (
-                      <span className="text-[10px] text-muted-foreground/70 break-all w-full">{item.debug}</span>
                     )}
                   </div>
                 </div>
@@ -323,7 +321,7 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
       <button onClick={() => setOpen(!open)} className="relative p-2 text-white/70 hover:text-white transition-colors">
         <Bell size={20} />
         {totalPending > 0 && (
-          <span className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-[var(--navy)]">
+          <span className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[11px] font-bold text-white border-2 border-[var(--navy)]">
             {totalPending}
           </span>
         )}
@@ -336,7 +334,7 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
             <div className="px-4 py-3 border-b border-border bg-[var(--surface)] flex justify-between items-center">
               <h3 className="font-semibold text-[var(--navy)] text-sm">Notificações</h3>
               {totalPending > 0 && (
-                <button onClick={handleClearAll} className="text-[10px] font-medium text-muted-foreground hover:text-[var(--navy)] underline">
+                <button onClick={handleClearAll} className="text-xs font-medium text-muted-foreground hover:text-[var(--navy)] underline">
                   Limpar tudo
                 </button>
               )}
@@ -348,7 +346,7 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
                 <>
                   {pendingVendas.length > 0 && (
                     <div className="mb-2">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase px-2 py-1 flex items-center gap-1">
+                      <p className="text-xs font-bold text-muted-foreground uppercase px-2 py-1 flex items-center gap-1">
                         <DollarSign size={10} className="text-green-600" /> Vendas para Aprovar
                       </p>
                       {pendingVendas.map((v: any) => (
@@ -358,13 +356,13 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
                               <p className="font-semibold text-[var(--navy)] text-sm truncate">
                                 {(v.atendimentos as any)?.nome_cliente || "Cliente não identificado"}
                               </p>
-                              <p className="text-[10px] text-muted-foreground truncate">
+                              <p className="text-xs text-muted-foreground truncate">
                                 {(v.profiles as any)?.full_name} · {v.produto || "Produto não informado"}
                               </p>
-                              {v.unidade && <p className="text-[10px] text-muted-foreground">Unidade: {v.unidade}</p>}
+                              {v.unidade && <p className="text-xs text-muted-foreground">Unidade: {v.unidade}</p>}
                               {v.valor && <p className="text-xs font-semibold text-green-700">{formatBRL(v.valor)}</p>}
                             </div>
-                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
                               {v.data_venda ? format(new Date(v.data_venda + "T00:00:00"), "dd/MM", { locale: ptBR }) : ""}
                             </span>
                           </div>
@@ -390,7 +388,7 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
                   )}
                   {pendingShifts.length > 0 && (
                     <div className="mb-2">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase px-2 py-1">Alterações na Escala</p>
+                      <p className="text-xs font-bold text-muted-foreground uppercase px-2 py-1">Alterações na Escala</p>
                       {pendingShifts.map(s => (
                         <button
                           key={s.id}
@@ -399,7 +397,7 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
                         >
                           <div className="flex justify-between items-start gap-2">
                             <span className="font-semibold text-[var(--navy)] text-sm truncate">{seenShifts[s.id] ? "Escala alterada" : "Novo plantão"}</span>
-                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">{format(new Date(s.date + "T00:00:00"), "dd/MM", { locale: ptBR })}</span>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">{format(new Date(s.date + "T00:00:00"), "dd/MM", { locale: ptBR })}</span>
                           </div>
                           <span className="text-xs text-muted-foreground truncate">{s.start_time.slice(0,5)} às {s.end_time.slice(0,5)}{s.notes ? ` - ${s.notes}` : ""}</span>
                         </button>
@@ -408,7 +406,7 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
                   )}
                   {pendingAppts.length > 0 && (
                     <div>
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase px-2 py-1">Atendimentos Pendentes</p>
+                      <p className="text-xs font-bold text-muted-foreground uppercase px-2 py-1">Atendimentos Pendentes</p>
                       {pendingAppts.map(a => (
                         <button
                           key={a.id}
@@ -420,7 +418,7 @@ function NotificationBell({ user, onSelect }: { user: any; onSelect: (appt: any)
                         >
                           <div className="flex justify-between items-start gap-2">
                             <span className="font-semibold text-[var(--navy)] text-sm truncate">{a.title}</span>
-                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">{format(new Date(a.date + "T00:00:00"), "dd/MM", { locale: ptBR })}</span>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">{format(new Date(a.date + "T00:00:00"), "dd/MM", { locale: ptBR })}</span>
                           </div>
                           {a.client_name && <span className="text-xs text-muted-foreground truncate">Cliente: {a.client_name}</span>}
                         </button>
@@ -485,7 +483,7 @@ function AdminDashboard({ user }: { user: any }) {
     brokerIds: filters.appliedBrokerId !== "all" ? [filters.appliedBrokerId] : undefined,
     from: filters.appliedStartDate,
     to: filters.appliedEndDate,
-    dateField: filters.filterMode === "atualizacao" ? "updated_at" : "created_at",
+    dateField: "created_at",
     enabled: !!user,
   });
 
@@ -556,7 +554,6 @@ function AdminDashboard({ user }: { user: any }) {
           valor: 0,
           data: format(new Date(v.data_visita + "T00:00:00"), "dd/MM/yyyy"),
           idCliente: v.id_cliente || undefined,
-          debug: `visita_id=${v.id} broker_id=${v.broker_id} appointment_id=${v.appointment_id}`,
           atendimento: atend,
         };
       }),
@@ -676,7 +673,7 @@ function AdminDashboard({ user }: { user: any }) {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--surface)] pb-nav overflow-hidden">
+    <div className={`h-screen flex flex-col bg-[var(--surface)] pb-nav overflow-hidden ${activeTab === "atendimentos" ? "lg:!pb-0" : ""}`}>
       <div className="flex-shrink-0">
         <AppHeader 
           title="Dashboard" 
@@ -693,17 +690,26 @@ function AdminDashboard({ user }: { user: any }) {
         />
       </div>
 
-      {/* FILTER BAR */}
-      <div className="bg-white px-4 pt-3 pb-2 border-b border-border z-20 shadow-sm flex-shrink-0">
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="px-4 py-3 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-b border-border bg-white z-10 flex-shrink-0">
+        {canCharts && <button onClick={() => setActiveTab("graficos")} className={`h-10 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "graficos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Gráficos</button>}
+        {canCharts && <button onClick={() => setActiveTab("corretores")} className={`h-10 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "corretores" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Desempenho por Corretor</button>}
+        {canLeads && <button onClick={() => setActiveTab("atendimentos")} className={`h-10 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Atendimentos</button>}
+      </div>
+
+      {/* FILTER BAR: período e corretor numa linha só, abaixo das abas.
+          Em Atendimentos o período é do próprio quadro (só vale para ganhos e perdidos). */}
+      <div className={`bg-white px-4 py-2.5 border-b border-border z-20 shadow-sm flex-shrink-0 ${activeTab === "atendimentos" && !isAdmin ? "hidden" : ""}`}>
+        <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
+          {activeTab !== "atendimentos" && (
           <DateRangePicker
             startDate={filters.startDate}
             endDate={filters.endDate}
             onApply={filters.applyDateRange}
-            className="flex-1 min-w-[220px]"
+            className="w-full sm:w-auto"
           />
+          )}
           {isAdmin && (
-          <div className="relative flex-1 min-w-[180px]">
+          <div className="relative w-full sm:w-64">
             <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="w-full h-10 px-3 rounded-lg border border-border text-sm flex items-center justify-between bg-white text-left">
               {selectedBroker ? (
                 <div className="flex items-center gap-2"><MiniAvatar name={selectedBroker.full_name} color={selectedBroker.color} /><span className="truncate">{selectedBroker.full_name}</span></div>
@@ -718,7 +724,7 @@ function AdminDashboard({ user }: { user: any }) {
                     <input 
                       type="text" 
                       placeholder="Buscar corretor..." 
-                      className="w-full h-9 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm outline-none focus:border-[var(--gold)]"
+                      className="w-full h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm outline-none focus:border-[var(--gold)]"
                       value={brokerSearch}
                       onChange={(e) => setBrokerSearch(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
@@ -738,32 +744,10 @@ function AdminDashboard({ user }: { user: any }) {
           </div>
         )}
         </div>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-xs text-muted-foreground font-medium">Data por:</span>
-          <div className="flex h-8 rounded-lg border border-border overflow-hidden text-xs font-medium">
-            <button
-              onClick={() => filters.setFilterMode("cadastro")}
-              className={`px-3 transition-colors ${filters.filterMode === "cadastro" ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground hover:bg-[var(--surface)]"}`}
-            >
-              Cadastro
-            </button>
-            <button
-              onClick={() => filters.setFilterMode("atualizacao")}
-              className={`px-3 transition-colors border-l border-border ${filters.filterMode === "atualizacao" ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground hover:bg-[var(--surface)]"}`}
-            >
-              Atualização
-            </button>
-          </div>
-        </div>
       </div>
 
-      <div className="px-4 py-3 flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-border bg-white z-10 flex-shrink-0">
-        {canCharts && <button onClick={() => setActiveTab("graficos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "graficos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Gráficos</button>}
-        {canCharts && <button onClick={() => setActiveTab("corretores")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "corretores" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Desempenho por Corretor</button>}
-        {canLeads && <button onClick={() => setActiveTab("atendimentos")} className={`h-9 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${activeTab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Atendimentos</button>}
-      </div>
-
-      <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto space-y-4">
+      {/* rolagem sem barra visível; em Atendimentos o quadro vai até a borda de baixo da janela */}
+      <div className={`px-4 pt-4 pb-4 flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${activeTab === "atendimentos" ? "lg:pb-0" : ""}`}>
         {activeTab !== "atendimentos" && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
             <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
@@ -813,9 +797,7 @@ function AdminDashboard({ user }: { user: any }) {
         {activeTab === "atendimentos" && (
           <PipelineBoard
             brokerId={filters.appliedBrokerId}
-            from={filters.appliedStartDate}
-            to={filters.appliedEndDate}
-            dateField={filters.filterMode === "atualizacao" ? "updated_at" : "created_at"}
+            fill
             title="Visão Geral dos Atendimentos"
           />
         )}
@@ -900,13 +882,18 @@ function BrokerDashboard({ user }: { user: any }) {
   const [newAppointmentData, setNewAppointmentData] = useState<any | null>(null);
   const [registrarVendaAtendimento, setRegistrarVendaAtendimento] = useState<any | null>(null);
   const [kpiModal, setKpiModal] = useState<null | "vendas" | "tratativas" | "volume" | "visitas">(null);
+  const [tab, setTab] = useState<"atendimentos" | "numeros">("atendimentos");
+  const canLeads = can("leads");
+  const canNumbers = can("dashboard");
+  const showNumbers = canNumbers && (tab === "numeros" || !canLeads);
+  const pct = (part: number, total: number) => (total > 0 ? `${Math.round((part / total) * 100)}%` : "—");
 
   // Leads do próprio corretor (RLS), no formato usado pelos KPIs.
   const { atendimentos, vendas, isPending } = useDashboardLeads({
     brokerIds: user?.id ? [user.id] : [],
     from: filters.appliedStartDate,
     to: filters.appliedEndDate,
-    dateField: filters.filterMode === "atualizacao" ? "updated_at" : "created_at",
+    dateField: "created_at",
     enabled: !!user,
   });
 
@@ -924,6 +911,20 @@ function BrokerDashboard({ user }: { user: any }) {
     },
     enabled: !!user,
   });
+
+  // Aba "Meus números": visitas do período por produto e as mais recentes.
+  const visitasPorProduto = useMemo(() => {
+    const map = new Map<string, number>();
+    visitas.forEach((v: any) => {
+      const produto = v.produto || "Sem produto";
+      map.set(produto, (map.get(produto) ?? 0) + 1);
+    });
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [visitas]);
+  const ultimasVisitas = useMemo(
+    () => [...visitas].sort((a: any, b: any) => String(b.data_visita).localeCompare(String(a.data_visita))).slice(0, 8),
+    [visitas],
+  );
 
   const dbData = useDashboardData(atendimentos, vendas, visitas);
 
@@ -954,7 +955,6 @@ function BrokerDashboard({ user }: { user: any }) {
         valor: 0,
         data: format(new Date(v.data_visita + "T00:00:00"), "dd/MM/yyyy"),
         idCliente: v.id_cliente || undefined,
-        debug: `visita_id=${v.id} broker_id=${v.broker_id} appointment_id=${v.appointment_id}`,
         atendimento: atend,
       };
     }),
@@ -974,9 +974,9 @@ function BrokerDashboard({ user }: { user: any }) {
   );
 
   return (
-    <div className="pb-nav bg-[var(--surface)] min-h-screen">
-        <AppHeader 
-          title="Dashboard" 
+    <div className="pb-nav bg-[var(--surface)] min-h-screen lg:h-screen lg:flex lg:flex-col lg:overflow-hidden lg:!pb-0">
+        <AppHeader
+          title={canLeads ? "Clientes" : "Dashboard"}
           right={<NotificationBell user={user} onSelect={(appt) => {
             setInsertPreFill({
               appointment_id: appt.id,
@@ -988,44 +988,97 @@ function BrokerDashboard({ user }: { user: any }) {
             setInsertOpen(true);
           }} />} 
         />
-      <div className="bg-white px-4 pt-3 pb-2 border-b border-border sticky top-[56px] z-20 shadow-sm">
-        <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="w-full" />
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-xs text-muted-foreground font-medium">Data por:</span>
-          <div className="flex h-8 rounded-lg border border-border overflow-hidden text-xs font-medium">
-            <button
-              onClick={() => filters.setFilterMode("cadastro")}
-              className={`px-3 transition-colors ${filters.filterMode === "cadastro" ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground hover:bg-[var(--surface)]"}`}
-            >
-              Cadastro
-            </button>
-            <button
-              onClick={() => filters.setFilterMode("atualizacao")}
-              className={`px-3 transition-colors border-l border-border ${filters.filterMode === "atualizacao" ? "bg-[var(--navy)] text-white" : "bg-white text-muted-foreground hover:bg-[var(--surface)]"}`}
-            >
-              Atualização
-            </button>
-          </div>
-        </div>
+      {/* Atendimentos e números em abas separadas: os cards não empurram a lista de clientes */}
+      <div className={`bg-white px-4 py-2.5 border-b border-border sticky top-[56px] z-20 shadow-sm lg:static lg:flex-shrink-0 flex flex-wrap items-center gap-2 ${canLeads && !canNumbers ? "hidden" : ""}`}>
+        {canLeads && canNumbers && (
+          <>
+            <button onClick={() => setTab("atendimentos")} aria-pressed={tab === "atendimentos"} className={`h-10 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${tab === "atendimentos" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Clientes</button>
+            <button onClick={() => setTab("numeros")} aria-pressed={tab === "numeros"} className={`h-10 px-4 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${tab === "numeros" ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] hover:bg-gray-100"}`}>Meus números</button>
+          </>
+        )}
+        {/* o período só vale para os números; em Atendimentos ele fica dentro do quadro */}
+        {showNumbers && (
+          <DateRangePicker startDate={filters.startDate} endDate={filters.endDate} onApply={filters.applyDateRange} className="w-full sm:w-auto sm:ml-auto" />
+        )}
       </div>
 
-      <div className="px-4 pt-4 pb-8 space-y-6">
-        {can("dashboard") && (
-        <div className="grid grid-cols-2 gap-3">
+      {/* no computador: rolagem sem barra visível e o quadro vai até a borda de baixo da janela */}
+      <div className="px-4 pt-4 pb-8 space-y-6 lg:space-y-0 lg:pb-0 lg:flex-1 lg:min-h-0 lg:flex lg:flex-col lg:gap-4 lg:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {showNumbers && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <KpiCard label="Total de Atendimentos" value={dbData.totalAtendimentos} isLoading={isPending} />
           <KpiCard label="Em Contato" value={dbData.emTratativas} isLoading={isPending} onClick={() => setKpiModal("tratativas")} />
           <KpiCard label="Total de Visitas" value={dbData.totalVisitas} isLoading={isPending} onClick={() => setKpiModal("visitas")} />
           <KpiCard label="Total de Vendas" value={dbData.totalVendas} isLoading={isPending} onClick={() => setKpiModal("vendas")} />
-          <div className="col-span-2"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} /></div>
+          <div className="col-span-2 md:col-span-1"><KpiCard label="Volume de Vendas" value={formatBRL(dbData.volumeVendas)} isLoading={isPending} onClick={() => setKpiModal("volume")} /></div>
         </div>
         )}
 
-        {can("leads") && (
+        {showNumbers && !isPending && (
+        <div className="space-y-4 lg:pb-6">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              ["Atendimentos que viraram visita", pct(dbData.totalVisitas, dbData.totalAtendimentos)],
+              ["Visitas que viraram venda", pct(dbData.totalVendas, dbData.totalVisitas)],
+            ].map(([label, value]) => (
+              <div key={label} className="bg-white rounded-2xl border border-border p-4 text-center">
+                <div className="text-2xl font-bold text-[var(--navy)]">{value}</div>
+                <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide leading-tight mt-1">{label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-2xl border border-border p-4">
+              <h3 className="text-sm font-bold text-[var(--navy)] mb-3">Visitas por produto</h3>
+              {visitasPorProduto.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">Nenhuma visita no período.</p>
+              ) : (
+                <ul className="space-y-2.5">
+                  {visitasPorProduto.map(([produto, count]) => (
+                    <li key={produto}>
+                      <div className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="truncate text-[var(--navy)]">{produto}</span>
+                        <span className="font-bold text-[var(--navy)] tabular-nums">{count}</span>
+                      </div>
+                      <div className="mt-1 h-2 rounded-full bg-[var(--surface)] overflow-hidden">
+                        <div className="h-full rounded-full bg-[var(--gold)]" style={{ width: `${(count / visitasPorProduto[0][1]) * 100}%` }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-border p-4">
+              <h3 className="text-sm font-bold text-[var(--navy)] mb-2">Últimas visitas</h3>
+              {ultimasVisitas.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">Nenhuma visita no período.</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {ultimasVisitas.map((v: any) => (
+                    <li key={v.id} className="py-2 text-sm">
+                      <p className="font-medium text-[var(--navy)] truncate">{v.produto || "Sem produto"}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {format(new Date(v.data_visita + "T00:00:00"), "dd/MM/yyyy")}
+                        {v.nome_cliente ? ` · ${v.nome_cliente}` : ""}
+                        {v.id_cliente ? ` · ID ${v.id_cliente}` : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <DashboardCharts dbData={dbData} />
+        </div>
+        )}
+
+        {canLeads && !showNumbers && (
         <PipelineBoard
-          from={filters.appliedStartDate}
-          to={filters.appliedEndDate}
-          dateField={filters.filterMode === "atualizacao" ? "updated_at" : "created_at"}
-          title="Visão Geral dos Atendimentos"
+          fill
+          title="Meus clientes"
         />
         )}
       </div>
@@ -1206,7 +1259,7 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit, onRegistra
             {selectedProjectObj?.tem_plantao && (
               <div className="flex justify-between items-center mt-2">
                 <span className="text-xs text-muted-foreground font-medium">Plantão</span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Tem Plantão</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Tem Plantão</span>
               </div>
             )}
           </div>
@@ -1240,7 +1293,7 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit, onRegistra
           </div>
 
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Temperatura</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Temperatura</label>
             <div className="grid grid-cols-3 gap-2">
               {TEMPERATURAS.map((t) => (
                 <button key={t} type="button" onClick={() => setTemperatura(temperatura === t ? "" : t)}
@@ -1252,7 +1305,7 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit, onRegistra
           </div>
 
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Status</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Status</label>
             <select className={fieldCls} value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Selecione...</option>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -1265,8 +1318,8 @@ function AtendimentoEditForm({ atendimento, onClose, onScheduleVisit, onRegistra
         <div className="px-5 pb-5 pt-3 border-t border-border flex gap-2 flex-shrink-0 items-center flex-wrap">
           {isAdmin && (
             <button
-              onClick={() => {
-                if (window.confirm("Deseja realmente excluir este atendimento?")) {
+              onClick={async () => {
+                if (await confirmDialog({ title: "Excluir este atendimento?", description: "Essa ação não pode ser desfeita.", confirmLabel: "Excluir", danger: true })) {
                   del.mutate();
                 }
               }}
@@ -1466,7 +1519,7 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
         <div className="space-y-3">
           {brokers && brokers.length > 0 && (
             <div>
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Corretor *</label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Corretor *</label>
               <select
                 className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)]"
                 value={selectedBrokerId}
@@ -1481,7 +1534,7 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
           )}
           {availableAppts.length > 0 && (
             <div>
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Puxar agendamento (opcional)</label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Puxar agendamento (opcional)</label>
               <select className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)]" value={linkedApptId} onChange={(e) => handleApptSelect(e.target.value)}>
                 <option value="">Nenhum — registro manual</option>
                 {availableAppts.map((a) => (
@@ -1512,7 +1565,7 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
           <input className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm" placeholder="Ocorrência" value={ocorrencia} onChange={(e) => setOcorrencia(e.target.value)} />
 
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Setor</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Setor</label>
             <div className="grid grid-cols-2 gap-2">
               {SETORES.map((s) => (
                 <button key={s} onClick={() => setSetor(setor === s ? "" : s)}
@@ -1535,7 +1588,7 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
           </div>
 
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Temperatura</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Temperatura</label>
             <div className="grid grid-cols-3 gap-2">
               {TEMPERATURAS.map((t) => (
                 <button key={t} onClick={() => setTemperatura(temperatura === t ? "" : t)}
@@ -1547,7 +1600,7 @@ export function AtendimentoForm({ userId, onClose, preFill, brokers }: { userId:
           </div>
 
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Status</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Status</label>
             <select className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)]" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Selecione...</option>
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -1580,10 +1633,10 @@ function BrokerPerformanceCard({ bp }: { bp: any }) {
         </div>
       </div>
       <div className="grid grid-cols-4 gap-2 text-center mb-4 pb-4 border-b border-gray-100">
-        <div><div className="text-[10px] text-muted-foreground uppercase">Atend.</div><div className="font-bold text-[var(--navy)]">{bp.total}</div></div>
-        <div><div className="text-[10px] text-muted-foreground uppercase">Visitas</div><div className="font-bold text-[var(--navy)]">{bp.visitas}</div></div>
-        <div><div className="text-[10px] text-muted-foreground uppercase">Vendas</div><div className="font-bold text-[var(--navy)]">{bp.vendas}</div></div>
-        <div><div className="text-[10px] text-muted-foreground uppercase">Conv.</div><div className="font-bold text-[var(--navy)]">{bp.conversao.toFixed(1)}%</div></div>
+        <div><div className="text-xs text-muted-foreground uppercase">Atend.</div><div className="font-bold text-[var(--navy)]">{bp.total}</div></div>
+        <div><div className="text-xs text-muted-foreground uppercase">Visitas</div><div className="font-bold text-[var(--navy)]">{bp.visitas}</div></div>
+        <div><div className="text-xs text-muted-foreground uppercase">Vendas</div><div className="font-bold text-[var(--navy)]">{bp.vendas}</div></div>
+        <div><div className="text-xs text-muted-foreground uppercase">Conv.</div><div className="font-bold text-[var(--navy)]">{bp.conversao.toFixed(1)}%</div></div>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 mb-4 text-xs">
         {Object.keys(bp.statusCounts).map(s => (
@@ -1686,7 +1739,7 @@ function RegistrarVendaModal({ atendimento, onClose }: { atendimento: any; onClo
 
         <div className="space-y-3">
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Data da Venda *</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Data da Venda *</label>
             <input
               type="date"
               className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm"
@@ -1696,7 +1749,7 @@ function RegistrarVendaModal({ atendimento, onClose }: { atendimento: any; onClo
           </div>
 
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Produto *</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Produto *</label>
             <select
               className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)]"
               value={produto}
@@ -1708,7 +1761,7 @@ function RegistrarVendaModal({ atendimento, onClose }: { atendimento: any; onClo
           </div>
 
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Unidade</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Unidade</label>
             <input
               className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm"
               placeholder="Ex: 205, Torre A Ap 12..."
@@ -1718,7 +1771,7 @@ function RegistrarVendaModal({ atendimento, onClose }: { atendimento: any; onClo
           </div>
 
           <div>
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 block">Valor da Venda (R$) *</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase mb-1 block">Valor da Venda (R$) *</label>
             <input
               className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm"
               placeholder="Ex: 450000"
@@ -1834,7 +1887,14 @@ function BackfillVisitasButton({ teamBrokerIds }: { teamBrokerIds: string[] }) {
   const [running, setRunning] = useState(false);
 
   const run = async () => {
-    if (!window.confirm("Isso vai recalcular do zero o histórico de visitas vindas do calendário (apaga o que foi vinculado a agendamentos antes e recria certo). Visitas registradas manualmente pelo fluxo normal não são afetadas. Continuar?")) return;
+    if (
+      !(await confirmDialog({
+        title: "Recalcular o histórico de visitas?",
+        description: "O histórico de visitas vindas do calendário é refeito do zero (apaga o que foi vinculado a agendamentos e recria). Visitas registradas pelo fluxo normal não são afetadas.",
+        confirmLabel: "Recalcular",
+      }))
+    )
+      return;
     setRunning(true);
     try {
       const ownerIds = [user!.id, ...teamBrokerIds];
@@ -1961,7 +2021,7 @@ function BackfillVisitasButton({ teamBrokerIds }: { teamBrokerIds: string[] }) {
     <button
       onClick={run}
       disabled={running}
-      className="h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors disabled:opacity-60"
+      className="h-10 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors disabled:opacity-60"
     >
       {running ? <Loader2 size={14} className="animate-spin" /> : <History size={14} />}
       {running ? "Recalculando..." : "Recalcular Histórico de Visitas"}
@@ -2074,7 +2134,7 @@ function CsvImportButton({ brokers }: { brokers: any[] }) {
 
   return (
     <>
-      <label className="h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors">
+      <label className="h-10 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-semibold text-sm flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface)] transition-colors">
         <Upload size={14} /> Importar CSV
         <input type="file" accept=".csv" className="hidden" onChange={handleFile} />
       </label>

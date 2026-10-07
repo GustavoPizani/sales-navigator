@@ -404,7 +404,7 @@ function PhotoSection() {
               type="button"
               onClick={() => inputRef.current?.click()}
               disabled={busy}
-              className="h-9 px-3 rounded-lg bg-[var(--navy)] text-white text-sm font-semibold disabled:opacity-50"
+              className="h-10 px-3 rounded-lg bg-[var(--navy)] text-white text-sm font-semibold disabled:opacity-50"
             >
               {upload.isPending ? "Enviando…" : profile?.avatar_url ? "Trocar foto" : "Enviar foto"}
             </button>
@@ -413,7 +413,7 @@ function PhotoSection() {
                 type="button"
                 onClick={() => removePhoto.mutate()}
                 disabled={busy}
-                className="h-9 px-3 rounded-lg bg-red-50 text-red-600 text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
+                className="h-10 px-3 rounded-lg bg-red-50 text-red-600 text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Trash2 size={14} /> Remover
               </button>

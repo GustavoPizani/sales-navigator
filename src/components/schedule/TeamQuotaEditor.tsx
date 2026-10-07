@@ -41,10 +41,10 @@ export function TeamQuotaButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-[var(--navy)] text-white font-bold text-sm"
+        className="flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-[var(--navy)] text-white font-bold text-sm"
       >
         <SlidersHorizontal size={16} />
-        <span className="hidden sm:inline">Vagas das equipes</span>
+        <span>Vagas das equipes</span>
       </button>
       {open && (
         <TeamQuotaEditor
@@ -329,7 +329,7 @@ function TeamQuotaEditor({
                                   aria-label={`${format(day, "EEEE", { locale: ptBR })} ${p.val} ${pdv.key}`}
                                 />
                                 {u > 0 && (
-                                  <div className="text-[9px] text-muted-foreground mt-0.5">
+                                  <div className="text-[11px] text-muted-foreground mt-0.5">
                                     {u} escalado{u > 1 ? "s" : ""}
                                   </div>
                                 )}

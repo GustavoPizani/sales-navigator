@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { publicSchedule, type PublicSlot } from "@/lib/publicSchedule";
 import { inviteMessage } from "@/components/team/PendingInvites";
 
@@ -104,15 +105,19 @@ function PublicSchedulePage() {
     });
   };
 
-  const removeBroker = (id: string) => {
+  const removeBroker = async (id: string) => {
     const turns = countByBroker.get(id) ?? 0;
     const label = nameById.get(id);
     if (
-      !window.confirm(
-        turns > 0
-          ? `Remover ${label}? Os ${turns} turno(s) dele(a) em todas as semanas serão liberados.`
-          : `Remover ${label} da lista?`,
-      )
+      !(await confirmDialog({
+        title: `Remover ${label}?`,
+        description:
+          turns > 0
+            ? `Os ${turns} turno(s) dele(a) em todas as semanas serão liberados.`
+            : "Ele(a) sai da lista de corretores desta escala.",
+        confirmLabel: "Remover",
+        danger: true,
+      }))
     )
       return;
     if (selectedId === id) setSelectedId(null);

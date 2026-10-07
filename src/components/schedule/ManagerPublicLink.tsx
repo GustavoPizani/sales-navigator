@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, MessageCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { publicSchedule } from "@/lib/publicSchedule";
+import { confirmDialog } from "@/components/ConfirmDialog";
 
 /**
  * Link individual do gerente (só o admin gera): o gerente abre sem login,
@@ -18,7 +19,14 @@ export function ManagerPublicLink({ managerId }: { managerId: string }) {
   const link = q.data ? `${window.location.origin}/escala/${q.data}` : "";
 
   const regenerate = async () => {
-    if (!window.confirm("Gerar um novo link? O link atual deixa de funcionar.")) return;
+    if (
+      !(await confirmDialog({
+        title: "Gerar um novo link?",
+        description: "O link atual deixa de funcionar; será preciso enviar o novo ao gerente.",
+        confirmLabel: "Gerar novo link",
+      }))
+    )
+      return;
     setBusy(true);
     try {
       const token = await publicSchedule.managerLink(managerId, true);

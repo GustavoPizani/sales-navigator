@@ -1,10 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { RequireModule } from "@/components/RequireModule";
 import { useMemo, useState, useEffect, Fragment } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { addDays, differenceInDays, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2, MessageCircle, FileDown, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Loader2, X, Link as LinkIcon, Copy, CheckCircle2, MessageCircle, FileDown, ChevronDown, MoreHorizontal, MapPinCheck, CalendarRange, CalendarDays } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,6 +15,7 @@ import { usePdvLabels, useShiftPeriods } from "@/hooks/useRoulette";
 import { TeamQuotaButton } from "@/components/schedule/TeamQuotaEditor";
 import { ScheduleLinksButton } from "@/components/schedule/ScheduleLinks";
 import { deletePendingBroker, fetchPendingForSlots, type PendingRow } from "@/lib/publicSchedule";
+import { confirmDialog } from "@/components/ConfirmDialog";
 
 export const Route = createFileRoute("/_authenticated/schedule")({
   component: SchedulePageGuarded,
@@ -32,337 +34,6 @@ type Shift = {
   id: string; broker_id: string; manager_id: string; date: string;
   start_time: string; end_time: string; notes: string | null; slot_id: string | null;
 };
-
-// ─── Groq ────────────────────────────────────────────────────────────────────
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-
-async function extractShiftsFromGroq(text: string, projectNames: string[]): Promise<{ broker_name: string; period: string; day_offset: number; project: string }[]> {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-  if (!apiKey) throw new Error("VITE_GROQ_API_KEY não configurado no .env.local");
-
-  const systemPrompt = `Você é um assistente especializado em processar dados de escalas de corretores.
-O usuário enviará o texto extraído de um arquivo CSV com a escala da semana.
-A planilha pode conter várias colunas, como o Corretor, o Turno/Período (M para Manhã, T para Tarde, etc) e os dias da semana (Segunda a Domingo).
-Seu objetivo é retornar um objeto JSON com os plantões extraídos.
-
-Retorne APENAS um objeto JSON no formato:
-{
-  "shifts": [
-    {
-      "broker_name": "NOME DO CORRETOR",
-      "period": "M ou T",
-      "day_offset": 0,
-      "project": "NOME DO PLANTÃO"
-    }
-  ]
-}
-
-Regras:
-1. day_offset: 0 para Segunda, 1 para Terça, 2 para Quarta, 3 para Quinta, 4 para Sexta, 5 para Sábado, 6 para Domingo.
-2. Ignore dias com "FOLGA" ou células vazias. Retorne apenas dias em que há um projeto/plantão definido.
-3. Se identificar projetos chamados "ONLINE", "STAND-BY", "CENTRAL" ou algo parecido, retorne "Online".
-4. Os projetos cadastrados no sistema são: ${projectNames.length > 0 ? projectNames.join(", ") : "Nenhum cadastrado"}. Tente mapear o nome do plantão para o nome exato do projeto correspondente.
-5. Retorne apenas JSON válido sem markdown ou explicações.
-6. Se o corretor estiver escalado em mais de um turno no mesmo dia (ex: Manhã e Tarde), retorne objetos separados para o mesmo day_offset.`;
-
-  const res = await fetch(GROQ_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "openai/gpt-oss-120b",
-      reasoning_effort: "low",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: text },
-      ],
-      temperature: 0.1,
-      max_tokens: 16384,
-      response_format: { type: "json_object" },
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error?.message ?? `Erro ${res.status} na API Groq`);
-  }
-
-  const data: any = await res.json();
-  const content = data.choices[0].message.content;
-  const parsed = JSON.parse(content);
-  return Array.isArray(parsed) ? parsed : (parsed.shifts ?? []);
-}
-
-function normalizeStr(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function matchBroker(name: string, brokers: any[]): any {
-  if (!name) return null;
-  const norm = normalizeStr(name);
-  if (!norm) return null;
-  
-  let match = brokers.find((b: any) => normalizeStr(b.full_name) === norm);
-  if (match) return match;
-
-  const firstName = norm.split(" ")[0];
-  match = brokers.find((b: any) => normalizeStr(b.full_name).split(" ")[0] === firstName);
-  if (match) return match;
-
-  match = brokers.find((b: any) => normalizeStr(b.full_name).includes(norm) || norm.includes(normalizeStr(b.full_name).split(" ")[0]));
-  
-  return match || null;
-}
-
-function matchProjectName(produto: string, projects: { name: string }[]): string {
-  if (!produto) return "";
-  const normP = normalizeStr(produto);
-  if (normP.includes("online") || normP.includes("on line") || normP.includes("stand by") || normP.includes("standby") || normP.includes("central")) return "Online";
-  
-  const exact = projects.find((p) => normalizeStr(p.name) === normP);
-  if (exact) return exact.name;
-  
-  const wordsA = normP.split(" ").filter((w) => w.length > 2);
-  let best = { score: 0.25, name: "" };
-  for (const p of projects) {
-    const wordsB = new Set(normalizeStr(p.name).split(" ").filter((w) => w.length > 2));
-    const common = wordsA.filter((w) => wordsB.has(w)).length;
-    const union = new Set([...wordsA, ...wordsB]).size;
-    const score = union > 0 ? common / union : 0;
-    if (score > best.score) best = { score, name: p.name };
-  }
-  return best.name;
-}
-
-function ImportScheduleButton({ brokers, currentWeekStart, onImported, managerId }: { brokers: any[]; currentWeekStart: Date; onImported: (d: Date) => void; managerId: string }) {
-  const qc = useQueryClient();
-  const { user } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
-  const [selectedWeekStart, setSelectedWeekStart] = useState<Date>(currentWeekStart);
-  const [loading, setLoading] = useState(false);
-  const [loadingMsg, setLoadingMsg] = useState("");
-  
-  const [parsedData, setParsedData] = useState<{
-    weekStart: Date;
-    shifts: any[];
-    notFound: string[];
-  } | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const projectsQ = useQuery({
-    queryKey: ["projects-active"],
-    queryFn: async () => {
-      const { data } = await supabase.from("projects").select("id,name").eq("is_active", true).order("name");
-      return (data ?? []) as { id: string; name: string }[];
-    },
-  });
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setLoading(true);
-    setLoadingMsg("Lendo arquivo...");
-    
-    try {
-      const text = await file.text();
-      setLoadingMsg("Analisando com IA...");
-      
-      const projectsList = projectsQ.data ?? [];
-      const extracted = await extractShiftsFromGroq(text, projectsList.map(p => p.name));
-
-      if (!extracted || extracted.length === 0) {
-        toast.error("Nenhum plantão encontrado no CSV.");
-        return;
-      }
-
-      const toInsert = [];
-      const notFound = new Set<string>();
-
-      for (const shift of extracted) {
-        const broker = matchBroker(shift.broker_name, brokers);
-        if (!broker) {
-          notFound.add(shift.broker_name);
-          continue;
-        }
-
-        const periodUpper = shift.period?.toUpperCase() || "";
-        const importPeriod =
-          PERIODS[periodUpper.includes("T") ? 1 : periodUpper.includes("N") || periodUpper.includes("E") ? 2 : 0];
-        const start_time = importPeriod.start;
-        const end_time = importPeriod.end;
-        const label_period = importPeriod.label;
-
-        const finalProject = matchProjectName(shift.project, projectsList);
-        if (!finalProject) continue;
-
-        toInsert.push({
-          broker_id: broker.id,
-          broker_name: broker.full_name,
-          day_offset: shift.day_offset,
-          start_time,
-          end_time,
-          label_period,
-          notes: finalProject,
-        });
-      }
-
-      setParsedData({
-        weekStart: selectedWeekStart,
-        shifts: toInsert,
-        notFound: Array.from(notFound)
-      });
-
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao importar escala");
-    } finally {
-      setLoading(false);
-      setLoadingMsg("");
-      e.target.value = "";
-    }
-  };
-
-  const handleConfirm = async () => {
-    if (!parsedData) return;
-    setSaving(true);
-    try {
-      const payload = parsedData.shifts.map(s => ({
-        broker_id: s.broker_id,
-        manager_id: managerId,
-        date: format(addDays(parsedData.weekStart, s.day_offset), "yyyy-MM-dd"),
-        start_time: s.start_time,
-        end_time: s.end_time,
-        notes: s.notes
-      }));
-      
-      const { error } = await supabase.from("shifts").insert(payload);
-      if (error) throw error;
-      toast.success(`${payload.length} plantões importados!`);
-      qc.invalidateQueries({ queryKey: ["shifts"] });
-      onImported(parsedData.weekStart);
-      setParsedData(null);
-      setIsOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao salvar plantões");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <>
-      <button onClick={() => { setSelectedWeekStart(currentWeekStart); setIsOpen(true); }} className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm cursor-pointer hover:opacity-90 transition-opacity">
-        <Upload size={16} strokeWidth={2.5} />
-        <span className="hidden sm:inline">Importar CSV</span>
-      </button>
-
-      {isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-[var(--surface)]">
-              <h3 className="font-bold text-[var(--navy)] text-lg">Importar Escala</h3>
-              <button onClick={() => { setIsOpen(false); setParsedData(null); }} className="text-muted-foreground hover:text-[var(--navy)]"><X size={20} /></button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {!parsedData ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1.5">1. Defina a data inicial da semana (Segunda-feira)</label>
-                    <input 
-                      type="date" 
-                      value={format(selectedWeekStart, "yyyy-MM-dd")} 
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          const parts = e.target.value.split('-');
-                          const localDate = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
-                          setSelectedWeekStart(startOfWeek(localDate, { weekStartsOn: 1 }));
-                        }
-                      }} 
-                      className="w-full h-11 px-3 rounded-xl bg-white border border-border text-sm text-[var(--navy)]" 
-                    />
-                    <p className="text-xs text-muted-foreground mt-1.5">Período que será importado: {format(selectedWeekStart, "dd/MM/yyyy")} até {format(addDays(selectedWeekStart, 6), "dd/MM/yyyy")}</p>
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground uppercase block mb-1.5">2. Selecione o arquivo CSV</label>
-                    <label className={`w-full h-12 rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2 text-sm text-muted-foreground hover:border-[var(--gold)] hover:text-[var(--gold)] transition-colors cursor-pointer ${loading ? "opacity-50 pointer-events-none" : ""}`}>
-                      {loading ? (
-                        <><Loader2 size={16} className="animate-spin" /> {loadingMsg}</>
-                      ) : (
-                        <><Upload size={16} /> Carregar CSV da Escala</>
-                      )}
-                      <input type="file" accept=".csv" className="hidden" onChange={handleFile} disabled={loading} />
-                    </label>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex justify-between items-center bg-[var(--surface)] p-3 rounded-xl border border-border">
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Semana selecionada</p>
-                      <p className="font-semibold text-[var(--navy)]">{format(parsedData.weekStart, "dd/MM/yyyy")} até {format(addDays(parsedData.weekStart, 6), "dd/MM/yyyy")}</p>
-                    </div>
-                  </div>
-
-                  {parsedData.notFound.length > 0 && (
-                    <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
-                      <strong>Atenção:</strong> Os seguintes corretores não foram encontrados no sistema e serão ignorados: 
-                      <span className="block mt-1 font-medium">{parsedData.notFound.join(", ")}</span>
-                    </div>
-                  )}
-
-                  <div>
-                    <h4 className="font-semibold text-[var(--navy)] mb-2">Plantões identificados ({parsedData.shifts.length})</h4>
-                    <div className="border border-border rounded-xl overflow-hidden">
-                      <table className="w-full text-sm text-left border-collapse">
-                        <thead className="bg-[var(--surface)] text-[var(--navy)] text-xs uppercase">
-                          <tr>
-                            <th className="px-3 py-2 border-b border-border">Data</th>
-                            <th className="px-3 py-2 border-b border-border">Corretor</th>
-                            <th className="px-3 py-2 border-b border-border">Turno</th>
-                            <th className="px-3 py-2 border-b border-border">Plantão</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {parsedData.shifts.length === 0 ? (
-                            <tr><td colSpan={4} className="px-3 py-4 text-center text-muted-foreground">Nenhum plantão válido encontrado no arquivo.</td></tr>
-                          ) : (
-                            parsedData.shifts.map((s, i) => {
-                              const d = addDays(parsedData.weekStart, s.day_offset);
-                              return (
-                                <tr key={i} className="hover:bg-gray-50">
-                                  <td className="px-3 py-2 whitespace-nowrap">{format(d, "dd/MM (EEE)", { locale: ptBR })}</td>
-                                  <td className="px-3 py-2 font-medium">{s.broker_name}</td>
-                                  <td className="px-3 py-2">{s.label_period}</td>
-                                  <td className="px-3 py-2 text-[var(--navy)] font-semibold">{s.notes}</td>
-                                </tr>
-                              )
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-            
-            <div className="px-5 py-4 border-t border-border bg-[var(--surface)] flex gap-2">
-              <button onClick={() => { setIsOpen(false); setParsedData(null); }} className="flex-1 h-11 rounded-xl bg-white border border-border text-[var(--navy)] font-medium">Cancelar</button>
-              {parsedData && (
-                <button onClick={handleConfirm} disabled={saving || parsedData.shifts.length === 0} className="flex-1 h-11 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold disabled:opacity-50 flex justify-center items-center gap-2">
-                  {saving ? <><Loader2 size={16} className="animate-spin" /> Salvando...</> : "Confirmar e Salvar Escala"}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
 
 const EXPORT_DAY_LABELS = ["SEGUNDA", "TERÇA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO", "DOMINGO"];
 
@@ -464,35 +135,85 @@ async function exportScheduleXlsx({ weekStart, days, brokers, shifts }: { weekSt
   URL.revokeObjectURL(url);
 }
 
-function ExportScheduleButton({ weekStart, days, brokers, shifts }: { weekStart: Date; days: Date[]; brokers: any[]; shifts: Shift[] }) {
-  const [exporting, setExporting] = useState(false);
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      await exportScheduleXlsx({ weekStart, days, brokers, shifts });
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao exportar planilha");
-    } finally {
-      setExporting(false);
+/** Vincula plantões lançados à mão às vagas da semana (mesma data e horário), para a contagem de vagas bater. */
+async function fixShiftLinks(managerId: string, qc: QueryClient) {
+  if (
+    !(await confirmDialog({
+      title: "Corrigir os vínculos das vagas?",
+      description: "Os turnos preenchidos à mão serão ligados às vagas de mesma data e horário, corrigindo a contagem de vagas disponíveis.",
+      confirmLabel: "Corrigir",
+    }))
+  )
+    return;
+  try {
+    const { data: myConfigs, error: cfgErr } = await supabase.from("shift_configs").select("id").eq("manager_id", managerId);
+    if (cfgErr) throw cfgErr;
+    const configIds = (myConfigs ?? []).map((c) => c.id);
+    if (configIds.length === 0) {
+      toast("Nenhuma escala com link gerada ainda.", { icon: "ℹ️" });
+      return;
     }
-  };
-  return (
-    <button onClick={handleExport} disabled={exporting} className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm cursor-pointer hover:bg-gray-50 transition-colors disabled:opacity-60">
-      {exporting ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} strokeWidth={2.5} />}
-      <span className="hidden sm:inline">{exporting ? "Exportando..." : "Exportar Planilha"}</span>
-    </button>
-  );
+
+    const { data: slots, error: slotsErr } = await supabase
+      .from("shift_slots")
+      .select("id, date, start_time, end_time")
+      .in("config_id", configIds);
+    if (slotsErr) throw slotsErr;
+
+    const { data: looseShifts, error: shiftsErr } = await supabase
+      .from("shifts")
+      .select("id, date, start_time, end_time")
+      .eq("manager_id", managerId)
+      .is("slot_id", null);
+    if (shiftsErr) throw shiftsErr;
+
+    const slotByKey = new Map((slots ?? []).map((s) => [`${s.date}_${s.start_time}_${s.end_time}`, s.id]));
+    const toFix = (looseShifts ?? [])
+      .map((s) => ({ id: s.id, slotId: slotByKey.get(`${s.date}_${s.start_time}_${s.end_time}`) }))
+      .filter((s): s is { id: string; slotId: string } => !!s.slotId);
+
+    if (toFix.length === 0) {
+      toast("Nenhum turno solto encontrado — tudo já está vinculado.", { icon: "✅" });
+      return;
+    }
+
+    const results = await Promise.all(
+      toFix.map((s) => supabase.from("shifts").update({ slot_id: s.slotId }).eq("id", s.id))
+    );
+    const failed = results.filter((r) => r.error);
+    if (failed.length > 0) throw failed[0].error;
+
+    qc.invalidateQueries({ queryKey: ["shifts"] });
+    toast.success(`${toFix.length} turno(s) vinculado(s) às vagas correspondentes!`);
+  } catch (err: any) {
+    toast.error(err.message || "Erro ao corrigir vínculos");
+  }
+}
+
+type Modality = "online" | "salao";
+/** Filtro de local da grade: os dois PDVs juntos ou um só. */
+type LocFilter = "all" | Modality;
+
+/** "6 – 12 de out" (ou "29 de set – 5 de out" quando a semana vira o mês). */
+function weekLabel(weekStart: Date) {
+  const end = addDays(weekStart, 6);
+  return weekStart.getMonth() === end.getMonth()
+    ? `${format(weekStart, "d")} – ${format(end, "d 'de' MMM", { locale: ptBR })}`
+    : `${format(weekStart, "d 'de' MMM", { locale: ptBR })} – ${format(end, "d 'de' MMM", { locale: ptBR })}`;
 }
 
 function SchedulePage() {
   const { isAdmin, isSuperAdmin, user } = useAuth();
+  const qc = useQueryClient();
   const pdvLabels = usePdvLabels();
   // horários dos turnos definidos pelo admin (regras de check-in)
   const shiftPeriods = useShiftPeriods();
   PERIODS = shiftPeriods.map((p) => ({ val: p.key, label: p.label, start: p.start, end: p.end }));
+  const thisWeekStr = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  // Não há mais divisão de corretores por setor: as abas são a modalidade do plantão.
-  const [modality, setModality] = useState<"online" | "salao">("online");
+  // Central e Plantão aparecem juntos na grade; o filtro só serve para isolar um local.
+  const [loc, setLoc] = useState<LocFilter>("all");
+  const [busy, setBusy] = useState<null | "export" | "fix">(null);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const startStr = format(weekStart, "yyyy-MM-dd");
   const endStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
@@ -554,21 +275,25 @@ function SchedulePage() {
         .select("id, date, start_time, end_time, capacity, config_id")
         .in("config_id", configs.map((c) => c.id));
       const modalityOf = new Map(configs.map((c) => [c.id, c.modality]));
-      return (data ?? []).map((sl) => ({ ...sl, modality: modalityOf.get(sl.config_id ?? "") ?? "online" }));
+      return (data ?? []).map((sl) => ({ ...sl, modality: (modalityOf.get(sl.config_id ?? "") === "salao" ? "salao" : "online") as Modality }));
     },
   });
   const allSlots = slotsQ.data ?? [];
-  const tabSlots = useMemo(() => (slotsQ.data ?? []).filter((sl) => sl.modality === modality), [slotsQ.data, modality]);
 
-  // Plantões da modalidade da aba: pela vaga (slot) da configuração da semana;
-  // plantões sem vaga vinculada contam como Central Online.
-  const modalityShifts = useMemo(() => {
-    const slotIds = new Set(tabSlots.map((sl) => sl.id));
+  // Local de cada plantão: o da vaga (slot) da configuração da semana; plantões
+  // sem vaga vinculada contam como Central.
+  const slotModality = useMemo(() => new Map((slotsQ.data ?? []).map((sl) => [sl.id, sl.modality])), [slotsQ.data]);
+  const teamShifts = useMemo(() => {
     const teamIds = new Set(brokers.map((b: any) => b.id));
-    return (shiftsQ.data ?? []).filter(
-      (sh) => teamIds.has(sh.broker_id) && (sh.slot_id ? slotIds.has(sh.slot_id) : modality === "online"),
-    );
-  }, [shiftsQ.data, tabSlots, modality, brokers]);
+    return (shiftsQ.data ?? []).filter((sh) => teamIds.has(sh.broker_id));
+  }, [shiftsQ.data, brokers]);
+  const gridShifts = useMemo(
+    () =>
+      loc === "all"
+        ? teamShifts
+        : teamShifts.filter((sh) => ((sh.slot_id && slotModality.get(sh.slot_id)) || "online") === loc),
+    [teamShifts, loc, slotModality],
+  );
 
   // Corretores pré-cadastrados pelo link do gerente (ainda sem usuário no app).
   const slotIdsKey = (slotsQ.data ?? []).map((sl) => sl.id).sort().join(",");
@@ -578,48 +303,79 @@ function SchedulePage() {
     queryFn: () => fetchPendingForSlots(slotIdsKey.split(",")),
   });
   const allPending = slotIdsKey ? (pendingQ.data ?? []) : [];
-  // na aba: só os plantões do PDV selecionado
   const pending = useMemo(() => {
-    const ids = new Set(tabSlots.map((sl) => sl.id));
+    if (loc === "all") return allPending;
     return allPending
-      .map((p) => ({ ...p, shifts: p.shifts.filter((ps) => ids.has(ps.slot_id)) }))
+      .map((p) => ({ ...p, shifts: p.shifts.filter((ps) => slotModality.get(ps.slot_id) === loc) }))
       .filter((p) => p.shifts.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingQ.data, slotIdsKey, tabSlots]);
+  }, [pendingQ.data, slotIdsKey, loc, slotModality]);
+
+  const runExport = async () => {
+    setBusy("export");
+    try {
+      await exportScheduleXlsx({ weekStart, days, brokers, shifts: gridShifts });
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao exportar planilha");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const runFix = async () => {
+    setBusy("fix");
+    await fixShiftLinks(managerId, qc);
+    setBusy(null);
+  };
 
   return (
     <div className="pb-nav">
       <AppHeader title={isAdmin ? "Escala" : "Minha Escala"} />
       <div className="px-4 pt-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
-            <button onClick={() => setWeekStart(addDays(weekStart, -7))} className="p-2 rounded-lg bg-white border border-border"><ChevronLeft size={18} /></button>
-            <p className="font-semibold text-[var(--navy)] text-sm sm:text-base whitespace-nowrap">{format(weekStart, "dd/MM", { locale: ptBR })} – {format(addDays(weekStart, 6), "dd/MM", { locale: ptBR })}</p>
-            <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-2 rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
+            <button onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Semana anterior" className="h-10 w-10 inline-flex items-center justify-center rounded-lg bg-white border border-border"><ChevronLeft size={18} /></button>
+            <p className="font-semibold text-[var(--navy)] text-sm sm:text-base whitespace-nowrap min-w-[8.5rem] text-center">{weekLabel(weekStart)}</p>
+            <button onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Próxima semana" className="h-10 w-10 inline-flex items-center justify-center rounded-lg bg-white border border-border"><ChevronRight size={18} /></button>
+            {startStr !== thisWeekStr && (
+              <button onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))} className="h-10 px-3 rounded-lg bg-white border border-border text-sm font-medium text-[var(--navy)]">
+                Hoje
+              </button>
+            )}
           </div>
           {isAdmin && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {isSuperAdmin && (
                 <TeamQuotaButton teams={teams} defaultManagerId={allTeams ? undefined : managerId} />
               )}
-              {!allTeams && (
-                <>
-                  <ScheduleLinksButton managerId={managerId} />
-                  <ImportScheduleButton brokers={brokers} currentWeekStart={weekStart} onImported={setWeekStart} managerId={managerId} />
-                </>
-              )}
-              <ExportScheduleButton weekStart={weekStart} days={days} brokers={brokers} shifts={modalityShifts} />
-              {!allTeams && <FixShiftLinksButton managerId={managerId} />}
+              {!allTeams && <ScheduleLinksButton managerId={managerId} />}
+              {/* ações de vez em quando ficam no menu, com nome */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button aria-label="Mais ações" className="h-10 w-10 rounded-xl bg-white border border-border text-[var(--navy)] inline-flex items-center justify-center">
+                    {busy ? <Loader2 size={16} className="animate-spin" /> : <MoreHorizontal size={18} />}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuItem disabled={busy !== null} onSelect={runExport}>
+                    <FileDown size={15} /> Exportar planilha
+                  </DropdownMenuItem>
+                  {!allTeams && (
+                    <DropdownMenuItem disabled={busy !== null} onSelect={runFix}>
+                      <LinkIcon size={15} /> Corrigir vínculos das vagas
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )}
         </div>
 
-        {isSuperAdmin && (
-          <div className="mb-3">
-            {(managersQ.data ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma equipe ainda. Cadastre os gerentes na tela Time.</p>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {isSuperAdmin &&
+              ((managersQ.data ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma equipe ainda. Cadastre os gerentes na tela Time.</p>
+              ) : (
                 <select
                   value={managerId}
                   onChange={(e) => setPickedManagerId(e.target.value)}
@@ -633,34 +389,29 @@ function SchedulePage() {
                     </option>
                   ))}
                 </select>
-                {allTeams && (
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    {teams.map((t) => (
-                      <span key={t.id} className="inline-flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.color }} /> {t.label}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {allTeams && <span className="text-[11px] text-muted-foreground">Para gerar link ou importar, escolha uma equipe.</span>}
+              ))}
+            <div className="inline-flex rounded-lg border border-border bg-white p-0.5" role="group" aria-label="Local">
+              {([["all", "Todos os locais"], ["online", pdvLabels.central], ["salao", pdvLabels.plantao]] as const).map(([m, label]) => (
+                <button
+                  key={m}
+                  onClick={() => setLoc(m)}
+                  aria-pressed={loc === m}
+                  className={`h-9 px-3 rounded-md text-sm font-medium ${loc === m ? "bg-[var(--navy)] text-white" : "text-muted-foreground"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {allTeams && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {teams.map((t) => (
+                  <span key={t.id} className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.color }} /> {t.label}
+                  </span>
+                ))}
               </div>
             )}
-          </div>
-        )}
-
-        {isAdmin && (
-          <div className="flex gap-1.5 mb-3 bg-[var(--surface)] p-1 rounded-xl w-fit">
-            {([["online", pdvLabels.central], ["salao", pdvLabels.plantao]] as const).map(([m, label]) => (
-              <button
-                key={m}
-                onClick={() => setModality(m)}
-                className={`h-9 px-4 rounded-lg text-sm font-semibold transition-colors ${
-                  modality === m ? "bg-white text-[var(--navy)] shadow-sm" : "text-muted-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+            {allTeams && <span className="text-xs text-muted-foreground w-full">Para gerar o link da escala, escolha uma equipe.</span>}
           </div>
         )}
 
@@ -668,13 +419,12 @@ function SchedulePage() {
           <AdminGrid
             days={days}
             brokers={brokers}
-            shifts={modalityShifts}
-            slots={tabSlots}
+            shifts={gridShifts}
             pending={pending}
             allSlots={allSlots}
             allShifts={shiftsQ.data ?? []}
             allPending={allPending}
-            modality={modality}
+            defaultModality={loc === "salao" ? "salao" : "online"}
             managerId={managerId}
             teams={isSuperAdmin ? teams.filter((t) => allTeams || t.id === managerId) : undefined}
           />
@@ -686,94 +436,74 @@ function SchedulePage() {
   );
 }
 
-function FixShiftLinksButton({ managerId }: { managerId: string }) {
-  const qc = useQueryClient();
-  const [running, setRunning] = useState(false);
+const periodLabel = (s: { start_time: string; end_time: string }) =>
+  PERIODS.find((p) => p.val === derivePeriod(s.start_time))?.label ?? `${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}`;
 
-  const run = async () => {
-    if (!window.confirm("Isso vai vincular turnos preenchidos manualmente às vagas de link correspondentes (mesma data e horário), corrigindo a contagem de vagas disponíveis. Continuar?")) return;
-    setRunning(true);
-    try {
-      const { data: myConfigs, error: cfgErr } = await supabase.from("shift_configs").select("id").eq("manager_id", managerId);
-      if (cfgErr) throw cfgErr;
-      const configIds = (myConfigs ?? []).map((c) => c.id);
-      if (configIds.length === 0) {
-        toast("Nenhuma escala com link gerada ainda.", { icon: "ℹ️" });
-        return;
-      }
-
-      const { data: slots, error: slotsErr } = await supabase
-        .from("shift_slots")
-        .select("id, date, start_time, end_time")
-        .in("config_id", configIds);
-      if (slotsErr) throw slotsErr;
-
-      const { data: looseShifts, error: shiftsErr } = await supabase
-        .from("shifts")
-        .select("id, date, start_time, end_time")
-        .eq("manager_id", managerId)
-        .is("slot_id", null);
-      if (shiftsErr) throw shiftsErr;
-
-      const slotByKey = new Map((slots ?? []).map((s) => [`${s.date}_${s.start_time}_${s.end_time}`, s.id]));
-      const toFix = (looseShifts ?? [])
-        .map((s) => ({ id: s.id, slotId: slotByKey.get(`${s.date}_${s.start_time}_${s.end_time}`) }))
-        .filter((s): s is { id: string; slotId: string } => !!s.slotId);
-
-      if (toFix.length === 0) {
-        toast("Nenhum turno solto encontrado — tudo já está vinculado.", { icon: "✅" });
-        return;
-      }
-
-      const results = await Promise.all(
-        toFix.map((s) => supabase.from("shifts").update({ slot_id: s.slotId }).eq("id", s.id))
-      );
-      const failed = results.filter((r) => r.error);
-      if (failed.length > 0) throw failed[0].error;
-
-      qc.invalidateQueries({ queryKey: ["shifts"] });
-      toast.success(`${toFix.length} turno(s) vinculado(s) às vagas correspondentes!`);
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao corrigir vínculos");
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  return (
-    <button
-      onClick={run}
-      disabled={running}
-      className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm cursor-pointer hover:bg-gray-50 transition-colors disabled:opacity-60"
-    >
-      {running ? <Loader2 size={16} className="animate-spin" /> : <LinkIcon size={16} strokeWidth={2.5} />}
-      <span className="hidden sm:inline">{running ? "Corrigindo..." : "Corrigir Vínculos"}</span>
-    </button>
-  );
-}
-
+/** Minha Escala (corretor): o próximo plantão em destaque e a semana, com hoje marcado. */
 function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
+  const now = new Date();
+  const todayStr = format(now, "yyyy-MM-dd");
+  const tomorrowStr = format(addDays(now, 1), "yyyy-MM-dd");
+  const sorted = [...shifts].sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`));
+  // próximo plantão que ainda não terminou
+  const next = sorted.find((s) => new Date(`${s.date}T${s.end_time.slice(0, 5)}:00`).getTime() > now.getTime());
+  const dayName = (ds: string) =>
+    ds === todayStr ? "Hoje" : ds === tomorrowStr ? "Amanhã" : format(new Date(`${ds}T00:00:00`), "EEEE, d 'de' MMM", { locale: ptBR });
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 max-w-2xl mx-auto">
+      {next && (
+        <div className="bg-[var(--navy)] text-white rounded-2xl p-4">
+          <p className="text-xs uppercase tracking-wide text-white/60">Próximo plantão</p>
+          <p className="text-lg font-bold mt-0.5 first-letter:uppercase">{dayName(next.date)}</p>
+          <p className="text-sm text-white/85">
+            {periodLabel(next)} · {next.start_time.slice(0, 5)}–{next.end_time.slice(0, 5)} · {next.notes || "Central"}
+          </p>
+          {next.date === todayStr && (
+            <Link
+              to="/checkin"
+              className="mt-3 h-11 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm inline-flex items-center justify-center gap-2 w-full"
+            >
+              <MapPinCheck size={16} /> Ir para o check-in
+            </Link>
+          )}
+        </div>
+      )}
+      {shifts.length === 0 && (
+        <p className="bg-white rounded-xl border border-border p-4 text-sm text-muted-foreground text-center">
+          Você não tem plantão nesta semana.
+        </p>
+      )}
       {days.map((d) => {
         const ds = format(d, "yyyy-MM-dd");
-        const my = shifts.filter((s) => s.date === ds);
+        const my = sorted.filter((s) => s.date === ds);
+        const isToday = ds === todayStr;
+        const label = (
+          <p className={`text-xs uppercase tracking-wide ${isToday ? "font-bold text-[var(--gold-dark)]" : "text-muted-foreground"}`}>
+            {format(d, "EEE, d 'de' MMM", { locale: ptBR })}
+            {isToday && " · hoje"}
+          </p>
+        );
+        // dia sem plantão: uma linha só
+        if (my.length === 0)
+          return (
+            <div key={ds} className={`flex items-center justify-between rounded-xl px-3 py-2 border ${isToday ? "bg-white border-[var(--gold)]" : "border-transparent"}`}>
+              {label}
+              <span className="text-xs text-muted-foreground">Sem plantão</span>
+            </div>
+          );
         return (
-          <div key={ds} className="bg-white rounded-xl p-3 border border-border">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">{format(d, "EEE, d 'de' MMM", { locale: ptBR })}</p>
-            {my.length === 0 ? (
-              <p className="text-sm text-muted-foreground mt-1">Sem turno</p>
-            ) : (
-              my.map((s) => (
-                <div key={s.id} className="mt-1.5">
-                  <p className="font-semibold text-[var(--navy)]">
-                    {derivePeriod(s.start_time) === "manha" ? "Manhã" : (derivePeriod(s.start_time) === "tarde" ? "Tarde" : "Noite")}
-                    <span className="font-normal text-muted-foreground text-xs ml-1.5">({s.start_time.slice(0,5)} – {s.end_time.slice(0,5)})</span>
-                  </p>
-                  <p className="text-xs text-[var(--gold)] font-semibold mt-0.5">{s.notes || "Central Online"}</p>
-                </div>
-              ))
-            )}
+          <div key={ds} className={`bg-white rounded-xl p-3 border ${isToday ? "border-[var(--gold)]" : "border-border"}`}>
+            {label}
+            {my.map((s) => (
+              <div key={s.id} className="mt-1.5">
+                <p className="font-semibold text-[var(--navy)]">
+                  {periodLabel(s)}
+                  <span className="font-normal text-muted-foreground text-xs ml-1.5">({s.start_time.slice(0,5)} – {s.end_time.slice(0,5)})</span>
+                </p>
+                <p className="text-xs text-[var(--gold-dark)] font-semibold mt-0.5">{s.notes || "Central"}</p>
+              </div>
+            ))}
           </div>
         );
       })}
@@ -781,22 +511,41 @@ function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
   );
 }
 
-type GridSlot = { id: string; date: string; start_time: string; end_time: string; capacity: number };
+type GridSlot = { id: string; date: string; start_time: string; end_time: string; capacity: number; modality: Modality };
+type Team = { id: string; label: string; color: string };
+type PeriodVal = "manha" | "tarde" | "noite";
 
-function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts, allPending, modality, managerId, teams }: { days: Date[]; brokers: any[]; shifts: Shift[]; slots: GridSlot[]; pending: PendingRow[]; /** os dois PDVs: o total de vagas do turno vale para Central + Plantão */ allSlots: GridSlot[]; allShifts: Shift[]; allPending: PendingRow[]; modality: "online" | "salao"; managerId: string; teams?: { id: string; label: string; color: string }[] }) {
+/**
+ * Grade da semana (admin e gerente), com Central e Plantão juntos. No
+ * computador, uma tabela por turno; no celular, um dia por vez.
+ */
+function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPending, defaultModality, managerId, teams }: { days: Date[]; brokers: any[]; /** plantões exibidos (já com o filtro de local) */ shifts: Shift[]; pending: PendingRow[]; /** os dois PDVs: o total de vagas do turno vale para Central + Plantão */ allSlots: GridSlot[]; allShifts: Shift[]; allPending: PendingRow[]; /** local sugerido ao escalar alguém */ defaultModality: Modality; managerId: string; teams?: Team[] }) {
+  const labels = usePdvLabels();
   // Visão do admin: corretores agrupados por equipe, plantões na cor do gerente.
   const teamById = useMemo(() => new Map((teams ?? []).map((t) => [t.id, t])), [teams]);
   const groups = useMemo(() => {
-    if (!teams) return [{ team: null as null | { id: string; label: string; color: string }, brokers, pending }];
-    const list = teams.map((t) => ({ team: t as null | { id: string; label: string; color: string }, brokers: brokers.filter((b) => b.manager_id === t.id), pending: pending.filter((p) => p.manager_id === t.id) }));
+    if (!teams) return [{ team: null as null | Team, brokers, pending }];
+    const list = teams.map((t) => ({ team: t as null | Team, brokers: brokers.filter((b) => b.manager_id === t.id), pending: pending.filter((p) => p.manager_id === t.id) }));
     const others = brokers.filter((b) => !teamById.has(b.manager_id));
     if (others.length) list.push({ team: null, brokers: others, pending: [] });
     return list.filter((g) => g.brokers.length > 0 || g.pending.length > 0);
   }, [teams, brokers, teamById, pending]);
   const qc = useQueryClient();
-  const slotById = useMemo(() => new Map(slots.map((sl) => [sl.id, sl])), [slots]);
+  const slotById = useMemo(() => new Map(allSlots.map((sl) => [sl.id, sl])), [allSlots]);
+  const modalityOf = (sh: Shift): Modality => (sh.slot_id && slotById.get(sh.slot_id)?.modality) || "online";
+  // o que aparece no plantão: o local, e no Plantão o nome dele quando houver
+  const shiftLabel = (sh: Shift) => (modalityOf(sh) === "salao" ? sh.notes || "Plantão" : "Central");
+  const shiftTitle = (sh: Shift) => `${modalityOf(sh) === "salao" ? labels.plantao : labels.central}${sh.notes ? ` · ${sh.notes}` : ""}`;
   const removePending = async (p: PendingRow) => {
-    if (!window.confirm(`Remover ${p.full_name} (sem cadastro) e liberar os turnos dele(a)?`)) return;
+    if (
+      !(await confirmDialog({
+        title: `Remover ${p.full_name}?`,
+        description: "Ele(a) ainda não tem cadastro. Os turnos em que foi escalado(a) serão liberados.",
+        confirmLabel: "Remover",
+        danger: true,
+      }))
+    )
+      return;
     try {
       await deletePendingBroker(p.id);
       qc.invalidateQueries({ queryKey: ["pending-shifts"] });
@@ -805,12 +554,11 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
     }
   };
   const chipColor = (b: any) => (teams ? teamById.get(b.manager_id)?.color ?? "#A8A8A8" : b.color);
-  const [editing, setEditing] = useState<{ broker: any; date: string; shift?: Shift; initialPeriod?: "manha" | "tarde" | "noite" } | null>(null);
+  const [editing, setEditing] = useState<{ broker: any; date: string; shift?: Shift; initialPeriod?: PeriodVal } | null>(null);
   const [closed, setClosed] = useState<Record<string, boolean>>({});
-  const brokerIds = useMemo(() => new Set(brokers.map((b) => b.id)), [brokers]);
   // Vagas restantes do turno: o total vale para os dois PDVs somados (o gerente
   // escolhe o PDV de cada corretor), então conta Central + Plantão.
-  const remainingFor = (ds: string, periodVal: "manha" | "tarde" | "noite") => {
+  const remainingFor = (ds: string, periodVal: PeriodVal) => {
     const matching = allSlots.filter((s) => s.date === ds && derivePeriod(s.start_time) === periodVal);
     const capacity = matching.reduce((sum, s) => sum + s.capacity, 0);
     if (capacity === 0) return null;
@@ -819,17 +567,159 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
     const occupiedPending = allPending.reduce((sum, pb) => sum + pb.shifts.filter((ps) => ids.has(ps.slot_id)).length, 0);
     return Math.max(0, capacity - occupied - occupiedPending);
   };
+  const remainingText = (rem: number | null) => (rem === null ? "sem vagas" : `${rem} livre${rem === 1 ? "" : "s"}`);
+  const remainingCls = (rem: number | null) => (rem === null ? "text-muted-foreground/60" : rem === 0 ? "text-red-600" : "text-green-700");
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const noBrokers = brokers.length === 0 && pending.length === 0;
+  // total de plantões de cada corretor na semana (para equilibrar a escala)
+  const weekTotal = useMemo(() => {
+    const m = new Map<string, number>();
+    shifts.forEach((s) => m.set(s.broker_id, (m.get(s.broker_id) ?? 0) + 1));
+    return m;
+  }, [shifts]);
+  const shiftOf = (brokerId: string, ds: string, per: PeriodVal) =>
+    shifts.find((x) => x.broker_id === brokerId && x.date === ds && derivePeriod(x.start_time) === per);
+  const pendingHas = (p: PendingRow, ds: string, per: PeriodVal) =>
+    p.shifts.some((ps) => {
+      const sl = slotById.get(ps.slot_id);
+      return sl && sl.date === ds && derivePeriod(sl.start_time) === per;
+    });
+  const shortName = (name: string) => name.split(" ").slice(0, 2).join(" ");
 
-  // Uma seção por turno (Manhã, Tarde, Noite); dentro, as equipes e seus corretores.
+  // computador: semana inteira ou um dia; celular: sempre um dia
+  const [view, setView] = useState<"week" | "day">("week");
+  // visão por dia: abre em hoje, quando hoje está na semana
+  const dayStrs = days.map((d) => format(d, "yyyy-MM-dd"));
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
+  const mobileDay = pickedDay && dayStrs.includes(pickedDay) ? pickedDay : dayStrs.includes(todayStr) ? todayStr : dayStrs[0];
+
   return (
     <>
       {noBrokers && (
         <p className="text-center text-sm text-muted-foreground py-6">Adicione corretores na aba Time.</p>
       )}
+
+      {/* no computador dá para alternar; no celular é sempre por dia */}
       {!noBrokers && (
-        <div className="space-y-4">
+        <div className="hidden sm:inline-flex rounded-lg border border-border bg-white p-0.5 mb-3" role="group" aria-label="Visualização">
+          {([["week", "Semana", CalendarRange], ["day", "Dia", CalendarDays]] as const).map(([key, label, Icon]) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              aria-pressed={view === key}
+              className={`h-9 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5 ${view === key ? "bg-[var(--navy)] text-white" : "text-muted-foreground"}`}
+            >
+              <Icon size={15} /> {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Por dia: escolhe o dia e vê cada turno com quem está escalado ── */}
+      {!noBrokers && (
+        <div className={`space-y-3 ${view === "day" ? "" : "sm:hidden"}`}>
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
+            {days.map((d) => {
+              const ds = format(d, "yyyy-MM-dd");
+              const active = ds === mobileDay;
+              return (
+                <button
+                  key={ds}
+                  onClick={() => setPickedDay(ds)}
+                  aria-pressed={active}
+                  className={`h-14 rounded-xl text-center border ${active ? "bg-[var(--navy)] text-white border-[var(--navy)]" : ds === todayStr ? "bg-white border-[var(--gold)] text-[var(--navy)]" : "bg-white border-border text-[var(--navy)]"}`}
+                >
+                  <span className="block text-[11px] capitalize opacity-70">{format(d, "EEEEEE", { locale: ptBR })}</span>
+                  <span className="block text-base font-bold leading-tight">{format(d, "d")}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-3 lg:gap-3 lg:items-start">
+          {PERIODS.map((per) => {
+            const rem = remainingFor(mobileDay, per.val);
+            const scheduled = groups.flatMap((g) =>
+              g.brokers
+                .map((b) => ({ broker: b, shift: shiftOf(b.id, mobileDay, per.val), team: g.team }))
+                .filter((x): x is { broker: any; shift: Shift; team: null | Team } => !!x.shift),
+            );
+            const pend = groups.flatMap((g) => g.pending.filter((p) => pendingHas(p, mobileDay, per.val)));
+            const free = groups
+              .map((g) => ({ team: g.team, brokers: g.brokers.filter((b) => !shiftOf(b.id, mobileDay, per.val)) }))
+              .filter((g) => g.brokers.length > 0);
+            return (
+              <section key={per.val} className="bg-white rounded-2xl border border-border overflow-hidden">
+                <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-[var(--navy)] text-white">
+                  <span className="font-bold">
+                    {per.label} <span className="font-normal text-white/70 text-sm">{per.start}–{per.end}</span>
+                  </span>
+                  <span className="text-xs text-white/85">{remainingText(rem)}</span>
+                </div>
+                <ul className="divide-y divide-border">
+                  {scheduled.length === 0 && pend.length === 0 && (
+                    <li className="px-4 py-3 text-sm text-muted-foreground">Ninguém escalado.</li>
+                  )}
+                  {scheduled.map(({ broker: b, shift: sh }) => (
+                    <li key={sh.id}>
+                      <button
+                        onClick={() => setEditing({ broker: b, date: mobileDay, shift: sh })}
+                        className="w-full px-4 py-2.5 flex items-center gap-3 text-left"
+                      >
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: chipColor(b) }} />
+                        <span className="flex-1 min-w-0 font-medium text-[var(--navy)] truncate">{b.full_name}</span>
+                        <span className="text-xs text-muted-foreground truncate max-w-[45%]">{shiftTitle(sh)}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {pend.map((p) => (
+                    <li key={p.id} className="px-4 py-2.5 flex items-center gap-3">
+                      <span className="w-3 h-3 rounded-full border border-dashed border-muted-foreground flex-shrink-0" />
+                      <span className="flex-1 min-w-0 font-medium text-[var(--navy)] truncate">{p.full_name}</span>
+                      <span className="text-xs text-muted-foreground">sem cadastro</span>
+                      <button onClick={() => removePending(p)} aria-label={`Remover ${p.full_name}`} className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-600">
+                        <X size={15} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {free.length > 0 && (
+                  <div className="p-3 border-t border-border">
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const b = brokers.find((x) => x.id === e.target.value);
+                        if (b) setEditing({ broker: b, date: mobileDay, initialPeriod: per.val });
+                      }}
+                      aria-label={`Escalar corretor em ${per.label}`}
+                      className="w-full h-11 px-3 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)] font-medium"
+                    >
+                      <option value="">+ Escalar corretor…</option>
+                      {free.map((g) =>
+                        teams ? (
+                          <optgroup key={g.team?.id ?? "sem"} label={`Equipe ${g.team?.label ?? "sem gerente"}`}>
+                            {g.brokers.map((b) => (
+                              <option key={b.id} value={b.id}>{b.full_name}</option>
+                            ))}
+                          </optgroup>
+                        ) : (
+                          g.brokers.map((b) => (
+                            <option key={b.id} value={b.id}>{b.full_name}</option>
+                          ))
+                        ),
+                      )}
+                    </select>
+                  </div>
+                )}
+              </section>
+            );
+          })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Semana (computador): uma seção por turno; dentro, as equipes e seus corretores ── */}
+      {!noBrokers && (
+        <div className={`space-y-4 ${view === "week" ? "hidden sm:block" : "hidden"}`}>
           {PERIODS.map((per) => {
             const isClosed = closed[per.val] ?? false;
             const periodTotal = days.reduce((sum, d) => sum + (remainingFor(format(d, "yyyy-MM-dd"), per.val) ?? 0), 0);
@@ -853,8 +743,8 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
                     <table className="min-w-full text-xs border-collapse">
                       <thead>
                         <tr className="bg-[var(--surface)]">
-                          <th className="sticky left-0 z-10 bg-[var(--surface)] text-left px-3 py-2 font-semibold text-muted-foreground border-b border-border min-w-[120px]">
-                            Corretor
+                          <th className="sticky left-0 z-10 bg-[var(--surface)] text-left px-3 py-2 font-semibold text-muted-foreground border-b border-border min-w-[150px]">
+                            Corretor <span className="font-normal">· plantões na semana</span>
                           </th>
                           {days.map((d) => {
                             const ds = format(d, "yyyy-MM-dd");
@@ -862,12 +752,10 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
                             return (
                               <th
                                 key={ds}
-                                className={`px-1 py-2 text-center font-semibold border-b border-l border-border min-w-[72px] ${ds === todayStr ? "text-[var(--gold-dark)]" : "text-[var(--navy)]"}`}
+                                className={`px-1 py-2 text-center font-semibold border-b border-l border-border min-w-[84px] ${ds === todayStr ? "bg-[var(--gold)]/15 text-[var(--gold-dark)]" : ds < todayStr ? "text-muted-foreground" : "text-[var(--navy)]"}`}
                               >
-                                <div className="capitalize">{format(d, "EEE d", { locale: ptBR })}</div>
-                                <div className={`text-[10px] font-normal ${rem === null ? "text-muted-foreground/50" : rem === 0 ? "text-red-600" : "text-green-700"}`}>
-                                  {rem === null ? "sem vagas" : `${rem} livre${rem === 1 ? "" : "s"}`}
-                                </div>
+                                <div className="capitalize">{format(d, "EEE d", { locale: ptBR })}{ds === todayStr && " · hoje"}</div>
+                                <div className={`text-[11px] font-normal ${remainingCls(rem)}`}>{remainingText(rem)}</div>
                               </th>
                             );
                           })}
@@ -893,30 +781,36 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
                                 <td className="sticky left-0 z-10 bg-white px-3 py-1.5 border-b border-border">
                                   <div className="flex items-center gap-1.5">
                                     <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: b.color }} />
-                                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{b.full_name.split(" ").slice(0, 2).join(" ")}</span>
+                                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{shortName(b.full_name)}</span>
+                                    <span
+                                      className="ml-auto text-[11px] font-bold tabular-nums rounded-full bg-[var(--surface)] text-[var(--navy)] px-1.5 py-0.5"
+                                      title={`${weekTotal.get(b.id) ?? 0} plantão(ões) na semana`}
+                                    >
+                                      {weekTotal.get(b.id) ?? 0}
+                                    </span>
                                   </div>
                                 </td>
                                 {days.map((d) => {
                                   const ds = format(d, "yyyy-MM-dd");
-                                  const sh = shifts.find((x) => x.broker_id === b.id && x.date === ds && derivePeriod(x.start_time) === per.val);
+                                  const sh = shiftOf(b.id, ds, per.val);
                                   return (
-                                    <td key={ds} className="p-1 border-b border-l border-border text-center align-middle">
+                                    <td key={ds} className={`p-1 border-b border-l border-border text-center align-middle ${ds === todayStr ? "bg-[var(--gold)]/5" : ""}`}>
                                       {sh ? (
                                         <button
                                           onClick={() => setEditing({ broker: b, date: ds, shift: sh })}
-                                          className="w-full h-9 rounded-lg px-1 text-[10px] font-semibold text-white truncate hover:opacity-90"
+                                          className="w-full h-9 rounded-lg px-1 text-[11px] font-semibold text-white truncate hover:opacity-90"
                                           style={{ background: chipColor(b) }}
-                                          title={sh.notes || "Central"}
+                                          title={shiftTitle(sh)}
                                         >
-                                          {sh.notes || "Central"}
+                                          {shiftLabel(sh)}
                                         </button>
                                       ) : (
                                         <button
                                           onClick={() => setEditing({ broker: b, date: ds, initialPeriod: per.val })}
-                                          className="w-full h-9 rounded-lg flex items-center justify-center text-muted-foreground/60 border border-dashed border-border hover:bg-[var(--surface)] hover:text-[var(--navy)]"
+                                          className="w-full h-9 rounded-lg flex items-center justify-center text-transparent hover:text-[var(--navy)] hover:bg-[var(--surface)] focus-visible:text-[var(--navy)]"
                                           aria-label={`Escalar ${b.full_name} em ${per.label}`}
                                         >
-                                          <Plus size={13} />
+                                          <Plus size={14} />
                                         </button>
                                       )}
                                     </td>
@@ -929,27 +823,24 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
                                 <td className="sticky left-0 z-10 bg-white px-3 py-1.5 border-b border-border">
                                   <div className="flex items-center gap-1.5" title={`${p.full_name} — preenchido pelo link do gerente, ainda sem cadastro`}>
                                     <span className="w-2.5 h-2.5 rounded-full border border-dashed border-muted-foreground flex-shrink-0" />
-                                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{p.full_name.split(" ").slice(0, 2).join(" ")}</span>
-                                    <span className="text-[9px] text-muted-foreground whitespace-nowrap">sem cadastro</span>
-                                    <button onClick={() => removePending(p)} aria-label={`Remover ${p.full_name}`} className="text-muted-foreground hover:text-red-600">
-                                      <X size={11} />
+                                    <span className="font-medium text-[var(--navy)] whitespace-nowrap">{shortName(p.full_name)}</span>
+                                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">sem cadastro</span>
+                                    <button onClick={() => removePending(p)} aria-label={`Remover ${p.full_name}`} className="ml-auto h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50">
+                                      <X size={13} />
                                     </button>
                                   </div>
                                 </td>
                                 {days.map((d) => {
                                   const ds = format(d, "yyyy-MM-dd");
-                                  const has = p.shifts.some((ps) => {
-                                    const sl = slotById.get(ps.slot_id);
-                                    return sl && sl.date === ds && derivePeriod(sl.start_time) === per.val;
-                                  });
                                   return (
-                                    <td key={ds} className="p-1 border-b border-l border-border text-center align-middle">
-                                      {has && (
+                                    <td key={ds} className={`p-1 border-b border-l border-border text-center align-middle ${ds === todayStr ? "bg-[var(--gold)]/5" : ""}`}>
+                                      {pendingHas(p, ds, per.val) && (
                                         <div
-                                          className="w-full h-9 rounded-lg flex items-center justify-center text-[10px] font-semibold border border-dashed"
+                                          className="w-full h-9 rounded-lg flex items-center justify-center text-[11px] font-semibold border border-dashed"
                                           style={{ borderColor: g.team?.color ?? "#A8A8A8", color: g.team?.color ?? "#6B6B6B" }}
+                                          title="Escalado pelo link, ainda sem cadastro"
                                         >
-                                          pré
+                                          escalado
                                         </div>
                                       )}
                                     </td>
@@ -971,7 +862,7 @@ function AdminGrid({ days, brokers, shifts, slots, pending, allSlots, allShifts,
       {editing && (
         <ShiftEditor
           {...editing}
-          modality={modality}
+          initialModality={editing.shift ? modalityOf(editing.shift) : defaultModality}
           managerId={managerId === "all" ? editing.broker.manager_id : managerId}
           onClose={() => setEditing(null)}
         />
@@ -1001,8 +892,11 @@ function derivePeriod(startTime?: string): "manha" | "tarde" | "noite" | null {
   return best.val;
 }
 
-function ShiftEditor({ broker, date, shift, initialPeriod, modality, managerId, onClose }: { broker: any; date: string; shift?: Shift; initialPeriod?: "manha" | "tarde" | "noite"; modality: "online" | "salao"; managerId: string; onClose: () => void }) {
+function ShiftEditor({ broker, date, shift, initialPeriod, initialModality, managerId, onClose }: { broker: any; date: string; shift?: Shift; initialPeriod?: "manha" | "tarde" | "noite"; /** local do plantão ao abrir (Central ou Plantão); dá para trocar aqui */ initialModality: Modality; managerId: string; onClose: () => void }) {
   const qc = useQueryClient();
+  const pdvLabels = usePdvLabels();
+  const [modality, setModality] = useState<Modality>(initialModality);
+  const isPast = date < format(new Date(), "yyyy-MM-dd");
   const [period, setPeriod] = useState<"manha" | "tarde" | "noite" | null>(derivePeriod(shift?.start_time) ?? initialPeriod ?? null);
   const [plantao, setPlantao] = useState(shift?.notes ?? "");
 
@@ -1074,6 +968,26 @@ function ShiftEditor({ broker, date, shift, initialPeriod, modality, managerId, 
           <span className="w-3 h-3 rounded-full" style={{ background: broker.color }} />{broker.full_name}
         </h3>
         <div className="space-y-4">
+          {isPast && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Este dia já passou: a mudança altera o histórico da escala.
+            </p>
+          )}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Local</p>
+            <div className="grid grid-cols-2 gap-2">
+              {([["online", pdvLabels.central], ["salao", pdvLabels.plantao]] as const).map(([m, label]) => (
+                <button
+                  key={m}
+                  onClick={() => setModality(m)}
+                  aria-pressed={modality === m}
+                  className={`h-12 px-2 rounded-xl font-semibold text-sm transition-colors truncate ${modality === m ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Período</p>
             <div className="grid grid-cols-3 gap-2">
@@ -1084,7 +998,7 @@ function ShiftEditor({ broker, date, shift, initialPeriod, modality, managerId, 
                   className={`h-12 rounded-xl font-semibold text-sm transition-colors ${period === p.val ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}
                 >
                   {p.label}
-                  <span className="block text-[10px] font-normal opacity-70">{p.start} – {p.end}</span>
+                  <span className="block text-xs font-normal opacity-70">{p.start} – {p.end}</span>
                 </button>
               ))}
             </div>

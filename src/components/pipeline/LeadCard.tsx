@@ -31,7 +31,7 @@ export function LeadCard({ lead, isDragging = false }: { lead: Lead; isDragging?
             <p className="font-semibold text-[var(--navy)] text-sm leading-tight truncate">
               {lead.full_name}
             </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+            <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
               <CalendarIcon className="h-2.5 w-2.5" />
               {format(new Date(lead.created_at), "dd/MM/yy")}
               {lead.client_code && (
@@ -76,12 +76,12 @@ export function LeadCard({ lead, isDragging = false }: { lead: Lead; isDragging?
           {lead.broker && (
             <div className="flex items-center gap-1.5 flex-shrink-0 min-w-0">
               <div
-                className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white uppercase flex-shrink-0"
+                className="h-5 w-5 rounded-full flex items-center justify-center text-[11px] font-bold text-white uppercase flex-shrink-0"
                 style={{ backgroundColor: lead.broker.color }}
               >
                 {lead.broker.full_name.charAt(0)}
               </div>
-              <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
+              <span className="text-xs text-muted-foreground truncate max-w-[80px]">
                 {lead.broker.full_name}
               </span>
             </div>
@@ -96,24 +96,24 @@ export function LeadBadges({ lead }: { lead: Pick<Lead, "status" | "temperatura"
   return (
     <>
       {lead.status === "won" && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
           Ganho
         </span>
       )}
       {lead.status === "lost" && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
           Perdido
         </span>
       )}
       {lead.temperatura ? (
         <span
-          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${temperaturaStyles[lead.temperatura]}`}
+          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${temperaturaStyles[lead.temperatura]}`}
         >
           {lead.temperatura}
         </span>
       ) : (
         lead.status === "active" && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--gold)]/15 text-[var(--gold-dark)] border border-[var(--gold)]/30">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--gold)]/15 text-[var(--gold-dark)] border border-[var(--gold)]/30">
             Lead
           </span>
         )

@@ -3,6 +3,7 @@ import { Columns3, Plus, Search, Table2 } from "lucide-react";
 import { KanbanView } from "./KanbanView";
 import { TableView } from "./TableView";
 import { NewLeadDialog } from "./NewLeadDialog";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { useAuth } from "@/hooks/useAuth";
 import {
   TEMPERATURAS,
@@ -34,21 +35,19 @@ function writePref(key: string, value: string) {
 const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 /**
- * Atendimentos (leads) em Kanban ou planilha. Período e corretor vêm dos
- * filtros do dashboard onde o quadro está inserido.
+ * Atendimentos (leads) em Kanban ou planilha. O corretor vem do filtro do
+ * dashboard onde o quadro está inserido. O período é do próprio quadro, começa
+ * vazio e só restringe ganhos e perdidos (clientes em andamento aparecem sempre).
  */
 export function PipelineBoard({
   brokerId = "all",
-  from = "",
-  to = "",
-  dateField = "created_at",
   title = "Atendimentos",
+  fill = false,
 }: {
   brokerId?: string;
-  from?: string;
-  to?: string;
-  dateField?: "created_at" | "updated_at";
   title?: string;
+  /** no computador, o Kanban ocupa a altura que sobra (rolagem horizontal na borda de baixo) */
+  fill?: boolean;
 }) {
   const { profile, can } = useAuth();
   // "Somente visualização" em Atendimentos: sem criar nem mover leads (o banco também bloqueia)
@@ -68,6 +67,8 @@ export function PipelineBoard({
   const [status, setStatus] = useState<LeadStatus | "all">("active");
   const [temperatura, setTemperatura] = useState("all");
   const [search, setSearch] = useState("");
+  const [period, setPeriod] = useState({ from: "", to: "" });
+  const { from, to } = period;
   const [creating, setCreating] = useState(false);
 
   const funnels = funnelsQ.data ?? [];
@@ -81,18 +82,7 @@ export function PipelineBoard({
     if (funnel) writePref(funnelKey, funnel.id);
   }, [funnelKey, funnel]);
 
-  // Ganhos/perdidos entram no período pela data do ganho/perda (como no Real Sales).
-  const effectiveDateField =
-    status === "won" ? "won_at" : status === "lost" ? "lost_at" : dateField;
-  const leadsQ = useLeads({
-    funnelId: funnel?.id,
-    status,
-    brokerId,
-    temperatura,
-    from,
-    to,
-    dateField: effectiveDateField,
-  });
+  const leadsQ = useLeads({ funnelId: funnel?.id, status, brokerId, temperatura, from, to });
 
   const leads = useMemo(() => {
     const all = leadsQ.data ?? [];
@@ -117,9 +107,20 @@ export function PipelineBoard({
   const error = funnelsQ.error || leadsQ.error;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div
+      className={`flex flex-col gap-3 ${fill ? (view === "kanban" ? "lg:flex-1 lg:min-h-[22rem]" : "lg:pb-6") : ""}`}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-bold text-[var(--navy)] mr-auto">{title}</h2>
+        <div className="mr-auto flex flex-wrap items-baseline gap-x-3">
+          <h2 className="text-xl font-bold text-[var(--navy)]">{title}</h2>
+          <span className="text-xs text-muted-foreground">
+            {leadsQ.isLoading
+              ? "Carregando…"
+              : status === "won"
+                ? `${leads.length} ganho${leads.length === 1 ? "" : "s"} no período · ${wonTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+                : `${leads.length} lead${leads.length === 1 ? "" : "s"}`}
+          </span>
+        </div>
         <div
           className="inline-flex rounded-lg border border-border bg-white p-0.5"
           role="group"
@@ -203,14 +204,15 @@ export function PipelineBoard({
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="text-xs text-muted-foreground">
-        {leadsQ.isLoading
-          ? "Carregando…"
-          : status === "won"
-            ? `${leads.length} ganho${leads.length === 1 ? "" : "s"} no período · ${wonTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
-            : `${leads.length} lead${leads.length === 1 ? "" : "s"}`}
+        {status !== "active" && (
+          <DateRangePicker
+            startDate={from}
+            endDate={to}
+            onApply={(f, t) => setPeriod({ from: f, to: t })}
+            onClear={() => setPeriod({ from: "", to: "" })}
+            className="col-span-2"
+          />
+        )}
       </div>
 
       {error && (
@@ -228,7 +230,13 @@ export function PipelineBoard({
       {funnel &&
         !leadsQ.isLoading &&
         (view === "kanban" ? (
-          <KanbanView stages={funnel.stages} leads={leads} onMove={onMove} readOnly={!canEdit} />
+          <KanbanView
+            stages={funnel.stages}
+            leads={leads}
+            onMove={onMove}
+            readOnly={!canEdit}
+            fill={fill}
+          />
         ) : (
           <TableView
             stages={funnel.stages}

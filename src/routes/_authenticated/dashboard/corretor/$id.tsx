@@ -86,8 +86,6 @@ function BrokerDashboardPage() {
 
         <PipelineBoard
           brokerId={id}
-          from={filters.appliedStartDate}
-          to={filters.appliedEndDate}
           title="Atendimentos do corretor"
         />
       </div>

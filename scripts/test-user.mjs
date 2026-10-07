@@ -3,6 +3,7 @@
 //   node scripts/test-user.mjs status
 //   node scripts/test-user.mjs create            cria a conta e mostra a senha
 //   node scripts/test-user.mjs senha             gera uma senha nova
+//   node scripts/test-user.mjs cliente          cria o cliente (lead) de teste TESTE-001
 //   node scripts/test-user.mjs admin
 //   node scripts/test-user.mjs rh
 //   node scripts/test-user.mjs gerente
@@ -105,6 +106,44 @@ if (cmd === "status") {
   if (!m) throw new Error(`Gerente não encontrado. Opções: ${managers.map((x) => x.full_name).join(", ")}`);
   await setRole("broker", m.id);
   console.log(`Conta de teste agora é Corretor na equipe de ${m.full_name}.`);
+} else if (cmd === "cliente") {
+  // cliente (lead) de teste, dono = conta de teste. Gerente não recebe lead:
+  // se a conta estiver como gerente, vira corretor só durante a criação.
+  const t = await getTest();
+  if (!t) throw new Error("Conta de teste não existe.");
+  const CODE = "TESTE-001";
+  const existing = await rest(`leads?select=id,full_name,client_code&broker_id=eq.${t.id}&client_code=eq.${CODE}`);
+  if (existing.length) {
+    console.log(`Cliente de teste já existe: ${existing[0].full_name} (ID ${CODE}).`);
+  } else {
+    const [stage] = await rest("funnel_stages?select=id,funnel_id&kind=eq.new&order=sort_order&limit=1");
+    if (!stage) throw new Error("Funil padrão não encontrado.");
+    const wasManager = t.role === "master";
+    if (wasManager) await rest(`profiles?id=eq.${t.id}`, { method: "PATCH", body: JSON.stringify({ role: "broker" }) });
+    try {
+      await rest("leads", {
+        method: "POST",
+        body: JSON.stringify({
+          full_name: "Cliente Teste",
+          client_code: CODE,
+          phone: "11999990000",
+          email: "cliente.teste@exemplo.com",
+          broker_id: t.id,
+          created_by: t.id,
+          funnel_id: stage.funnel_id,
+          stage_id: stage.id,
+          source: "manual",
+        }),
+      });
+    } finally {
+      if (wasManager)
+        await rest(`profiles?id=eq.${t.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ role: "master", manager_id: t.manager_id }),
+        });
+    }
+    console.log(`Cliente de teste criado: Cliente Teste (ID ${CODE}), na etapa "Cliente novo".`);
+  }
 } else {
-  console.log("Comandos: status | create | senha | admin | rh | gerente | corretor [gerente]");
+  console.log("Comandos: status | create | senha | cliente | admin | rh | gerente | corretor [gerente]");
 }

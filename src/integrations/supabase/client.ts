@@ -33,7 +33,11 @@ function createSupabaseClient() {
       storage: typeof window !== 'undefined' ? localStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
-    }
+    },
+    // Só em desenvolvimento (npm run dev): avisa o banco que é um acesso local.
+    // Com isso o admin marcado com can_see_test enxerga a conta de teste e os
+    // dados dela; em produção o cabeçalho não é enviado.
+    global: { headers: import.meta.env.DEV ? { "x-test-view": "1" } : {} },
   });
 }
 

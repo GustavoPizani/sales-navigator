@@ -35,20 +35,22 @@ function CheckinPage() {
   const isBroker = profile?.role === "broker";
 
   const tabs: [Tab, string, React.ElementType][] = [
-    ["monitor", "Acompanhamento do turno", Radar],
+    ["monitor", "Turno", Radar],
     ["qr", "QR code", QrCode],
-    ...(canSeeCheckinLog
-      ? ([["log", "Log de check-ins", ScrollText]] as [Tab, string, React.ElementType][])
-      : []),
+    ...(canSeeCheckinLog ? ([["log", "Log", ScrollText]] as [Tab, string, React.ElementType][]) : []),
     ...(isSuperAdmin
-      ? ([["rules", "Regras de check-in", Settings2]] as [Tab, string, React.ElementType][])
+      ? ([["rules", "Regras", Settings2]] as [Tab, string, React.ElementType][])
       : []),
   ];
 
   return (
     <div className="pb-nav">
       <AppHeader title="Check-in" />
-      <div className={`px-4 pt-4 mx-auto space-y-3 ${tab === "log" ? "max-w-6xl" : "max-w-4xl"}`}>
+      <div
+        className={`px-4 pt-4 mx-auto space-y-3 ${
+          isBroker ? "max-w-2xl" : tab === "log" || tab === "monitor" ? "max-w-6xl" : "max-w-4xl"
+        }`}
+      >
         {isBroker ? (
           <BrokerCheckin />
         ) : (

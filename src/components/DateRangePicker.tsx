@@ -27,17 +27,19 @@ interface DateRangePickerProps {
   endDate: string;
   onApply: (start: string, end: string) => void;
   className?: string;
+  /** Com onClear, o período pode ficar vazio (startDate/endDate ""): mostra "Todo o período". */
+  onClear?: () => void;
 }
 
-export function DateRangePicker({ startDate, endDate, onApply, className }: DateRangePickerProps) {
+export function DateRangePicker({ startDate, endDate, onApply, className, onClear }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
-  const [temp, setTemp] = useState<DateRange | undefined>(() => ({
-    from: isoToDate(startDate),
-    to: isoToDate(endDate),
-  }));
+  const hasRange = !!startDate && !!endDate;
+  const current = (): DateRange | undefined =>
+    hasRange ? { from: isoToDate(startDate), to: isoToDate(endDate) } : undefined;
+  const [temp, setTemp] = useState<DateRange | undefined>(current);
 
   const syncTemp = () => {
-    setTemp({ from: isoToDate(startDate), to: isoToDate(endDate) });
+    setTemp(current());
   };
 
   const handleOpenChange = (v: boolean) => {
@@ -58,8 +60,9 @@ export function DateRangePicker({ startDate, endDate, onApply, className }: Date
   };
 
   const today = new Date();
-  const displayFrom = format(isoToDate(startDate), "dd MMM yyyy", { locale: ptBR });
-  const displayTo = format(isoToDate(endDate), "dd MMM yyyy", { locale: ptBR });
+  const display = hasRange
+    ? `${format(isoToDate(startDate), "dd MMM yyyy", { locale: ptBR })} – ${format(isoToDate(endDate), "dd MMM yyyy", { locale: ptBR })}`
+    : "Todo o período";
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -68,7 +71,7 @@ export function DateRangePicker({ startDate, endDate, onApply, className }: Date
           className={`flex items-center gap-2 h-10 px-3 rounded-lg border border-border bg-white text-sm text-[var(--navy)] font-medium hover:bg-[var(--surface)] transition-colors whitespace-nowrap ${className ?? ""}`}
         >
           <CalendarIcon size={14} className="text-muted-foreground flex-shrink-0" />
-          <span>{displayFrom} – {displayTo}</span>
+          <span>{display}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -82,6 +85,14 @@ export function DateRangePicker({ startDate, endDate, onApply, className }: Date
           )}
         </div>
         <div className="flex gap-1.5 flex-wrap p-3 border-b border-border">
+          {onClear && (
+            <button
+              onClick={() => { onClear(); setOpen(false); }}
+              className="px-3 py-1 rounded-full text-xs font-semibold bg-[var(--surface)] border border-border text-[var(--navy)] hover:bg-[var(--gold)]/20 transition-colors"
+            >
+              Todo o período
+            </button>
+          )}
           {PRESETS.map((p) => (
             <button
               key={p.label}

@@ -119,8 +119,6 @@ export type LeadFilters = {
   temperatura: string; // "all" | valor
   from: string; // yyyy-MM-dd ou ""
   to: string;
-  /** "created_at" = data de cadastro; "updated_at" = última atualização */
-  dateField?: "created_at" | "updated_at" | "won_at" | "lost_at";
 };
 
 // Datas do filtro são dias no fuso local; converte para instantes ISO.
@@ -141,9 +139,21 @@ export function useLeads(filters: LeadFilters) {
       if (filters.status !== "all") q = q.eq("status", filters.status);
       if (filters.brokerId !== "all") q = q.eq("broker_id", filters.brokerId);
       if (filters.temperatura !== "all") q = q.eq("temperatura", filters.temperatura);
-      const dateField = filters.dateField ?? "created_at";
-      if (filters.from) q = q.gte(dateField, startOfDayIso(filters.from));
-      if (filters.to) q = q.lte(dateField, endOfDayIso(filters.to));
+      // O período vale só para ganhos e perdidos (pela data do ganho/perda, como
+      // no Real Sales); clientes em andamento aparecem sempre.
+      const from = filters.from ? startOfDayIso(filters.from) : "";
+      const to = filters.to ? endOfDayIso(filters.to) : "";
+      if (filters.status === "won" || filters.status === "lost") {
+        const dateField = filters.status === "won" ? "won_at" : "lost_at";
+        if (from) q = q.gte(dateField, from);
+        if (to) q = q.lte(dateField, to);
+      } else if (filters.status === "all" && (from || to)) {
+        const range = (col: string) =>
+          (from ? `,${col}.gte.${from}` : "") + (to ? `,${col}.lte.${to}` : "");
+        q = q.or(
+          `status.eq.active,and(status.eq.won${range("won_at")}),and(status.eq.lost${range("lost_at")})`,
+        );
+      }
       const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as unknown as Lead[];

@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
     const supabase = admin();
     const { data: appt, error } = await supabase
       .from("appointments")
-      .select("id, owner_id, project_id, owner:profiles!appointments_owner_id_fkey(full_name, manager_id), project:projects(name)")
+      .select("id, owner_id, project_id, reported_at, owner:profiles!appointments_owner_id_fkey(full_name, manager_id), project:projects(name)")
       .eq("id", appointment_id)
       .maybeSingle();
 
@@ -37,10 +37,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Visita vinda do relatório de visitas: já aconteceu, não é um agendamento novo.
+    const reported = !!(appt as any).reported_at;
     await sendPushToUser(managerId, {
-      title: "📅 Novo agendamento",
-      body: `${owner?.full_name ?? "Corretor"} agendou ${project?.name ?? "imóvel"}`,
-      url: `/agendamentos?open=${appt.id}`,
+      title: reported ? "✅ Visita realizada" : "📅 Novo agendamento",
+      body: reported
+        ? `${owner?.full_name ?? "Corretor"} relatou uma visita ao ${project?.name ?? "imóvel"}`
+        : `${owner?.full_name ?? "Corretor"} agendou ${project?.name ?? "imóvel"}`,
+      url: reported ? "/relatorio-visitas" : `/appointments?open=${appt.id}`,
     });
 
     return new Response(JSON.stringify({ ok: true }), {

@@ -6,15 +6,20 @@ import {
   Plus, MapPin, Edit2, EyeOff, Eye, Sparkles, Upload, X,
   Loader2, CheckSquare, Square, ChevronDown, Files, Download, ZoomIn, ZoomOut,
   Search, ArrowUpAZ, ArrowDownAZ, Share2, FileText, ArrowRight, BedDouble, Ruler,
-  Car, Bike, Footprints, Image as ImageIcon, RefreshCw, Trash2, ArrowLeft, ClipboardPaste, Save,
+  Car, Bike, Footprints, Image as ImageIcon, RefreshCw, Trash2, ArrowLeft, Save, Pin,
+  MoreHorizontal, Building2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import JSZip from "jszip";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
+import { aiExtractJson } from "@/lib/ai.functions";
 import { Avatar } from "@/components/Avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export const Route = createFileRoute("/_authenticated/projects")({
   component: ProjectsPageGuarded,
@@ -73,6 +78,8 @@ type RichDesc = {
   /** LANCAMENTO | EM_OBRAS | PRONTO */
   status?: string;
   propertyType?: string;
+  /** fixado no topo da lista de imóveis (ex.: o Tabelão) */
+  pinned?: boolean;
   coverImagePath?: string;
   amenities?: string[];
   distances?: DistanceItem[];
@@ -142,6 +149,7 @@ type ExtractedProperty = {
   diferencial?: string;
   entrega?: string;
   estrutura?: string;
+  amenities?: string[];
   typologies: Typology[];
 };
 
@@ -168,6 +176,31 @@ function parseDesc(desc: string | null): RichDesc | null {
 function fmtBRL(v?: number) {
   if (!v) return null;
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+
+/**
+ * Bairro do imóvel: o campo Bairro quando preenchido; senão, tenta tirar do
+ * endereço ("Av. Jamaris 312. Moema - São Paulo/SP" → "Moema").
+ */
+function bairroFromAddress(address: string): string {
+  const beforeCity = address.split(" - ")[0] ?? "";
+  if (beforeCity === address) return ""; // sem " - Cidade" no fim: não dá para saber
+  const parts = beforeCity.split(/[.,]/).map((p) => p.trim()).filter(Boolean);
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+  // um trecho só com número/complemento não é bairro
+  return /[a-zà-ú]{3,}/i.test(last) && !/^\d/.test(last) ? last : "";
+}
+/** "Moema · São Paulo" — bairro e cidade; só a cidade quando não há bairro. */
+function bairroCidade(project: { address: string; city: string }, rich: RichDesc | null): string {
+  const bairro = rich?.neighborhood?.trim() || bairroFromAddress(project.address);
+  // cidade gravada toda em maiúsculas ou minúsculas ("SÃO PAULO", "são paulo") aparece como "São Paulo"
+  const raw = project.city?.trim() ?? "";
+  const city =
+    raw && (raw === raw.toUpperCase() || raw === raw.toLowerCase())
+      ? raw.toLowerCase().replace(/(^|\s)(\S)/g, (_m, sp, ch) => sp + ch.toUpperCase())
+      : raw;
+  if (!bairro || bairro.toLowerCase() === city.toLowerCase()) return city;
+  return city ? `${bairro} · ${city}` : bairro;
 }
 
 /** Texto do selo de status no card: sempre escrito do mesmo jeito. */
@@ -286,9 +319,6 @@ function findExistingProject(
 }
 
 // ─── Gemini ──────────────────────────────────────────────────────────────────
-const GEMINI_MODEL = "gemini-3.5-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -319,124 +349,37 @@ function parseGeminiJson(data: any): any {
   }
 }
 
-// Retries on 429 (rate limit) honoring the Retry-After header, with exponential backoff as fallback.
-// Also retries when the model is overloaded or briefly unavailable (500/502/503/504), a few times.
-async function fetchGeminiDirect(
-  apiKey: string,
-  systemPrompt: string,
-  userContent: string,
-  maxRetries = 8
-): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: "user", parts: [{ text: userContent }] }],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-          maxOutputTokens: 32768,
-        },
-      }),
-    });
-
-    const overloaded = [500, 502, 503, 504].includes(res.status);
-    if (overloaded) {
-      if (attempt >= 4) return res;
-      await sleep(Math.min(2000 * 2 ** attempt, 20000));
-      continue;
-    }
-    if (res.status !== 429 || attempt >= maxRetries) return res;
-
-    const retryAfter = Number(res.headers.get("retry-after"));
-    const waitMs = retryAfter > 0 ? retryAfter * 1000 : Math.min(3000 * 2 ** attempt, 60000);
-    await sleep(waitMs);
-  }
-}
-
-// ─── Groq (principal) ────────────────────────────────────────────────────────
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "openai/gpt-oss-120b";
-
-/** Há alguma IA configurada? (Groq é a principal; Gemini fica de reserva.) */
-function aiConfigured() {
-  return !!(import.meta.env.VITE_GROQ_API_KEY || import.meta.env.VITE_GEMINI_API_KEY);
-}
-
-async function fetchGroq(apiKey: string, systemPrompt: string, userContent: string) {
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(GROQ_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        temperature: 0.1,
-        max_tokens: 32768,
-        reasoning_effort: "low",
-        response_format: { type: "json_object" },
-      }),
-    });
-    const transient = [429, 500, 502, 503, 504].includes(res.status);
-    if (!transient || attempt >= 3) return res;
-    const retryAfter = Number(res.headers.get("retry-after"));
-    // espera longa demais (limite por minuto estourado): devolve para cair na reserva
-    if (retryAfter > 20) return res;
-    await sleep(retryAfter > 0 ? retryAfter * 1000 : Math.min(2000 * 2 ** attempt, 15000));
-  }
-}
-
-/**
- * Chamada de IA usada na leitura de tabelões: Groq primeiro; se o Groq falhar
- * (limite, arquivo grande demais, fora do ar) e houver chave do Gemini, usa o
- * Gemini. A resposta volta sempre no formato do Gemini, que o resto do código lê.
- */
+// As chamadas de IA passam pelo servidor (aiExtractJson): as chaves não ficam no navegador.
+// Repete quando a IA está no limite (429) ou sobrecarregada (500/502/503/504).
+// A resposta volta no formato do Gemini, que o resto do código lê.
 async function fetchGemini(
   _apiKey: string,
   systemPrompt: string,
   userContent: string,
 ): Promise<Response> {
-  const groqKey = import.meta.env.VITE_GROQ_API_KEY as string | undefined;
-  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-
-  if (groqKey) {
-    const res = await fetchGroq(groqKey, systemPrompt, userContent);
-    if (res.ok) {
-      const data: any = await res.json();
-      const choice = data?.choices?.[0];
+  const json = { "Content-Type": "application/json" };
+  for (let attempt = 0; ; attempt++) {
+    const r = await aiExtractJson({ data: { system: systemPrompt, user: userContent } });
+    if (r.ok)
       return new Response(
         JSON.stringify({
           candidates: [
-            {
-              content: { parts: [{ text: choice?.message?.content ?? "{}" }] },
-              finishReason: choice?.finish_reason === "length" ? "MAX_TOKENS" : "STOP",
-            },
+            { content: { parts: [{ text: r.text }] }, finishReason: r.truncated ? "MAX_TOKENS" : "STOP" },
           ],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
+        { status: 200, headers: json },
       );
-    }
-    if (!geminiKey) {
-      const body: any = await res.json().catch(() => null);
-      const msg = body?.error?.message;
-      return new Response(
-        JSON.stringify({ error: { message: msg ? `Groq: ${msg}` : "Groq indisponível" } }),
-        { status: res.status, headers: { "Content-Type": "application/json" } },
-      );
-    }
+    const status = r.status >= 400 && r.status <= 599 ? r.status : 500;
+    const transient = [429, 500, 502, 503, 504].includes(status);
+    if (!transient || attempt >= 4)
+      return new Response(JSON.stringify({ error: { message: r.message } }), { status, headers: json });
+    await sleep(r.retryAfter > 0 ? Math.min(r.retryAfter * 1000, 60000) : Math.min(3000 * 2 ** attempt, 30000));
   }
-  if (!geminiKey) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
-  return fetchGeminiDirect(geminiKey, systemPrompt, userContent);
 }
 
 const SYSTEM_PROMPT = `Você é um especialista em extração de dados de tabelões imobiliários brasileiros.
 
-Extraia TODOS os empreendimentos do tabelão fornecido. O tabelão tem colunas típicas: PROJETO, DIFERENCIAL, ENDEREÇO, BAIRRO, M², TIPO, VAG, PREÇO M², VALOR CHEIO, UNID. REF., ESTRUTURA, ENTREGA.
+Extraia TODOS os empreendimentos do texto fornecido. Ele pode ser um tabelão com vários empreendimentos (colunas típicas: PROJETO, DIFERENCIAL, ENDEREÇO, BAIRRO, M², TIPO, VAG, PREÇO M², VALOR CHEIO, UNID. REF., ESTRUTURA, ENTREGA) ou a descrição de um único empreendimento; nesse caso, retorne "properties" com um item só.
 
 Várias linhas com o mesmo PROJETO representam tipologias diferentes do mesmo empreendimento.
 
@@ -451,6 +394,7 @@ Retorne um objeto JSON com:
       "diferencial": "Texto do diferencial (ex: 60m do Metrô)",
       "entrega": "PRONTO ou data como ago-26 ou Breve Lançamento",
       "estrutura": "Texto da estrutura de atendimento (decorado, plantão, etc.)",
+      "amenities": ["Piscina", "Academia"],
       "typologies": [
         {
           "type": "Tipo (Studio, 1 dorm, 2 dorms, 3 dorms, Sala, Laje, etc.)",
@@ -471,11 +415,12 @@ Regras obrigatórias:
 - Converta áreas com vírgula para ponto (ex: "43,33" → 43.33)
 - Inclua TODOS os projetos encontrados no texto, incluindo lançamentos futuros
 - Para seções "FUTUROS LANÇAMENTOS" use entrega: "Breve Lançamento"
+- "amenities": itens de lazer e características do condomínio, só quando o texto listar; senão use []
+- Campos de texto que o texto não trouxer: omita ou use ""
 - Retorne apenas JSON válido sem markdown ou explicações`;
 
 async function extractFromGemini(text: string): Promise<ExtractedProperty[]> {
   const apiKey = "";
-  if (!aiConfigured()) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
 
   const res = await fetchGemini(apiKey, SYSTEM_PROMPT, text);
   if (!res.ok) throw new Error(await geminiErrorMessage(res));
@@ -490,7 +435,6 @@ async function classifyFilenamesWithGemini(
   projects: { id: string; name: string }[]
 ): Promise<ClassifiedFile[]> {
   const apiKey = "";
-  if (!aiConfigured()) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
 
   const systemPrompt = "Você classifica arquivos de documentos imobiliários. Retorne apenas JSON válido, sem markdown.";
   const userContent = `Projetos imobiliários existentes:\n${projects.map(p => `- "${p.name}" (ID: ${p.id})`).join("\n")}\n\nArquivos para classificar:\n${files.map((f, i) => `${i + 1}. ${f.name}`).join("\n")}\n\nPara cada arquivo identifique:\n1. O projeto ao qual pertence (busca fuzzy pelo nome no arquivo)\n2. O tipo: "tabela" (planilha/tabela de preços/tabelão), "book" (apresentação/book do produto/material de venda), "condominio" (boleto/previsão de condomínio) ou "iptu" (boleto/carnê de IPTU)\n\nRetorne:\n{\n  "files": [\n    {\n      "filename": "nome_exato.pdf",\n      "project_id": "uuid-do-projeto-ou-null",\n      "project_name": "Nome do Projeto",\n      "type": "tabela"\n    }\n  ]\n}`;
@@ -535,7 +479,6 @@ function filterUnitsForProject(units: RawUnit[], projectName: string): RawUnit[]
 
 async function extractRawUnitsFromGemini(text: string, projectName: string): Promise<RawUnit[]> {
   const apiKey = "";
-  if (!aiConfigured()) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
 
   const systemPrompt = `Você extrai unidades individuais disponíveis de um documento imobiliário brasileiro.
 O empreendimento em questão se chama "${projectName}". O documento pode estar em um destes formatos — identifique qual e extraia de acordo:
@@ -640,12 +583,17 @@ async function extractPDFText(file: File): Promise<string> {
 }
 
 // ─── Main page ───────────────────────────────────────────────────────────────
+const COVERS_SETTING_KEY = "project_covers_enabled";
+
+/** O cadastro chamado "Tabelão" guarda a tabela geral em PDF. */
+const isTabelao = (p: { name: string }) => normalizeProjectName(p.name) === "tabelao";
+
 function ProjectsPage() {
   // Catálogo único da empresa: só o admin geral cadastra/edita (gerentes e corretores consultam).
   const { isSuperAdmin: isAdmin, user } = useAuth();
   const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState<Project | "new" | null>(null);
-  const [importing, setImporting] = useState(false);
+  const [importing, setImporting] = useState<"import" | "update" | null>(null);
   const [uploadingDocs, setUploadingDocs] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -670,6 +618,52 @@ function ProjectsPage() {
       const map: Record<string, number> = {};
       (data ?? []).forEach((a: any) => {
         if (a.project_id) map[a.project_id] = (map[a.project_id] || 0) + 1;
+      });
+      return map;
+    },
+  });
+
+  // Fotos de capa nos cards: o admin liga/desliga para todo mundo (app_settings).
+  // Sem a configuração gravada (ou sem a tabela), as capas aparecem.
+  const coversSettingQ = useQuery({
+    queryKey: ["app-setting", COVERS_SETTING_KEY],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      // (app_settings ainda não está nos tipos gerados do Supabase)
+      const { data, error } = await (supabase as any)
+        .from("app_settings")
+        .select("value")
+        .eq("key", COVERS_SETTING_KEY)
+        .maybeSingle();
+      if (error) return true;
+      return data?.value !== false;
+    },
+  });
+  const coversEnabled = coversSettingQ.data ?? true;
+
+  const toggleCovers = async () => {
+    const next = !coversEnabled;
+    const { error } = await (supabase as any)
+      .from("app_settings")
+      .upsert({ key: COVERS_SETTING_KEY, value: next, updated_by: user!.id, updated_at: new Date().toISOString() });
+    if (error) return toast.error(`Não foi possível salvar: ${error.message}`);
+    qc.setQueryData(["app-setting", COVERS_SETTING_KEY], next);
+    toast.success(next ? "Fotos de capa ativadas para todos." : "Fotos de capa desativadas para todos.");
+  };
+
+  // Capas dos cards: um pedido só para todos os imóveis da lista.
+  const coverPaths = (projectsQ.data ?? [])
+    .map((p) => parseDesc(p.description)?.coverImagePath)
+    .filter((path): path is string => !!path);
+  const coversQ = useQuery({
+    queryKey: ["project-covers", coverPaths],
+    enabled: coversEnabled && coverPaths.length > 0,
+    staleTime: 30 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await supabase.storage.from("project-docs").createSignedUrls(coverPaths, 3600);
+      const map: Record<string, string> = {};
+      (data ?? []).forEach((d) => {
+        if (d.path && d.signedUrl) map[d.path] = d.signedUrl;
       });
       return map;
     },
@@ -731,8 +725,11 @@ function ProjectsPage() {
     }
   };
 
+  // O Tabelão é um documento, não um empreendimento: fica numa faixa própria no topo.
+  const tabelao = (projectsQ.data ?? []).find(isTabelao);
+
   const displayedProjects = (() => {
-    let list = projectsQ.data ?? [];
+    let list = (projectsQ.data ?? []).filter((p) => !isTabelao(p));
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       list = list.filter((p) =>
@@ -746,52 +743,29 @@ function ProjectsPage() {
           : b.name.localeCompare(a.name, "pt-BR")
       );
     }
-    return list;
+    // fixados sempre no topo (a ordenação vale dentro de cada grupo)
+    const isPinned = (p: Project) => parseDesc(p.description)?.pinned === true;
+    return [...list.filter(isPinned), ...list.filter((p) => !isPinned(p))];
   })();
+
+  const togglePin = async (p: Project) => {
+    const current: Record<string, any> = p.description ? (parseDesc(p.description) ?? {}) : {};
+    const pinned = !current.pinned;
+    const { error } = await supabase
+      .from("projects")
+      .update({ description: JSON.stringify({ ...current, pinned: pinned || undefined }) })
+      .eq("id", p.id);
+    if (error) return toast.error(error.message);
+    qc.invalidateQueries({ queryKey: ["projects-all"] });
+    toast.success(pinned ? `${p.name} fixado no topo.` : `${p.name} desafixado.`);
+  };
 
   return (
     <div className="pb-nav">
-      <AppHeader
-        title="Imóveis"
-        right={
-          isAdmin ? (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handleDownloadAllDocs}
-                disabled={downloadingAll}
-                className="text-white/70 p-2 disabled:opacity-50"
-                title="Baixar todos os documentos (ZIP)"
-              >
-                {downloadingAll ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-              </button>
-              <button
-                onClick={() => setUploadingDocs(true)}
-                className="text-white/70 p-2"
-                title="Upload de Tabela/Book"
-              >
-                <Files size={18} />
-              </button>
-              <button
-                onClick={() => setImporting(true)}
-                className="text-white/70 p-2"
-                title="Importar do Tabelão com IA"
-              >
-                <Sparkles size={18} />
-              </button>
-              <button
-                onClick={() => setShowAll(!showAll)}
-                className="text-white/70 p-2"
-                aria-label="Mostrar inativos"
-              >
-                {showAll ? <Eye size={18} /> : <EyeOff size={18} />}
-              </button>
-            </div>
-          ) : null
-        }
-      />
+      <AppHeader title="Imóveis" />
 
-      <div className="px-4 pt-3 flex gap-2 items-center">
-        <div className="relative flex-1">
+      <div className="px-4 pt-3 flex flex-wrap gap-2 items-center">
+        <div className="relative flex-1 min-w-[12rem]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input
             type="text"
@@ -816,15 +790,98 @@ function ProjectsPage() {
         >
           {sortAZ === "desc" ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
         </button>
+        {/* Ações do admin, com nome: criar/importar num botão, o resto no menu "mais" */}
+        {isAdmin && (
+          <>
+            <button
+              type="button"
+              onClick={() => setImporting("update")}
+              className="h-10 px-4 rounded-xl border border-border bg-white text-[var(--navy)] font-semibold text-sm inline-flex items-center gap-1.5"
+            >
+              <RefreshCw size={14} /> Atualizar valores
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="h-10 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm inline-flex items-center gap-1.5"
+                >
+                  <Plus size={14} strokeWidth={2.5} /> Novo imóvel <ChevronDown size={14} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onSelect={() => setEditing("new")}>
+                  <Edit2 size={15} /> Cadastrar manualmente
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setImporting("import")}>
+                  <Sparkles size={15} /> Importar com IA (PDF ou texto)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setUploadingDocs(true)}>
+                  <Files size={15} /> Enviar tabelas e books (PDF)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Mais ações"
+                  className="h-10 w-10 rounded-xl border border-border bg-white text-[var(--navy)] inline-flex items-center justify-center"
+                >
+                  {downloadingAll ? <Loader2 size={18} className="animate-spin" /> : <MoreHorizontal size={18} />}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem disabled={downloadingAll} onSelect={handleDownloadAllDocs}>
+                  <Download size={15} /> Baixar todos os documentos (ZIP)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setShowAll(!showAll)}>
+                  {showAll ? <EyeOff size={15} /> : <Eye size={15} />}
+                  {showAll ? "Ocultar imóveis inativos" : "Mostrar imóveis inativos"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={toggleCovers}>
+                  <ImageIcon size={15} />
+                  {coversEnabled ? "Desativar fotos de capa" : "Ativar fotos de capa"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
       </div>
 
-      <div className="px-4 pt-3 space-y-2">
+      {tabelao && (
+        <div className="mx-4 mt-3 rounded-xl border border-[var(--gold)]/50 bg-white p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2.5 mr-auto min-w-0">
+            <div className="h-9 w-9 rounded-lg bg-[var(--gold)]/15 text-[var(--gold-dark)] flex items-center justify-center flex-shrink-0">
+              <FileText size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-[var(--navy)] leading-tight">Tabelão</p>
+              <p className="text-xs text-muted-foreground truncate">Tabela geral de todos os imóveis</p>
+            </div>
+          </div>
+          <ProjectDocs projectId={tabelao.id} emptyText="Nenhum arquivo enviado ainda." />
+          {isAdmin && (
+            <button
+              onClick={() => setEditing(tabelao)}
+              className="h-10 w-10 rounded-lg inline-flex items-center justify-center text-muted-foreground hover:bg-[var(--surface)]"
+              title="Editar o cadastro do Tabelão"
+              aria-label="Editar o cadastro do Tabelão"
+            >
+              <Edit2 size={16} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* grade: 1 coluna no celular, 2 no computador, 3 em tela grande */}
+      <div className="px-4 pt-3 grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3 items-start">
         {displayedProjects.length === 0 && (
-          <p className="text-center text-muted-foreground py-12 text-sm">
+          <p className="col-span-full text-center text-muted-foreground py-12 text-sm">
             {searchQuery
               ? `Nenhum imóvel encontrado para "${searchQuery}".`
               : isAdmin
-              ? "Nenhum imóvel. Toque ✨ para importar do tabelão ou + para adicionar manualmente."
+              ? "Nenhum imóvel. Use \"Novo imóvel\" para cadastrar ou importar do tabelão."
               : "Nenhum imóvel disponível no momento."}
           </p>
         )}
@@ -833,20 +890,13 @@ function ProjectsPage() {
             key={p.id}
             project={p}
             visits={countsQ.data?.[p.id] ?? 0}
+            showCover={coversEnabled}
+            coverUrl={coversQ.data?.[parseDesc(p.description)?.coverImagePath ?? ""]}
             onEdit={isAdmin ? () => setEditing(p) : undefined}
+            onTogglePin={isAdmin ? () => togglePin(p) : undefined}
           />
         ))}
       </div>
-
-      {isAdmin && (
-        <button
-          onClick={() => setEditing("new")}
-          className="fixed right-4 bottom-24 z-30 w-14 h-14 rounded-full bg-[var(--gold)] text-[var(--navy)] shadow-lg flex items-center justify-center"
-          aria-label="Adicionar imóvel"
-        >
-          <Plus size={28} strokeWidth={2.5} />
-        </button>
-      )}
 
       {editing && (
         <ProjectForm
@@ -858,8 +908,9 @@ function ProjectsPage() {
 
       {importing && (
         <ImportModal
+          mode={importing}
           managerId={user!.id}
-          onClose={() => setImporting(false)}
+          onClose={() => setImporting(null)}
           onImported={() => {
             qc.invalidateQueries({ queryKey: ["projects-all"] });
             qc.invalidateQueries({ queryKey: ["projects-active"] });
@@ -1028,7 +1079,7 @@ function FichaPreview({ project }: { project: Project }) {
       <div ref={cardRef} className="relative bg-white rounded-2xl border border-border shadow-sm mx-auto p-4 sm:p-6 w-full max-w-[880px]">
       {/* Top row: entrega badge */}
       {rich?.entrega && (
-        <span className="text-[10px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[var(--navy)] text-white whitespace-nowrap">
+        <span className="text-xs sm:text-xs font-semibold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[var(--navy)] text-white whitespace-nowrap">
           Entrega: {rich.entrega}
         </span>
       )}
@@ -1066,7 +1117,7 @@ function FichaPreview({ project }: { project: Project }) {
 
           {amenities.length > 0 && (
             <div className="flex items-start gap-3 mt-4">
-              <span className="text-[10px] font-bold text-[var(--gold)] border border-[var(--gold)] rounded-lg px-2.5 py-2 flex-shrink-0 whitespace-nowrap">
+              <span className="text-xs font-bold text-[var(--gold)] border border-[var(--gold)] rounded-lg px-2.5 py-2 flex-shrink-0 whitespace-nowrap">
                 LAZER COMPLETO
               </span>
               <p className="text-xs text-muted-foreground leading-relaxed">
@@ -1092,7 +1143,10 @@ function FichaPreview({ project }: { project: Project }) {
           )}
 
           <div className="mt-5 text-xs text-muted-foreground">
-            <p className="uppercase break-words">{project.address}{rich?.neighborhood ? ` – ${rich.neighborhood}` : ""}</p>
+            <p className="uppercase break-words">{project.address}
+              {rich?.neighborhood && !project.address.toLowerCase().includes(rich.neighborhood.toLowerCase())
+                ? ` – ${rich.neighborhood}`
+                : ""}</p>
           </div>
 
           {prices && (
@@ -1111,7 +1165,7 @@ function FichaPreview({ project }: { project: Project }) {
               <ImageIcon size={40} className="text-muted-foreground/40" />
             )}
             {ribbon && (
-              <div className="absolute top-4 -right-9 w-32 rotate-45 bg-[var(--gold)] text-[var(--navy)] text-[10px] font-bold py-1 text-center shadow-sm">
+              <div className="absolute top-4 -right-9 w-32 rotate-45 bg-[var(--gold)] text-[var(--navy)] text-xs font-bold py-1 text-center shadow-sm">
                 {ribbon}
               </div>
             )}
@@ -1197,58 +1251,51 @@ function TipologiasTable({ typologies }: { typologies: Typology[] }) {
 function ProjectCard({
   project,
   visits,
+  showCover,
+  coverUrl,
   onEdit,
+  onTogglePin,
 }: {
   project: Project;
   visits: number;
+  /** fotos de capa ligadas pelo admin; desligadas, o card fica só com o texto */
+  showCover: boolean;
+  /** foto de capa já assinada (a página busca todas de uma vez) */
+  coverUrl?: string;
   onEdit?: () => void;
+  /** admin: fixar/desafixar no topo da lista */
+  onTogglePin?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [viewingDoc, setViewingDoc] = useState<{ url: string; name: string } | null>(null);
   const rich = parseDesc(project.description);
   const typologies = rich?.typologies ?? [];
 
-  const docsQ = useQuery({
-    queryKey: ["project-docs", project.id],
-    queryFn: async () => {
-      const [{ data: tabelaList }, { data: bookList }, { data: condominioList }, { data: iptuList }] = await Promise.all([
-        supabase.storage.from("project-docs").list(`${project.id}/tabela`, { limit: 20 }),
-        supabase.storage.from("project-docs").list(`${project.id}/book`, { limit: 20 }),
-        supabase.storage.from("project-docs").list(`${project.id}/condominio`, { limit: 20 }),
-        supabase.storage.from("project-docs").list(`${project.id}/iptu`, { limit: 20 }),
-      ]);
-
-      const sign = async (path: string) => {
-        const { data } = await supabase.storage.from("project-docs").createSignedUrl(path, 3600);
-        return data?.signedUrl ?? null;
-      };
-
-      const mapFiles = (list: typeof tabelaList, folder: string) =>
-        Promise.all((list ?? []).map(async (f) => ({
-          name: f.name,
-          url: await sign(`${project.id}/${folder}/${f.name}`),
-        })));
-
-      const [tabelas, books, condominios, iptus] = await Promise.all([
-        mapFiles(tabelaList, "tabela"),
-        mapFiles(bookList, "book"),
-        mapFiles(condominioList, "condominio"),
-        mapFiles(iptuList, "iptu"),
-      ]);
-      return { tabelas, books, condominios, iptus };
-    },
-    enabled: expanded,
-    staleTime: 30 * 60 * 1000,
-  });
-
-  const hasDocs =
-    (docsQ.data?.tabelas.length ?? 0) > 0 || (docsQ.data?.books.length ?? 0) > 0 ||
-    (docsQ.data?.condominios.length ?? 0) > 0 || (docsQ.data?.iptus.length ?? 0) > 0;
+  // resumo do que vende: dormitórios, metragem e faixa de preço das tipologias
+  const facts = [dormsRangeLabel(typologies), areaRangeLabel(typologies)]
+    .filter((f): f is string => !!f)
+    .map((f) => f.toLowerCase());
+  const prices = priceRange(typologies);
 
   return (
-    <div className={`bg-white rounded-xl border border-border ${!project.is_active ? "opacity-60" : ""}`}>
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2">
+    <div className={`bg-white rounded-xl border border-border overflow-hidden ${!project.is_active ? "opacity-60" : ""}`}>
+      <div className="flex items-start">
+        {/* o card inteiro abre os detalhes */}
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+          className="flex-1 min-w-0 flex items-start gap-3 p-3 text-left"
+        >
+          {showCover && (
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg bg-[var(--surface)] overflow-hidden flex-shrink-0 flex items-center justify-center text-muted-foreground/50">
+              {coverUrl ? (
+                <img src={coverUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
+              ) : (
+                <Building2 size={26} aria-hidden />
+              )}
+            </div>
+          )}
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-semibold text-[var(--navy)]">
@@ -1258,57 +1305,94 @@ function ProjectCard({
                 )}
               </p>
               {rich?.entrega && (
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${entregaBadge(rich.entrega)}`}>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${entregaBadge(rich.entrega)}`}>
                   {entregaLabel(rich.entrega)}
                 </span>
               )}
               {project.tem_plantao && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
                   Plantão
                 </span>
               )}
+              {rich?.pinned && !onTogglePin && (
+                <Pin size={13} className="text-[var(--gold)] fill-current" aria-label="Fixado" />
+              )}
             </div>
 
+            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+              <MapPin size={12} className="flex-shrink-0" />
+              <span className="truncate">{bairroCidade(project, rich)}</span>
+            </p>
+
+            {facts.length > 0 && (
+              <p className="text-xs text-[var(--navy)] mt-1.5">{facts.join(" · ")}</p>
+            )}
+            {prices && (
+              <p className="text-sm font-bold text-[var(--navy)] mt-0.5">
+                {prices.min === prices.max
+                  ? fmtBRL(prices.min)
+                  : `${fmtBRL(prices.min)} a ${fmtBRL(prices.max)}`}
+              </p>
+            )}
             {rich?.diferencial && (
-              <p className="text-xs text-[var(--gold)] font-medium mt-0.5">{rich.diferencial}</p>
+              <p className="text-xs text-[var(--gold-dark)] font-medium mt-1 line-clamp-2">{rich.diferencial}</p>
             )}
 
-            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-              <MapPin size={12} />
-              {rich?.neighborhood || project.city}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">{project.address}</p>
-
-            <p className="text-xs text-[var(--gold)] font-semibold mt-1">
-              {visits} visita{visits === 1 ? "" : "s"} agendada{visits === 1 ? "" : "s"}
+            <p className="text-xs text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              <span className="inline-flex items-center gap-1 font-semibold text-[var(--navy)]">
+                {expanded ? "Fechar tipologias" : "Ver tipologias e valores"}
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+                />
+              </span>
+              {visits > 0 && (
+                <span>
+                  {visits} agendamento{visits === 1 ? "" : "s"}
+                </span>
+              )}
             </p>
           </div>
+        </button>
 
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="p-2 text-muted-foreground"
-              aria-label="Expandir detalhes"
-            >
-              <ChevronDown
-                size={16}
-                className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-              />
-            </button>
+        {(onTogglePin || onEdit) && (
+          <div className="flex flex-col sm:flex-row items-center p-1.5 flex-shrink-0">
+            {onTogglePin && (
+              <button
+                onClick={onTogglePin}
+                className={`h-10 w-10 rounded-lg inline-flex items-center justify-center hover:bg-[var(--surface)] ${rich?.pinned ? "text-[var(--gold)]" : "text-muted-foreground"}`}
+                title={rich?.pinned ? "Desafixar do topo" : "Fixar no topo"}
+                aria-label={rich?.pinned ? "Desafixar do topo" : "Fixar no topo"}
+                aria-pressed={!!rich?.pinned}
+              >
+                <Pin size={16} className={rich?.pinned ? "fill-current" : ""} />
+              </button>
+            )}
             {onEdit && (
-              <button onClick={onEdit} className="p-2 text-muted-foreground">
+              <button
+                onClick={onEdit}
+                className="h-10 w-10 rounded-lg inline-flex items-center justify-center text-muted-foreground hover:bg-[var(--surface)]"
+                title="Editar imóvel"
+                aria-label={`Editar ${project.name}`}
+              >
                 <Edit2 size={16} />
               </button>
             )}
           </div>
-        </div>
+        )}
       </div>
+
+      {/* materiais ficam fora da parte que abre: dá para abrir e enviar direto do card */}
+      <ProjectDocs projectId={project.id} className="px-3 pb-3" />
 
       {expanded && (
         <div className="border-t border-border px-4 pb-3 pt-2 space-y-3">
+          {project.address && (
+            <p className="text-xs text-muted-foreground">{project.address}</p>
+          )}
           {typologies.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 Tipologias
               </p>
               {typologies.map((t, i) => (
@@ -1332,123 +1416,112 @@ function ProjectCard({
                 </div>
               ))}
               {rich?.estrutura && (
-                <p className="text-[10px] text-muted-foreground pt-1 italic">{rich.estrutura}</p>
+                <p className="text-xs text-muted-foreground pt-1 italic">{rich.estrutura}</p>
               )}
             </div>
           )}
 
-          {docsQ.isLoading && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
-              <Loader2 size={12} className="animate-spin" /> Carregando documentos...
-            </div>
-          )}
-
-          {docsQ.data && hasDocs && (
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Documentos
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {docsQ.data.tabelas.map((doc, idx) =>
-                  doc.url ? (
-                    <div key={idx} className="flex items-stretch rounded-lg border border-amber-200 overflow-hidden">
-                      <button
-                        onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
-                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
-                      >
-                        <Eye size={12} />
-                        {docsQ.data.tabelas.length > 1 ? `Tabela ${idx + 1}` : "Tabela"}
-                      </button>
-                      <div className="w-px bg-amber-200" />
-                      <button
-                        onClick={() => sharePdf(doc.url!, doc.name)}
-                        title="Compartilhar"
-                        className="flex items-center px-2 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
-                      >
-                        <Share2 size={12} />
-                      </button>
-                    </div>
-                  ) : null
-                )}
-                {docsQ.data.books.map((doc, idx) =>
-                  doc.url ? (
-                    <div key={idx} className="flex items-stretch rounded-lg border border-blue-200 overflow-hidden">
-                      <button
-                        onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
-                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
-                      >
-                        <Eye size={12} />
-                        {docsQ.data.books.length > 1 ? `Book ${idx + 1}` : "Book"}
-                      </button>
-                      <div className="w-px bg-blue-200" />
-                      <button
-                        onClick={() => sharePdf(doc.url!, doc.name)}
-                        title="Compartilhar"
-                        className="flex items-center px-2 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
-                      >
-                        <Share2 size={12} />
-                      </button>
-                    </div>
-                  ) : null
-                )}
-                {docsQ.data.condominios.map((doc, idx) =>
-                  doc.url ? (
-                    <div key={idx} className="flex items-stretch rounded-lg border border-green-200 overflow-hidden">
-                      <button
-                        onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
-                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
-                      >
-                        <Eye size={12} />
-                        {docsQ.data.condominios.length > 1 ? `Condomínio ${idx + 1}` : "Condomínio"}
-                      </button>
-                      <div className="w-px bg-green-200" />
-                      <button
-                        onClick={() => sharePdf(doc.url!, doc.name)}
-                        title="Compartilhar"
-                        className="flex items-center px-2 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
-                      >
-                        <Share2 size={12} />
-                      </button>
-                    </div>
-                  ) : null
-                )}
-                {docsQ.data.iptus.map((doc, idx) =>
-                  doc.url ? (
-                    <div key={idx} className="flex items-stretch rounded-lg border border-purple-200 overflow-hidden">
-                      <button
-                        onClick={() => setViewingDoc({ url: doc.url!, name: doc.name })}
-                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
-                      >
-                        <Eye size={12} />
-                        {docsQ.data.iptus.length > 1 ? `IPTU ${idx + 1}` : "IPTU"}
-                      </button>
-                      <div className="w-px bg-purple-200" />
-                      <button
-                        onClick={() => sharePdf(doc.url!, doc.name)}
-                        title="Compartilhar"
-                        className="flex items-center px-2 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
-                      >
-                        <Share2 size={12} />
-                      </button>
-                    </div>
-                  ) : null
-                )}
-              </div>
-            </div>
-          )}
-
-          {docsQ.data && !hasDocs && typologies.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-2">Sem informações adicionais.</p>
+          {typologies.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-2">Sem tipologias cadastradas.</p>
           )}
         </div>
       )}
+    </div>
+  );
+}
 
+// ─── Materiais do imóvel (abrir e enviar) ─────────────────────────────────────
+const DOC_KINDS = [
+  ["tabela", "Tabela"],
+  ["book", "Book"],
+  ["condominio", "Condomínio"],
+  ["iptu", "IPTU"],
+] as const;
+
+type ProjectDoc = { path: string; name: string; label: string };
+
+/**
+ * Materiais em PDF do imóvel, sempre à vista: cada um abre no leitor ou vai
+ * para o compartilhamento do aparelho. O link só é gerado na hora do clique.
+ */
+function ProjectDocs({
+  projectId,
+  className = "",
+  emptyText,
+}: {
+  projectId: string;
+  className?: string;
+  /** aviso quando não há arquivo (sem ele, não mostra nada) */
+  emptyText?: string;
+}) {
+  const [viewingDoc, setViewingDoc] = useState<{ url: string; name: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const docsQ = useQuery({
+    queryKey: ["project-docs", projectId],
+    staleTime: 30 * 60 * 1000,
+    queryFn: async (): Promise<ProjectDoc[]> => {
+      const lists = await Promise.all(
+        DOC_KINDS.map(([folder]) =>
+          supabase.storage.from("project-docs").list(`${projectId}/${folder}`, { limit: 20 }),
+        ),
+      );
+      return DOC_KINDS.flatMap(([folder, label], k) => {
+        const files = (lists[k].data ?? []).filter((f) => f.name !== ".emptyFolderPlaceholder");
+        return files.map((f, idx) => ({
+          path: `${projectId}/${folder}/${f.name}`,
+          name: f.name,
+          label: files.length > 1 ? `${label} ${idx + 1}` : label,
+        }));
+      });
+    },
+  });
+
+  const withUrl = async (doc: ProjectDoc, action: (url: string) => void) => {
+    setBusy(doc.path);
+    const { data, error } = await supabase.storage.from("project-docs").createSignedUrl(doc.path, 3600);
+    setBusy(null);
+    if (error || !data?.signedUrl) return toast.error("Não foi possível abrir o arquivo.");
+    action(data.signedUrl);
+  };
+
+  const docs = docsQ.data ?? [];
+  if (docs.length === 0)
+    return emptyText && !docsQ.isLoading ? (
+      <p className={`text-xs text-muted-foreground ${className}`}>{emptyText}</p>
+    ) : null;
+
+  return (
+    <div className={`flex flex-wrap gap-2 ${className}`}>
+      {docs.map((doc) => (
+        <div
+          key={doc.path}
+          className="flex items-stretch rounded-lg overflow-hidden text-xs font-semibold text-white"
+        >
+          <button
+            type="button"
+            onClick={() => withUrl(doc, (url) => setViewingDoc({ url, name: doc.name }))}
+            disabled={busy === doc.path}
+            className="flex items-center gap-1.5 h-9 px-3 bg-[var(--navy)] hover:bg-black transition-colors disabled:opacity-60"
+          >
+            {busy === doc.path ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+            {doc.label}
+          </button>
+          <div className="w-px bg-white/25" />
+          <button
+            type="button"
+            onClick={() => withUrl(doc, (url) => sharePdf(url, doc.name))}
+            disabled={busy === doc.path}
+            title={`Enviar ${doc.label}`}
+            aria-label={`Enviar ${doc.label}`}
+            className="flex items-center h-9 px-2.5 bg-[var(--navy)] hover:bg-black transition-colors disabled:opacity-60"
+          >
+            <Share2 size={13} />
+          </button>
+        </div>
+      ))}
       {viewingDoc && (
-        <PdfViewerModal
-          url={viewingDoc.url}
-          name={viewingDoc.name}
-          onClose={() => setViewingDoc(null)}
-        />
+        <PdfViewerModal url={viewingDoc.url} name={viewingDoc.name} onClose={() => setViewingDoc(null)} />
       )}
     </div>
   );
@@ -1865,7 +1938,7 @@ function DocsUploadModal({
               <input ref={fileRef} type="file" accept=".pdf" multiple className="hidden" onChange={handleFileChange} />
               {files.length > 0 && (
                 <div className="space-y-1.5">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     {files.length} arquivo(s)
                   </p>
                   {files.map((f, i) => (
@@ -1892,7 +1965,7 @@ function DocsUploadModal({
                   <p className="text-sm font-medium text-[var(--navy)] truncate">{cf.file.name}</p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-1">Projeto</label>
+                      <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Projeto</label>
                       <select
                         className="w-full h-9 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm"
                         value={cf.projectId ?? ""}
@@ -1911,7 +1984,7 @@ function DocsUploadModal({
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-1">Tipo</label>
+                      <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Tipo</label>
                       <select
                         className="w-full h-9 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm"
                         value={cf.type}
@@ -1925,9 +1998,9 @@ function DocsUploadModal({
                     </div>
                   </div>
                   {cf.projectId ? (
-                    <p className="text-[10px] text-green-600 font-medium">✓ {cf.projectName}</p>
+                    <p className="text-xs text-green-600 font-medium">✓ {cf.projectName}</p>
                   ) : (
-                    <p className="text-[10px] text-amber-600 font-medium">⚠ Não identificado — será ignorado no envio</p>
+                    <p className="text-xs text-amber-600 font-medium">⚠ Não identificado — será ignorado no envio</p>
                   )}
                 </div>
               ))}
@@ -1948,7 +2021,7 @@ function DocsUploadModal({
                         {c.existingFiles.length} arquivo(s) de {c.type} já salvo(s)
                       </p>
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                       c.type === "tabela" ? "bg-amber-100 text-amber-700"
                         : c.type === "book" ? "bg-blue-100 text-blue-700"
                         : c.type === "condominio" ? "bg-green-100 text-green-700"
@@ -2094,278 +2167,61 @@ function DocsUploadModal({
   );
 }
 
-// ─── Clear typologies modal ────────────────────────────────────────────────────
-function ClearTypologiesModal({
-  onClose,
-  onDone,
-}: {
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [step, setStep] = useState<"confirm" | "running" | "done">("confirm");
-  const [count, setCount] = useState(0);
-
-  const run = async () => {
-    setStep("running");
-    try {
-      const { data: projects, error } = await supabase
-        .from("projects")
-        .select("id, description");
-      if (error) throw error;
-
-      let cleared = 0;
-      for (const p of (projects ?? []) as { id: string; description: string | null }[]) {
-        const currentDesc: Record<string, any> = p.description ? JSON.parse(p.description) : {};
-        if (!currentDesc.typologies || currentDesc.typologies.length === 0) continue;
-        const { error: updError } = await supabase
-          .from("projects")
-          .update({ description: JSON.stringify({ ...currentDesc, typologies: [] }) })
-          .eq("id", p.id);
-        if (!updError) cleared++;
-      }
-
-      setCount(cleared);
-      setStep("done");
-      onDone();
-    } catch (err: any) {
-      toast.error(err.message);
-      onClose();
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex flex-col" onClick={step === "running" ? undefined : onClose}>
-      <div
-        className="bg-white mt-auto rounded-t-2xl flex flex-col"
-        style={{ maxHeight: "92vh" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
-          <h3 className="font-semibold text-[var(--navy)] flex items-center gap-2">
-            <Trash2 size={18} className="text-red-500" />
-            Limpar Tipologias
-          </h3>
-          {step !== "running" && (
-            <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
-          )}
-        </div>
-
-        <div className="px-5 py-5">
-          {step === "confirm" && (
-            <p className="text-sm text-muted-foreground">
-              Isso vai apagar o array de tipologias de <strong>todos</strong> os imóveis no banco
-              (endereço, bairro, fotos e demais dados são mantidos). Essa ação não pode ser desfeita.
-            </p>
-          )}
-          {step === "running" && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 size={16} className="animate-spin" /> Limpando tipologias...
-            </div>
-          )}
-          {step === "done" && (
-            <p className="text-sm text-[var(--navy)]">
-              Tipologias limpas em <strong>{count}</strong> imóvel(is).
-            </p>
-          )}
-        </div>
-
-        <div className="px-5 pb-5 pt-3 border-t border-border flex-shrink-0 flex gap-2">
-          {step === "confirm" && (
-            <>
-              <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">
-                Cancelar
-              </button>
-              <button onClick={run} className="flex-1 h-12 rounded-xl bg-red-500 text-white font-semibold">
-                Limpar tudo
-              </button>
-            </>
-          )}
-          {step === "done" && (
-            <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold">
-              Fechar
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Reprocess typologies modal ───────────────────────────────────────────────
-type ReprocessLogEntry = { projectName: string; status: "ok" | "sem-tabela" | "erro"; detail?: string };
-
-function ReprocessTypologiesModal({
-  onClose,
-  onDone,
-}: {
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [running, setRunning] = useState(true);
-  const [currentMsg, setCurrentMsg] = useState("Buscando imóveis...");
-  const [log, setLog] = useState<ReprocessLogEntry[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      const { data: projects, error } = await supabase
-        .from("projects")
-        .select("id, name, description")
-        .order("name");
-      if (error) {
-        if (!cancelled) {
-          toast.error(error.message);
-          setRunning(false);
-        }
-        return;
-      }
-
-      for (const p of (projects ?? []) as { id: string; name: string; description: string | null }[]) {
-        if (cancelled) return;
-        setCurrentMsg(`Lendo tabelas: ${p.name}...`);
-        try {
-          const { data: files } = await supabase.storage
-            .from("project-docs")
-            .list(`${p.id}/tabela`, { limit: 20 });
-
-          if (!files || files.length === 0) {
-            setLog((prev) => [...prev, { projectName: p.name, status: "sem-tabela" }]);
-            continue;
-          }
-
-          const rawUnits: RawUnit[] = [];
-          for (const f of files) {
-            const path = `${p.id}/tabela/${f.name}`;
-            const { data: blob, error: dlError } = await supabase.storage
-              .from("project-docs")
-              .download(path);
-            if (dlError || !blob) continue;
-            const file = new File([blob], f.name, { type: "application/pdf" });
-            const text = await extractPDFText(file);
-            const units = await extractRawUnitsFromGemini(text, p.name);
-            rawUnits.push(...units);
-            await sleep(3000);
-          }
-
-          if (rawUnits.length === 0) {
-            setLog((prev) => [...prev, { projectName: p.name, status: "erro", detail: "Nenhuma unidade extraída" }]);
-            continue;
-          }
-
-          const currentDesc: Record<string, any> = p.description ? JSON.parse(p.description) : {};
-          const typologies = selectTypologiesFromUnits(rawUnits, currentDesc.typologies ?? []);
-
-          const { error: updError } = await supabase
-            .from("projects")
-            .update({ description: JSON.stringify({ ...currentDesc, typologies }) })
-            .eq("id", p.id);
-          if (updError) throw updError;
-
-          setLog((prev) => [...prev, { projectName: p.name, status: "ok", detail: `${typologies.length} tipologia(s)` }]);
-        } catch (err: any) {
-          setLog((prev) => [...prev, { projectName: p.name, status: "erro", detail: err.message }]);
-        }
-      }
-
-      if (!cancelled) {
-        setRunning(false);
-        setCurrentMsg("Concluído");
-        onDone();
-      }
-    };
-
-    run();
-    return () => { cancelled = true; };
-  }, []);
-
-  const okCount = log.filter((l) => l.status === "ok").length;
-  const errorCount = log.filter((l) => l.status === "erro").length;
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex flex-col" onClick={running ? undefined : onClose}>
-      <div
-        className="bg-white mt-auto rounded-t-2xl flex flex-col"
-        style={{ maxHeight: "92vh" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
-          <div>
-            <h3 className="font-semibold text-[var(--navy)] flex items-center gap-2">
-              <RefreshCw size={18} className={`text-[var(--gold)] ${running ? "animate-spin" : ""}`} />
-              Reprocessar Tipologias
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {running ? currentMsg : `${okCount} atualizado(s), ${errorCount} com erro`}
-            </p>
-          </div>
-          {!running && (
-            <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1.5">
-          {log.length === 0 && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 size={16} className="animate-spin" /> {currentMsg}
-            </div>
-          )}
-          {log.map((l, i) => (
-            <div
-              key={i}
-              className={`text-xs py-2 px-3 rounded-lg ${
-                l.status === "ok" ? "bg-green-50 text-green-700"
-                  : l.status === "sem-tabela" ? "bg-[var(--surface)] text-muted-foreground"
-                  : "bg-red-50 text-red-600"
-              }`}
-            >
-              {l.status === "erro" ? (
-                <div className="space-y-0.5">
-                  <p className="font-medium">{l.projectName}</p>
-                  <p className="break-words opacity-90">{l.detail ?? "erro"}</p>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <span className="font-medium truncate">{l.projectName}</span>
-                  <span className="flex-shrink-0 ml-2">
-                    {l.status === "ok" ? l.detail : "sem tabela"}
-                  </span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="px-5 pb-5 pt-3 border-t border-border flex-shrink-0">
-          <button
-            onClick={onClose}
-            disabled={running}
-            className="w-full h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
-          >
-            {running ? "Processando..." : "Fechar"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Import modal ─────────────────────────────────────────────────────────────
+/** Sem os campos vazios: o que a leitura não trouxe não apaga o que já está salvo. */
+function dropEmpty<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(
+      ([, v]) => v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0),
+    ),
+  ) as Partial<T>;
+}
+
+/** Mesma tipologia em duas leituras: mesmo nome e mesma metragem. */
+function sameTypology(a: Typology, b: Typology): boolean {
+  return (
+    normalizeProjectName(a.type ?? "") === normalizeProjectName(b.type ?? "") &&
+    Math.abs((a.area || 0) - (b.area || 0)) < 0.5
+  );
+}
+
+/** Tipologias lidas no lugar das salvas, mantendo o que só o cadastro tem (planta, dorms, suítes). */
+function mergeTypologies(current: Typology[], incoming: Typology[]): Typology[] {
+  if (!incoming.length) return current;
+  return incoming.map((t) => {
+    const old = current.find((c) => sameTypology(c, t));
+    return old ? { ...old, ...dropEmpty(t) } : t;
+  });
+}
+
+type ExistingProject = { id: string; name: string; description: string | null };
+
+/**
+ * Leitura de PDF ou texto com IA, de um imóvel ou de um tabelão inteiro.
+ * - "import": cria os imóveis novos e atualiza os que já existem.
+ * - "update": só atualiza tipologias e valores dos que já existem; não cria nada
+ *   nem mexe em endereço e demais dados.
+ */
 function ImportModal({
+  mode = "import",
   managerId,
   onClose,
   onImported,
 }: {
+  mode?: "import" | "update";
   managerId: string;
   onClose: () => void;
   onImported: () => void;
 }) {
+  const updateOnly = mode === "update";
   const [step, setStep] = useState<"input" | "select">("input");
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
   const [extracted, setExtracted] = useState<ExtractedProperty[]>([]);
-  const [existingProjects, setExistingProjects] = useState<{ id: string; name: string }[]>([]);
+  const [existingProjects, setExistingProjects] = useState<ExistingProject[]>([]);
+  // "update": imóveis lidos que não estão cadastrados (ficam de fora)
+  const [ignored, setIgnored] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -2396,16 +2252,25 @@ function ImportModal({
     setLoading(true);
     setLoadingMsg("Analisando com IA...");
     try {
-      const [props, { data: existing }] = await Promise.all([
+      const [all, { data: existingData }] = await Promise.all([
         extractFromGemini(text),
-        supabase.from("projects").select("id, name"),
+        supabase.from("projects").select("id, name, description"),
       ]);
-      if (!props.length) {
+      if (!all.length) {
         toast.error("Nenhum imóvel encontrado no texto");
         return;
       }
+      const existing = (existingData ?? []) as ExistingProject[];
+      const props = updateOnly
+        ? all.filter((p) => p.typologies?.length && findExistingProject(p.name, existing))
+        : all;
+      if (!props.length) {
+        toast.error("Nenhum imóvel do texto corresponde a um imóvel já cadastrado.");
+        return;
+      }
+      setIgnored(all.length - props.length);
       setExtracted(props);
-      setExistingProjects((existing ?? []) as { id: string; name: string }[]);
+      setExistingProjects(existing);
       setSelected(new Set(props.map((_, i) => i)));
       setStep("select");
     } catch (err: any) {
@@ -2439,23 +2304,33 @@ function ImportModal({
     try {
       for (const [idx, p] of extracted.entries()) {
         if (!selected.has(idx)) continue;
-        const desc = JSON.stringify({
+        const fromTabelao = dropEmpty({
           neighborhood: p.neighborhood,
           entrega: p.entrega,
           diferencial: p.diferencial,
           estrutura: p.estrutura,
+          amenities: p.amenities,
           typologies: p.typologies,
         });
+        const desc = JSON.stringify(fromTabelao);
         const match = findExistingProject(p.name, existingProjects);
         if (match) {
-          const { error } = await supabase.from("projects").update({
-            address: p.address,
-            city: p.city || "São Paulo",
-            description: desc,
-          }).eq("id", match.id);
+          // mantém o que não vem da leitura (capa, lazer, distâncias, fixado, plantas...)
+          const { data: cur } = await supabase.from("projects").select("description").eq("id", match.id).maybeSingle();
+          const current = parseDesc(cur?.description ?? null) ?? {};
+          const typologies = mergeTypologies(current.typologies ?? [], p.typologies ?? []);
+          const { error } = await supabase.from("projects").update(
+            updateOnly
+              ? { description: JSON.stringify({ ...current, typologies }) }
+              : {
+                  ...(p.address ? { address: p.address } : {}),
+                  ...(p.city ? { city: p.city } : {}),
+                  description: JSON.stringify({ ...current, ...fromTabelao, typologies }),
+                },
+          ).eq("id", match.id);
           if (error) throw error;
           updated++;
-        } else {
+        } else if (!updateOnly) {
           const { error } = await supabase.from("projects").insert({
             name: p.name,
             address: p.address,
@@ -2492,10 +2367,17 @@ function ImportModal({
           <div>
             <h3 className="font-semibold text-[var(--navy)] flex items-center gap-2">
               <Sparkles size={18} className="text-[var(--gold)]" />
-              {step === "input" ? "Importar do Tabelão" : `${extracted.length} imóveis encontrados`}
+              {step === "input"
+                ? updateOnly ? "Atualizar valores" : "Importar com IA"
+                : updateOnly
+                  ? `${extracted.length} imóvel(is) para atualizar`
+                  : `${extracted.length} imóvel(is) encontrado(s)`}
             </h3>
             {step === "select" && (
-              <p className="text-xs text-muted-foreground mt-0.5">{selected.size} selecionado(s)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {selected.size} selecionado(s)
+                {ignored > 0 && ` · ${ignored} fora da lista por não estar(em) cadastrado(s)`}
+              </p>
             )}
           </div>
           <button onClick={onClose} className="p-1 text-muted-foreground">
@@ -2507,7 +2389,9 @@ function ImportModal({
           {step === "input" ? (
             <div className="px-5 py-4 space-y-3">
               <p className="text-sm text-muted-foreground">
-                Carregue o PDF do tabelão ou cole o texto abaixo. A IA extrai todos os imóveis automaticamente.
+                {updateOnly
+                  ? "Carregue o PDF do tabelão novo ou cole o texto. Só as tipologias e os valores dos imóveis já cadastrados são atualizados: nada é criado, e endereço, fotos e demais dados ficam como estão."
+                  : "Carregue um PDF ou cole o texto, de um imóvel só ou do tabelão inteiro. A IA cria os imóveis novos e atualiza os que já existem."}
               </p>
               <button
                 onClick={() => fileRef.current?.click()}
@@ -2517,7 +2401,7 @@ function ImportModal({
                 {loading && loadingMsg === "Extraindo texto do PDF..." ? (
                   <><Loader2 size={16} className="animate-spin" /> Extraindo texto...</>
                 ) : (
-                  <><Upload size={16} /> Carregar PDF do Tabelão</>
+                  <><Upload size={16} /> Carregar PDF</>
                 )}
               </button>
               <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={handleFile} />
@@ -2530,7 +2414,7 @@ function ImportModal({
 
               <textarea
                 className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-border text-sm min-h-[140px] resize-none"
-                placeholder="Cole aqui o texto copiado do tabelão (Ctrl+A no PDF, Ctrl+C, cole aqui)..."
+                placeholder="Cole aqui o texto do imóvel ou do tabelão (Ctrl+A no PDF, Ctrl+C, cole aqui)..."
                 value={text}
                 onChange={(e) => setText(e.target.value)}
               />
@@ -2548,6 +2432,10 @@ function ImportModal({
               {extracted.map((p, i) => {
                 const on = selected.has(i);
                 const existingMatch = findExistingProject(p.name, existingProjects);
+                // valores hoje salvos, para mostrar o que muda
+                const currentTyps =
+                  parseDesc(existingProjects.find((e) => e.id === existingMatch?.id)?.description ?? null)
+                    ?.typologies ?? [];
                 return (
                   <button
                     key={i}
@@ -2565,12 +2453,16 @@ function ImportModal({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-[var(--navy)]">{p.name}</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${existingMatch ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}>
-                            {existingMatch ? "ATUALIZAR" : "NOVO"}
+                          <span className="font-semibold text-sm text-[var(--navy)]">
+                            {updateOnly && existingMatch ? existingMatch.name : p.name}
                           </span>
+                          {!updateOnly && (
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${existingMatch ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}>
+                              {existingMatch ? "ATUALIZAR" : "NOVO"}
+                            </span>
+                          )}
                           {p.entrega && (
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${entregaBadge(p.entrega)}`}>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${entregaBadge(p.entrega)}`}>
                               {p.entrega}
                             </span>
                           )}
@@ -2584,15 +2476,29 @@ function ImportModal({
                         </p>
                         {p.typologies?.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1.5">
-                            {p.typologies.map((t, j) => (
-                              <span
-                                key={j}
-                                className="text-[10px] bg-[var(--surface)] text-[var(--navy)] px-2 py-0.5 rounded-full border border-border"
-                              >
-                                {t.type} · {t.area}m²
-                                {t.valor_cheio ? ` · ${fmtBRL(t.valor_cheio)}` : ""}
-                              </span>
-                            ))}
+                            {p.typologies.map((t, j) => {
+                              const old = existingMatch ? currentTyps.find((c) => sameTypology(c, t)) : undefined;
+                              const changed = !!old?.valor_cheio && !!t.valor_cheio && old.valor_cheio !== t.valor_cheio;
+                              const isNew = !!existingMatch && !old;
+                              return (
+                                <span
+                                  key={j}
+                                  className={`text-xs px-2 py-0.5 rounded-full border ${
+                                    changed
+                                      ? "bg-amber-50 text-amber-800 border-amber-200 font-semibold"
+                                      : isNew
+                                        ? "bg-green-50 text-green-800 border-green-200"
+                                        : "bg-[var(--surface)] text-[var(--navy)] border-border"
+                                  }`}
+                                >
+                                  {t.type} · {t.area}m²
+                                  {changed
+                                    ? ` · ${fmtBRL(old!.valor_cheio)} → ${fmtBRL(t.valor_cheio)}`
+                                    : t.valor_cheio ? ` · ${fmtBRL(t.valor_cheio)}` : ""}
+                                  {isNew && " · nova"}
+                                </span>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -2659,47 +2565,6 @@ const STATUS_OPTIONS = [
   { value: "PRONTO", label: "Pronto" },
 ] as const;
 
-const PARSE_PROPERTY_PROMPT = `Você é um assistente especialista em extrair dados de blocos de texto sobre imóveis.
-Retorne APENAS um objeto JSON válido, sem markdown, sem explicações.
-
-Estrutura obrigatória:
-{
-  "title": "nome do empreendimento",
-  "address": "endereço completo",
-  "features": ["característica 1", "característica 2"],
-  "typologies": [
-    {
-      "name": "nome da tipologia",
-      "valor": número_ou_null,
-      "area": número_ou_null,
-      "dormitorios": número_ou_null,
-      "suites": número_ou_null,
-      "vagas": número_ou_null
-    }
-  ]
-}
-
-Regras:
-- Retorne SOMENTE o JSON puro, sem nada antes ou depois
-- Campos numéricos ausentes: use null
-- "features": itens listados como características/diferenciais do condomínio
-- "typologies": tipos de unidade (Garden, Apartamento, Studio, etc.)
-- "valor": apenas o número sem R$ ou pontos de milhar`;
-
-type ParsedProperty = {
-  title?: string;
-  address?: string;
-  features?: string[];
-  typologies?: {
-    name?: string;
-    valor?: number | string | null;
-    area?: number | string | null;
-    dormitorios?: number | string | null;
-    suites?: number | string | null;
-    vagas?: number | string | null;
-  }[];
-};
-
 /** Reduz a foto antes do envio (lado maior até 1920 px, JPEG). */
 async function compressImage(file: File): Promise<File> {
   if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
@@ -2737,8 +2602,8 @@ type FormTypology = Typology & { plantaFile?: File; plantaPreview?: string };
 
 /**
  * Cadastro/edição de imóvel no mesmo formato do Real Sales: informações
- * gerais, tipologias (com planta) e galeria de imagens com capa, além de
- * "Importar de Texto" (a IA lê um bloco colado e preenche o formulário).
+ * gerais, tipologias (com planta) e foto de capa. A leitura de texto/PDF com
+ * IA fica fora daqui, em "Novo imóvel → Importar com IA".
  */
 function ProjectForm({
   project,
@@ -2755,6 +2620,10 @@ function ProjectForm({
   const [name, setName] = useState(project?.name ?? "");
   const [propertyType, setPropertyType] = useState(rich?.propertyType ?? "Apartamento");
   const [address, setAddress] = useState(project?.address ?? "");
+  // bairro: o salvo ou, na falta, o que dá para ler do endereço
+  const [neighborhood, setNeighborhood] = useState(
+    rich?.neighborhood?.trim() || bairroFromAddress(project?.address ?? ""),
+  );
   // a cidade já vem no endereço; mantém a do cadastro (ou São Paulo) sem campo próprio
   const [city] = useState(project?.city ?? "São Paulo");
   // Status e previsão de entrega são uma informação só (rich.entrega é o que
@@ -2766,6 +2635,8 @@ function ProjectForm({
   // a galeria de imagens ainda não está na tela; por enquanto só a foto de capa
   // da ficha. Sem alteração, as fotos salvas ficam como estão.
   const [imagesTouched, setImagesTouched] = useState(false);
+  // tamanho real da capa escolhida, para avisar quando o formato não é o ideal
+  const [coverDims, setCoverDims] = useState<{ w: number; h: number } | null>(null);
   // campos próprios deste sistema (fichas, plantão)
   // previsão (ex: ago-26): só faz sentido para imóvel em obras
   const [entrega, setEntrega] = useState(
@@ -2778,10 +2649,6 @@ function ProjectForm({
   const [temPlantao, setTemPlantao] = useState(project?.tem_plantao ?? false);
 
   // importar de texto
-  const [importOpen, setImportOpen] = useState(false);
-  const [textToParse, setTextToParse] = useState("");
-  const [parsing, setParsing] = useState(false);
-  const [parsed, setParsed] = useState<ParsedProperty | null>(null);
 
   // fotos e plantas já salvas: busca os links para mostrar
   const savedPaths = [
@@ -2846,44 +2713,6 @@ function ProjectForm({
     updateTypology(i, { plantaFile: file, plantaPreview: URL.createObjectURL(file) });
   };
 
-  const parseText = async () => {
-    if (!textToParse.trim()) return toast.error("Cole algum texto.");
-    setParsing(true);
-    try {
-      if (!aiConfigured()) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
-      const res = await fetchGemini("", PARSE_PROPERTY_PROMPT, textToParse);
-      if (!res.ok) throw new Error(await geminiErrorMessage(res));
-      setParsed(parseGeminiJson(await res.json()) as ParsedProperty);
-      setImportOpen(false);
-      setTextToParse("");
-    } catch (err: any) {
-      toast.error(err.message || "Não foi possível analisar os dados.");
-    } finally {
-      setParsing(false);
-    }
-  };
-
-  const fillFromParsed = () => {
-    if (!parsed) return;
-    const num = (v: unknown) => Number(v) || 0;
-    if (parsed.title) setName(parsed.title);
-    if (parsed.address) setAddress(parsed.address);
-    if (parsed.features?.length) setFeaturesText(parsed.features.join(", "));
-    if (Array.isArray(parsed.typologies))
-      setTypologies(
-        parsed.typologies.map((t) => ({
-          type: t.name || "",
-          valor_cheio: num(t.valor) || undefined,
-          area: num(t.area),
-          dorms: num(t.dormitorios) || undefined,
-          suites: num(t.suites) || undefined,
-          vagas: num(t.vagas),
-        })),
-      );
-    setParsed(null);
-    toast.success("Formulário preenchido com os dados importados.");
-  };
-
   const save = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error("O título do imóvel é obrigatório.");
@@ -2934,7 +2763,8 @@ function ProjectForm({
       if (removed.length) await supabase.storage.from("project-docs").remove(removed);
 
       const desc: RichDesc = {
-        neighborhood: rich?.neighborhood,
+        pinned: rich?.pinned,
+        neighborhood: neighborhood.trim() || undefined,
         propertyType: propertyType.trim() || undefined,
         status,
         entrega:
@@ -3012,12 +2842,6 @@ function ProjectForm({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setImportOpen(true)}
-              className="h-10 px-4 rounded-xl bg-white border border-border text-sm font-semibold text-[var(--navy)] inline-flex items-center gap-2"
-            >
-              <ClipboardPaste size={16} /> Importar de Texto
-            </button>
-            <button
               onClick={() => save.mutate()}
               disabled={save.isPending}
               className="h-10 px-4 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50"
@@ -3036,7 +2860,7 @@ function ProjectForm({
                 <label className={LABEL}>Título do Empreendimento</label>
                 <input className={INPUT} value={name} onChange={(e) => setName(e.target.value)} />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr_1fr] gap-4">
                 <div>
                   <label className={LABEL}>Tipo</label>
                   <input className={INPUT} value={propertyType} onChange={(e) => setPropertyType(e.target.value)} />
@@ -3044,6 +2868,15 @@ function ProjectForm({
                 <div>
                   <label className={LABEL}>Endereço</label>
                   <input className={INPUT} value={address} onChange={(e) => setAddress(e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Bairro</label>
+                  <input
+                    className={INPUT}
+                    value={neighborhood}
+                    placeholder={bairroFromAddress(address) || "Ex: Moema"}
+                    onChange={(e) => setNeighborhood(e.target.value)}
+                  />
                 </div>
               </div>
               <div>
@@ -3084,20 +2917,45 @@ function ProjectForm({
                 </div>
               </div>
               <div>
-                <label className={LABEL}>Foto de capa (ficha)</label>
-                <div className="flex items-center gap-3">
-                  <div className="w-20 h-20 rounded-xl border border-border bg-[var(--surface)] flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {images[0] ? (
-                      <img src={images[0].preview} alt="Capa" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon size={22} className="text-muted-foreground/40" />
-                    )}
-                  </div>
-                  <label className="h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm font-medium text-[var(--navy)] inline-flex items-center gap-2 cursor-pointer">
+                <label className={LABEL}>Foto de capa</label>
+                {/* as duas prévias mostram o corte real: quadrado no card, 4:5 na ficha */}
+                <div className="flex flex-wrap items-end gap-3">
+                  {([
+                    ["Na lista", "w-20 aspect-square"],
+                    ["Na ficha", "w-20 aspect-[4/5]"],
+                  ] as const).map(([caption, box]) => (
+                    <div key={caption} className="text-center">
+                      <div className={`${box} rounded-xl border border-border bg-[var(--surface)] flex items-center justify-center overflow-hidden`}>
+                        {images[0] ? (
+                          <img
+                            src={images[0].preview}
+                            alt={`Capa: ${caption.toLowerCase()}`}
+                            className="w-full h-full object-cover"
+                            onLoad={(e) => setCoverDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+                          />
+                        ) : (
+                          <ImageIcon size={22} className="text-muted-foreground/40" />
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{caption}</p>
+                    </div>
+                  ))}
+                  <label className="h-10 px-3 mb-5 rounded-lg bg-[var(--surface)] border border-border text-sm font-medium text-[var(--navy)] inline-flex items-center gap-2 cursor-pointer">
                     <Upload size={14} /> {images[0] ? "Trocar foto" : "Enviar foto"}
                     <input type="file" accept="image/*" className="hidden" onChange={handleImages} />
                   </label>
                 </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Formato ideal: foto em pé, proporção 4:5 (ex.: 1080 × 1350 px), em JPG ou PNG, com o
+                  prédio no centro. As bordas são cortadas para caber: em cima e embaixo na lista, nas
+                  laterais na ficha.
+                </p>
+                {images[0] && coverDims && coverDims.w > coverDims.h && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Esta foto está deitada ({coverDims.w} × {coverDims.h} px): as laterais serão bem
+                    cortadas. Confira as prévias ou envie uma foto em pé.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -3156,7 +3014,7 @@ function ProjectForm({
                 <h2 className="font-bold text-[var(--navy)]">Tipologias</h2>
                 <button
                   onClick={addTypology}
-                  className="h-9 px-3 rounded-lg bg-[var(--navy)] text-white text-sm font-semibold inline-flex items-center gap-1.5"
+                  className="h-10 px-3 rounded-lg bg-[var(--navy)] text-white text-sm font-semibold inline-flex items-center gap-1.5"
                 >
                   <Plus size={15} /> Adicionar
                 </button>
@@ -3231,93 +3089,6 @@ function ProjectForm({
         </div>
       </div>
 
-      {importOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setImportOpen(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <div>
-              <h3 className="font-bold text-[var(--navy)] text-lg">Importar Imóvel de Texto</h3>
-              <p className="text-sm text-muted-foreground">Copie todo o bloco de informações do imóvel e cole abaixo.</p>
-            </div>
-            <textarea
-              value={textToParse}
-              onChange={(e) => setTextToParse(e.target.value)}
-              className="w-full h-48 rounded-lg bg-[var(--surface)] border border-border text-sm font-mono p-3"
-              placeholder="Cole o texto do imóvel aqui..."
-            />
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setImportOpen(false)} className="h-10 px-4 rounded-xl bg-[var(--surface)] text-sm font-medium text-[var(--navy)]">
-                Cancelar
-              </button>
-              <button
-                onClick={parseText}
-                disabled={parsing}
-                className="h-10 px-4 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50"
-              >
-                {parsing && <Loader2 size={16} className="animate-spin" />}
-                {parsing ? "Analisando..." : "Analisar e Importar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {parsed && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setParsed(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-2xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <div>
-              <h3 className="font-bold text-[var(--navy)] text-lg">Confirmar Dados Importados</h3>
-              <p className="text-sm text-muted-foreground">Verifique os dados extraídos antes de preencher o formulário.</p>
-            </div>
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-              <div>
-                <h4 className="font-semibold text-sm text-[var(--navy)]">Título</h4>
-                <p className="text-sm text-muted-foreground p-2 bg-[var(--surface)] rounded-md">{parsed.title || "Não encontrado"}</p>
-              </div>
-              <div>
-                <h4 className="font-semibold text-sm text-[var(--navy)]">Endereço</h4>
-                <p className="text-sm text-muted-foreground p-2 bg-[var(--surface)] rounded-md">{parsed.address || "Não encontrado"}</p>
-              </div>
-              <div>
-                <h4 className="font-semibold text-sm text-[var(--navy)]">
-                  Características Encontradas ({parsed.features?.length ?? 0})
-                </h4>
-                <div className="flex flex-wrap gap-2 p-2 bg-[var(--surface)] rounded-md">
-                  {(parsed.features ?? []).map((f, i) => (
-                    <span key={i} className="text-xs bg-white border border-border rounded-full px-2 py-0.5">
-                      {f}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h4 className="font-semibold text-sm text-[var(--navy)] mb-2">
-                  Tipologias Encontradas ({parsed.typologies?.length ?? 0})
-                </h4>
-                <div className="space-y-2">
-                  {(parsed.typologies ?? []).map((t, i) => (
-                    <div key={i} className="text-xs text-muted-foreground p-2 border border-border rounded-md">
-                      <p className="font-bold text-[var(--navy)]">{t.name}</p>
-                      <p>
-                        Área: {t.area || "N/A"} m² | Dorms: {t.dormitorios || "N/A"} | Suítes: {t.suites || "N/A"} | Vagas:{" "}
-                        {t.vagas || "N/A"}
-                      </p>
-                      <p>Valor: {fmtBRL(Number(t.valor) || 0)}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setParsed(null)} className="h-10 px-4 rounded-xl bg-[var(--surface)] text-sm font-medium text-[var(--navy)]">
-                Cancelar
-              </button>
-              <button onClick={fillFromParsed} className="h-10 px-4 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold">
-                Preencher Formulário
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

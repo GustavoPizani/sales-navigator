@@ -40,7 +40,10 @@ interface AuthContextValue {
   isManager: boolean;
   /** RH: acessa o log de check-ins e os módulos liberados pelo ADM. */
   isHr: boolean;
-  /** Conta de teste: enxerga as funções novas ainda não liberadas. */
+  /**
+   * Vê as funções em teste: a conta de teste (em qualquer lugar) e o ADM
+   * quando roda o sistema localmente (npm run dev).
+   */
   isTester: boolean;
   /** Nível do usuário no módulo, pela matriz de permissões do cargo. */
   level: (module: ModuleKey) => PermissionLevel;
@@ -200,7 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isSuperAdmin,
     isManager: profile?.role === "master",
     isHr: profile?.role === "hr",
-    isTester: profile?.is_test === true,
+    isTester: profile?.is_test === true || (import.meta.env.DEV && isSuperAdmin),
     level,
     can,
     canSeeCheckinLog: isSuperAdmin || profile?.role === "hr",

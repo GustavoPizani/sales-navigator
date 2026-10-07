@@ -6,6 +6,7 @@ import { format, endOfMonth, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Plus, Check, X, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
@@ -96,6 +97,12 @@ function DealsPage() {
       <AppHeader title={title} />
 
       <div className="px-4 pt-4 flex flex-col gap-3">
+        <button
+          onClick={() => setEditing("new")}
+          className="self-end h-10 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm inline-flex items-center gap-1.5"
+        >
+          <Plus size={14} strokeWidth={2.5} /> Novo atendimento
+        </button>
         <div className="flex gap-2">
           <input
             type="month"
@@ -150,7 +157,7 @@ function DealsPage() {
               <div className="flex justify-between items-start gap-2">
                 <div className="font-semibold text-[var(--navy)] truncate flex-1">{a.nome_cliente}</div>
                 <span
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
                     statusColors[a.status as keyof typeof statusColors]
                   }`}
                 >
@@ -172,7 +179,7 @@ function DealsPage() {
                 <div className="flex gap-1.5">
                   {a.temperatura && (
                     <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                         temperaturaColors[a.temperatura as keyof typeof temperaturaColors]
                       }`}
                     >
@@ -181,7 +188,7 @@ function DealsPage() {
                   )}
                   {a.setor && (
                     <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                         setorColors[a.setor as keyof typeof setorColors]
                       }`}
                     >
@@ -201,7 +208,7 @@ function DealsPage() {
                   {a.venda ? <Check size={14} className="text-green-600" /> : <X size={14} className="text-red-500" />}
                 </div>
                 {isAdmin && prof?.full_name && (
-                  <div className="ml-auto text-[10px] text-muted-foreground truncate max-w-[120px]">
+                  <div className="ml-auto text-xs text-muted-foreground truncate max-w-[120px]">
                     👤 {prof.full_name}
                   </div>
                 )}
@@ -210,14 +217,6 @@ function DealsPage() {
           );
         })}
       </div>
-
-      <button
-        onClick={() => setEditing("new")}
-        className="fixed right-4 bottom-24 z-30 w-14 h-14 rounded-full bg-[var(--gold)] text-[var(--navy)] shadow-lg flex items-center justify-center"
-        aria-label="Novo Atendimento"
-      >
-        <Plus size={28} strokeWidth={2.5} />
-      </button>
 
       {editing && <DealForm deal={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
     </div>
@@ -567,8 +566,8 @@ export function DealForm({ deal, onClose }: { deal: any; onClose: () => void }) 
             {deal && (isAdmin || isDirector || deal.broker_id === user?.id) && (
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm("Deseja realmente excluir este atendimento?")) {
+                onClick={async () => {
+                  if (await confirmDialog({ title: "Excluir este atendimento?", description: "Essa ação não pode ser desfeita.", confirmLabel: "Excluir", danger: true })) {
                     del.mutate();
                   }
                 }}

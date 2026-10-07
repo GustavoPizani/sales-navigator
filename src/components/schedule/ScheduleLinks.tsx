@@ -22,10 +22,10 @@ export function ScheduleLinksButton({ managerId }: { managerId: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm hover:bg-gray-50"
+        className="flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white border border-border text-[var(--navy)] font-bold text-sm hover:bg-gray-50"
       >
         <LinkIcon size={16} strokeWidth={2.5} />
-        <span className="hidden sm:inline">Links da escala</span>
+        <span>Links da escala</span>
       </button>
       {open && <ScheduleLinks managerId={managerId} onClose={() => setOpen(false)} />}
     </>

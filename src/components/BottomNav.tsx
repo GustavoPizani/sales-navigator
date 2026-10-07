@@ -41,7 +41,7 @@ export function BottomNav() {
           <div className="absolute inset-y-0 inset-x-5">
             <div
               aria-hidden
-              className="absolute inset-y-0 left-0 transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.65,0,0.35,1)]"
+              className="absolute inset-y-0 left-0 will-change-transform transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
               style={{
                 width: `${100 / n}%`,
                 transform: `translateX(${Math.max(activeIndex, 0) * 100}%)`,
@@ -97,27 +97,29 @@ export function BottomNav() {
                 <Link
                   to={t.to}
                   aria-current={i === routeIndex ? "page" : undefined}
+                  // a tela começa a carregar no toque, antes de soltar o dedo
+                  preload="intent"
                   onClick={() => setPendingTo(t.to)}
-                  className="flex h-full flex-col items-center justify-center gap-1 select-none [-webkit-tap-highlight-color:transparent]"
+                  className="flex h-full flex-col items-center justify-center gap-1 select-none [-webkit-tap-highlight-color:transparent] transition-transform duration-100 active:scale-90"
                 >
                   <Icon
                     size={21}
                     strokeWidth={active ? 2.4 : 1.9}
-                    className={`transition-all duration-300 ease-out ${
+                    className={`transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                       active
                         ? "-translate-y-[18px] text-[var(--gold)] drop-shadow-[0_0_6px_rgba(178,128,105,0.7)]"
                         : "text-white/85"
                     }`}
                   />
                   <span
-                    className={`max-w-full truncate px-0.5 text-[10px] font-semibold transition-all duration-300 ${
+                    className={`max-w-full truncate px-0.5 text-[10px] font-semibold transition-all duration-200 ${
                       active ? "-translate-y-2.5 text-[var(--gold)]" : "text-white/60"
                     }`}
                   >
                     {t.label}
                   </span>
                   <span
-                    className={`h-1 w-1 rounded-full bg-[var(--gold)] transition-all duration-300 ${
+                    className={`h-1 w-1 rounded-full bg-[var(--gold)] transition-all duration-200 ${
                       active ? "-translate-y-2.5 opacity-100" : "opacity-0"
                     }`}
                   />

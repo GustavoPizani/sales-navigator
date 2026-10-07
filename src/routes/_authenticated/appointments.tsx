@@ -146,6 +146,15 @@ function ManagerAppointmentsList() {
     <div className="pb-nav">
       <AppHeader title={isManager ? "Agendamentos da Equipe" : "Meus Agendamentos"} />
 
+      <div className="px-4 pt-3 flex justify-end">
+        <button
+          onClick={() => setEditing("new")}
+          className="h-10 px-4 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold text-sm inline-flex items-center gap-1.5"
+        >
+          <Plus size={14} strokeWidth={2.5} /> Novo agendamento
+        </button>
+      </div>
+
       {isManager && (brokersQ.data ?? []).length > 0 && (
         <div className="px-4 pt-3 pb-1">
           <select
@@ -190,15 +199,11 @@ function ManagerAppointmentsList() {
                   <p className="text-xs text-[var(--gold)] font-medium mt-0.5">{(a.profiles as any).full_name}</p>
                 )}
               </div>
-              <span className="text-[10px] uppercase tracking-wide px-2 py-1 rounded-full bg-[var(--gold)]/20 text-[var(--navy)] font-semibold">{typeLabels[a.type]}</span>
+              <span className="text-xs uppercase tracking-wide px-2 py-1 rounded-full bg-[var(--gold)]/20 text-[var(--navy)] font-semibold">{typeLabels[a.type]}</span>
             </div>
           </button>
         ))}
       </div>
-      <button onClick={() => setEditing("new")}
-        className="fixed right-4 bottom-24 z-30 w-14 h-14 rounded-full bg-[var(--gold)] text-[var(--navy)] shadow-lg flex items-center justify-center" aria-label="Novo agendamento">
-        <Plus size={28} strokeWidth={2.5} />
-      </button>
       {editing && <AppointmentForm appt={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
     </div>
   );

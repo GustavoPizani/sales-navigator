@@ -11,12 +11,15 @@ export function KanbanView({
   leads,
   onMove,
   readOnly = false,
+  fill = false,
 }: {
   stages: FunnelStage[];
   leads: Lead[];
   onMove: (leadId: string, stageId: string) => void;
   /** somente visualização: não permite arrastar */
   readOnly?: boolean;
+  /** no computador, ocupa a altura que sobra: a rolagem horizontal fica na borda de baixo */
+  fill?: boolean;
 }) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overStage, setOverStage] = useState<string | null>(null);
@@ -25,15 +28,15 @@ export function KanbanView({
   leads.forEach((l) => byStage.get(l.stage_id)?.push(l));
 
   return (
-    <div className="overflow-x-auto pb-2 -mx-4 px-4">
-      <div className="flex gap-3 min-w-max items-start">
+    <div className={`overflow-x-auto pb-2 -mx-4 px-4 ${fill ? "lg:flex-1 lg:min-h-0" : ""}`}>
+      <div className={`flex gap-3 min-w-max items-start ${fill ? "lg:h-full" : ""}`}>
         {stages.map((stage) => {
           const items = byStage.get(stage.id) ?? [];
           const isOver = overStage === stage.id && draggingId !== null;
           return (
             <section
               key={stage.id}
-              className={`w-[280px] flex-shrink-0 flex flex-col rounded-xl border bg-white/60 transition-colors ${isOver ? "border-[var(--gold)] bg-[var(--gold)]/5" : "border-border"}`}
+              className={`w-[280px] flex-shrink-0 flex flex-col rounded-xl border bg-white/60 transition-colors ${fill ? "lg:max-h-full" : ""} ${isOver ? "border-[var(--gold)] bg-[var(--gold)]/5" : "border-border"}`}
               onDragOver={(e) => {
                 if (!draggingId) return;
                 e.preventDefault();
@@ -61,7 +64,9 @@ export function KanbanView({
                   {items.length}
                 </span>
               </header>
-              <div className="p-2 space-y-2.5 max-h-[calc(100dvh-18rem)] min-h-[120px] overflow-y-auto">
+              <div
+                className={`p-2 space-y-2.5 max-h-[calc(100dvh-18rem)] min-h-[120px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${fill ? "lg:max-h-none lg:flex-1" : ""}`}
+              >
                 {items.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-6">Nenhum lead</p>
                 )}

@@ -11,6 +11,7 @@ import { useEffect } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/hooks/useAuth";
 import { IOSInstallBanner } from "@/components/IOSInstallBanner";
+import { ConfirmHost } from "@/components/ConfirmDialog";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
@@ -95,6 +96,7 @@ function RootComponent() {
       <AuthProvider>
         <IOSInstallBanner />
         <Outlet />
+        <ConfirmHost />
         <Toaster position="top-center" toastOptions={{ duration: 3000 }} />
       </AuthProvider>
     </QueryClientProvider>

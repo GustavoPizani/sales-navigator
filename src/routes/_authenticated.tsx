@@ -42,7 +42,7 @@ function AppShell() {
     <div className="min-h-screen bg-[var(--surface)]">
       {isTester && (
         <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[80] pointer-events-none rounded-full bg-fuchsia-600 px-3 py-1 text-[11px] font-bold text-white shadow-lg">
-          CONTA DE TESTE · {profile?.cargo_name ?? profile?.role}
+          {profile?.is_test ? `CONTA DE TESTE · ${profile?.cargo_name ?? profile?.role}` : "MODO TESTE (LOCAL)"}
         </div>
       )}
       <PushSubscriber />

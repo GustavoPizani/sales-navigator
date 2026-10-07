@@ -34,15 +34,16 @@ export function KpiCard({ label, value }: { label: string; value: string | numbe
   return (
     <div className="bg-[var(--navy)] rounded-2xl p-4 flex flex-col justify-center items-center shadow-sm text-center min-h-[100px]">
       <div className="text-2xl sm:text-3xl font-bold text-white mb-1">{value}</div>
-      <div className="text-[10px] sm:text-xs font-semibold text-[var(--gold)] uppercase tracking-wide leading-tight">{label}</div>
+      <div className="text-xs sm:text-xs font-semibold text-[var(--gold)] uppercase tracking-wide leading-tight">{label}</div>
     </div>
   );
 }
 
-export function ChartCard({ title, children }: { title: string; children: ReactNode }) {
+export function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
     <div className="bg-white p-4 rounded-2xl shadow-sm border border-border flex flex-col">
-      <h3 className="text-sm font-semibold text-[var(--navy)] italic mb-4 text-center">{title}</h3>
+      <h3 className={`text-sm font-semibold text-[var(--navy)] italic text-center ${subtitle ? "" : "mb-4"}`}>{title}</h3>
+      {subtitle && <p className="text-xs text-muted-foreground text-center mt-0.5 mb-4">{subtitle}</p>}
       <div className="flex-1 w-full min-w-0">{children}</div>
     </div>
   );
@@ -51,9 +52,52 @@ export function ChartCard({ title, children }: { title: string; children: ReactN
 export function MiniAvatar({ name, color }: { name?: string; color?: string }) {
   const initials = name ? name.split(" ").slice(0, 2).map((n: string) => n[0]).join("").toUpperCase() : "?";
   return (
-    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: color || "#CCC" }}>
+    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: color || "#CCC" }}>
       {initials}
     </div>
+  );
+}
+
+const CHART_TOOLTIP = { borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" };
+const formatBRLCompact = (val: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 1 }).format(val);
+
+function ChartEmpty({ children }: { children: ReactNode }) {
+  return <p className="text-sm text-muted-foreground text-center py-10">{children}</p>;
+}
+
+/** Total do mês numa barra só, dividida entre os que avançaram (yes) e os que não (no). */
+function MonthlySplitChart({ title, subtitle, data, yes, no, empty }: {
+  title: string;
+  subtitle: string;
+  data: { name: string; Sim: number; Não: number }[];
+  yes: string;
+  no: string;
+  empty: string;
+}) {
+  const hasData = data.some((d) => d.Sim > 0 || d.Não > 0);
+  return (
+    <ChartCard title={title} subtitle={subtitle}>
+      {!hasData ? (
+        <ChartEmpty>{empty}</ChartEmpty>
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
+            <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
+            <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} contentStyle={CHART_TOOLTIP} />
+            <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: "8px" }} />
+            <Bar dataKey="Sim" name={yes} stackId="total" fill="#B28069" maxBarSize={56}>
+              <LabelList dataKey="Sim" position="center" style={{ fontSize: 11, fill: "#FFFFFF", fontWeight: 700 }} formatter={(v: number) => (v > 0 ? v : "")} />
+            </Bar>
+            <Bar dataKey="Não" name={no} stackId="total" fill="#D4D4D4" radius={[4, 4, 0, 0]} maxBarSize={56}>
+              <LabelList dataKey="Não" position="center" style={{ fontSize: 11, fill: "#2D2D2D", fontWeight: 700 }} formatter={(v: number) => (v > 0 ? v : "")} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
   );
 }
 
@@ -61,44 +105,40 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
   return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ChartCard title="Atendimentos x Visitas">
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={dbData.chart1Data} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
-              <Tooltip cursor={{ fill: "transparent" }} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-              <Legend wrapperStyle={{ fontSize: 12, paddingTop: "10px" }} verticalAlign="top" />
-              <Bar dataKey="Sim" fill="#B28069" radius={[4, 4, 0, 0]}><LabelList dataKey="Sim" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
-              <Bar dataKey="Não" fill="#A8A8A8" radius={[4, 4, 0, 0]}><LabelList dataKey="Não" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-        <ChartCard title="Visitas x Vendas">
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={dbData.chart2Data} margin={{ top: 20, right: 0, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
-              <Tooltip cursor={{ fill: "transparent" }} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-              <Legend wrapperStyle={{ fontSize: 12, paddingTop: "10px" }} verticalAlign="top" />
-              <Bar dataKey="Sim" fill="#B28069" radius={[4, 4, 0, 0]}><LabelList dataKey="Sim" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
-              <Bar dataKey="Não" fill="#A8A8A8" radius={[4, 4, 0, 0]}><LabelList dataKey="Não" position="top" style={{ fontSize: 10, fill: "#6B7280" }} formatter={(v: number) => (v > 0 ? v : "")} /></Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+        <MonthlySplitChart
+          title="Atendimentos por mês"
+          subtitle="Quantos clientes do mês chegaram a visitar"
+          data={dbData.chart1Data}
+          yes="Com visita"
+          no="Sem visita"
+          empty="Nenhum atendimento no período."
+        />
+        <MonthlySplitChart
+          title="Visitas por mês"
+          subtitle="Quantas visitas do mês viraram venda"
+          data={dbData.chart2Data}
+          yes="Viraram venda"
+          no="Sem venda"
+          empty="Nenhuma visita no período."
+        />
       </div>
       <div className="grid grid-cols-1 gap-4">
-        <ChartCard title="Vendas no período">
-          <ResponsiveContainer width="100%" height={350}>
-            <BarChart data={dbData.chart5Data} layout="vertical" margin={{ top: 0, right: 80, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
-              <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} tickFormatter={formatBRL} />
-              <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} width={60} />
-              <Tooltip cursor={{ fill: "transparent" }} formatter={(v: number) => formatBRL(v)} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-              <Bar dataKey="valor" fill="#2D2D2D" radius={[0, 4, 4, 0]} barSize={20}><LabelList dataKey="valor" position="right" formatter={(v: number) => (v > 0 ? formatBRL(v) : "")} style={{ fontSize: 10, fill: "#6B7280" }} /></Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <ChartCard title="Valor vendido por mês" subtitle="Soma das vendas aprovadas">
+          {!dbData.chart5Data.some((d: any) => d.valor > 0) ? (
+            <ChartEmpty>Nenhuma venda no período.</ChartEmpty>
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={dbData.chart5Data} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#6B7280" }} tickFormatter={formatBRLCompact} width={70} />
+                <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} formatter={(v: number) => [formatBRL(v), "Vendido"]} contentStyle={CHART_TOOLTIP} />
+                <Bar dataKey="valor" fill="#2D2D2D" radius={[4, 4, 0, 0]} maxBarSize={56}>
+                  <LabelList dataKey="valor" position="top" formatter={(v: number) => (v > 0 ? formatBRLCompact(v) : "")} style={{ fontSize: 11, fill: "#6B7280", fontWeight: 600 }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </ChartCard>
       </div>
     </>
@@ -107,13 +147,18 @@ export function DashboardCharts({ dbData }: { dbData: any }) {
 
 export function StatusChart({ data }: { data: any[] }) {
   const filtered = data.filter((d) => d.count > 0);
-  if (filtered.length === 0) return null;
+  // Sem dados o card continua no lugar (com aviso), para não deixar o vizinho sozinho na linha.
+  if (filtered.length === 0)
+    return (
+      <ChartCard title="Atendimentos por Status">
+        <ChartEmpty>Nenhum atendimento no período.</ChartEmpty>
+      </ChartCard>
+    );
   return (
     <ChartCard title="Atendimentos por Status">
-      <ResponsiveContainer width="100%" height={Math.max(180, filtered.length * 46)}>
+      <ResponsiveContainer width="100%" height={filtered.length * 46 + 16}>
         <BarChart data={filtered} layout="vertical" margin={{ top: 0, right: 60, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
-          <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} allowDecimals={false} />
+          <XAxis type="number" hide allowDecimals={false} />
           <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#6B7280" }} width={145} />
           <Tooltip 
             cursor={{ fill: "rgba(0,0,0,0.04)" }} 
@@ -145,14 +190,18 @@ export function StatusChart({ data }: { data: any[] }) {
 }
 
 export function VisitsByProductChart({ data }: { data: { name: string; visitas: number; total: number }[] }) {
-  if (data.length === 0) return null;
+  if (data.length === 0)
+    return (
+      <ChartCard title="Visitas por Produto">
+        <ChartEmpty>Nenhuma visita no período.</ChartEmpty>
+      </ChartCard>
+    );
   const sliced = data.slice(0, 15);
   return (
     <ChartCard title="Visitas por Produto">
-      <ResponsiveContainer width="100%" height={Math.max(200, sliced.length * 46)}>
+      <ResponsiveContainer width="100%" height={sliced.length * 46 + 16}>
         <BarChart data={sliced} layout="vertical" margin={{ top: 0, right: 60, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
-          <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} allowDecimals={false} />
+          <XAxis type="number" hide allowDecimals={false} />
           <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#6B7280" }} width={145} />
           <Tooltip
             cursor={{ fill: "rgba(0,0,0,0.04)" }}
@@ -311,15 +360,15 @@ export function AtendimentosTable({ atendimentos, isAdmin, onRowClick, onRowCont
                   <td className="px-4 py-3 text-muted-foreground max-w-[150px] truncate" title={a.ocorrencia}>{a.ocorrencia || "—"}</td>
                   <td className="px-4 py-3 text-center">{a.visita ? <Check size={16} className="text-green-600 inline" /> : <X size={16} className="text-red-500 inline" />}</td>
                   <td className="px-4 py-3 text-center">{a.venda ? <Check size={16} className="text-green-600 inline" /> : <X size={16} className="text-red-500 inline" />}</td>
-                  <td className="px-4 py-3">{a.temperatura && <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${temperaturaColors[a.temperatura as keyof typeof temperaturaColors]}`}>{a.temperatura}</span>}</td>
-                  <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${statusColors[a.status as keyof typeof statusColors]}`}>{a.status}</span></td>
+                  <td className="px-4 py-3">{a.temperatura && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${temperaturaColors[a.temperatura as keyof typeof temperaturaColors]}`}>{a.temperatura}</span>}</td>
+                  <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${statusColors[a.status as keyof typeof statusColors]}`}>{a.status}</span></td>
                   <td className="px-4 py-3 text-right font-medium text-[var(--navy)] whitespace-nowrap">{formatBRL(Number(a.valor) || 0)}</td>
                   {isAdmin && (
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2"><MiniAvatar name={a.profiles?.full_name} color={a.profiles?.color} /><span className="truncate max-w-[120px]">{a.profiles?.full_name}</span></div>
                     </td>
                   )}
-                  <td className="px-4 py-3">{a.setor && <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${setorColors[a.setor as keyof typeof setorColors]}`}>{a.setor}</span>}</td>
+                  <td className="px-4 py-3">{a.setor && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${setorColors[a.setor as keyof typeof setorColors]}`}>{a.setor}</span>}</td>
                 </tr>
               ))
             )}

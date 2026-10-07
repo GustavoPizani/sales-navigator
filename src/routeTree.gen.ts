@@ -20,6 +20,7 @@ import { Route as AuthenticatedCheckinLogRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDealsRouteImport } from './routes/_authenticated/deals'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
+import { Route as AuthenticatedRelatorioVisitasRouteImport } from './routes/_authenticated/relatorio-visitas'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as EscalaTokenRouteImport } from './routes/escala.$token'
@@ -84,6 +85,12 @@ const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedRelatorioVisitasRoute =
+  AuthenticatedRelatorioVisitasRouteImport.update({
+    id: '/relatorio-visitas',
+    path: '/relatorio-visitas',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
   id: '/schedule',
   path: '/schedule',
@@ -141,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/deals': typeof AuthenticatedDealsRoute
   '/projects': typeof AuthenticatedProjectsRoute
+  '/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
@@ -161,6 +169,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/deals': typeof AuthenticatedDealsRoute
   '/projects': typeof AuthenticatedProjectsRoute
+  '/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
@@ -183,6 +192,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/_authenticated/deals': typeof AuthenticatedDealsRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRoute
+  '/_authenticated/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/deals'
     | '/projects'
+    | '/relatorio-visitas'
     | '/schedule'
     | '/team'
     | '/escala/$token'
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/deals'
     | '/projects'
+    | '/relatorio-visitas'
     | '/schedule'
     | '/team'
     | '/escala/$token'
@@ -246,6 +258,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/deals'
     | '/_authenticated/projects'
+    | '/_authenticated/relatorio-visitas'
     | '/_authenticated/schedule'
     | '/_authenticated/team'
     | '/escala/$token'
@@ -343,6 +356,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/relatorio-visitas': {
+      id: '/_authenticated/relatorio-visitas'
+      path: '/relatorio-visitas'
+      fullPath: '/relatorio-visitas'
+      preLoaderRoute: typeof AuthenticatedRelatorioVisitasRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/schedule': {
       id: '/_authenticated/schedule'
       path: '/schedule'
@@ -425,6 +445,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRouteWithChildren
   AuthenticatedDealsRoute: typeof AuthenticatedDealsRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
+  AuthenticatedRelatorioVisitasRoute: typeof AuthenticatedRelatorioVisitasRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedLeadsLeadIdRoute: typeof AuthenticatedLeadsLeadIdRoute
@@ -441,6 +462,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRouteWithChildren,
   AuthenticatedDealsRoute: AuthenticatedDealsRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
+  AuthenticatedRelatorioVisitasRoute: AuthenticatedRelatorioVisitasRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedLeadsLeadIdRoute: AuthenticatedLeadsLeadIdRoute,

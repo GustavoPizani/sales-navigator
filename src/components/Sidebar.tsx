@@ -7,6 +7,11 @@ import { ROLE_LABELS, isTabActive, useNavTabs, type NavTab } from "@/components/
 
 export const SIDEBAR_WIDTH = { expanded: "16rem", collapsed: "4.75rem" };
 
+// Textos ficam sempre montados e só aparecem/somem por opacidade: ao abrir,
+// nada muda de lugar (os ícones têm posição fixa), só a largura cresce.
+const labelCls = (collapsed: boolean) =>
+  `truncate transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100 delay-75"}`;
+
 /**
  * Navegação do desktop (no celular é a BottomNav). Colada à esquerda, com a
  * mesma cor e altura do cabeçalho (AppHeader): os dois formam uma moldura em
@@ -28,7 +33,7 @@ export function Sidebar() {
   // pequeno atraso ao sair, para não fechar em um deslize do mouse
   const scheduleClose = () => {
     window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(() => setOpen(false), 180);
+    closeTimer.current = window.setTimeout(() => setOpen(false), 100);
   };
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
@@ -40,21 +45,19 @@ export function Sidebar() {
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) scheduleClose();
       }}
-      className={`app-sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 flex-col text-white overflow-hidden transition-[width,box-shadow] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)] ${
+      className={`app-sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 flex-col text-white overflow-hidden will-change-[width] transition-[width,box-shadow] duration-200 ease-out motion-reduce:transition-none ${
         open ? "shadow-[8px_0_32px_rgba(0,0,0,0.28)]" : ""
       }`}
       style={{ width: collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded }}
       aria-label="Navegação principal"
     >
       {/* Cabeçalho */}
-      <div
-        className={`flex h-14 flex-shrink-0 items-center gap-2 ${collapsed ? "justify-center px-2" : "px-4"}`}
-      >
+      <div className="flex h-14 flex-shrink-0 items-center gap-2 pl-5 pr-4">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--gold)] to-[var(--gold-dark)] text-[13px] font-bold tracking-tight">
           P&amp;G
         </div>
         <div
-          className={`min-w-0 flex-1 transition-opacity duration-200 ${collapsed ? "hidden" : "opacity-100"}`}
+          className={`min-w-0 flex-1 transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100 delay-75"}`}
         >
           <p className="truncate text-sm font-semibold leading-tight">Paes &amp; Gregori</p>
           <p className="truncate text-[11px] uppercase tracking-[0.18em] text-white/45">
@@ -63,7 +66,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pt-2">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <SectionLabel collapsed={collapsed}>Menu</SectionLabel>
         <ul className="space-y-1">
           {tabs.map((t) => (
@@ -97,11 +100,11 @@ export function Sidebar() {
                 await signOut();
                 navigate({ to: "/login" });
               }}
-              className={`group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm text-white/65 transition-all duration-200 hover:bg-white/[0.06] hover:text-white ${collapsed ? "justify-center px-0" : ""}`}
+              className="group flex h-10 w-full items-center gap-3 rounded-lg pl-[17px] pr-3 text-sm text-white/65 transition-colors duration-150 hover:bg-white/[0.06] hover:text-white"
               title={collapsed ? "Sair" : undefined}
             >
               <LogOut size={18} className="flex-shrink-0" />
-              {!collapsed && <span className="truncate">Sair</span>}
+              <span className={labelCls(collapsed)}>Sair</span>
             </button>
           </li>
         </ul>
@@ -110,13 +113,20 @@ export function Sidebar() {
   );
 }
 
+// Divisor (fechado) e título (aberto) ocupam a mesma altura, para a lista não pular.
 function SectionLabel({ collapsed, children }: { collapsed: boolean; children: React.ReactNode }) {
-  return collapsed ? (
-    <div className="mx-auto my-3 h-px w-6 bg-white/15" aria-hidden />
-  ) : (
-    <p className="mb-2 mt-3 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">
-      {children}
-    </p>
+  return (
+    <div className="relative h-8">
+      <div
+        className={`absolute left-[14px] top-1/2 h-px w-6 bg-white/15 transition-opacity duration-150 ${collapsed ? "opacity-100" : "opacity-0"}`}
+        aria-hidden
+      />
+      <p
+        className={`absolute inset-x-3 top-1/2 -translate-y-1/2 truncate text-xs font-semibold uppercase tracking-[0.2em] text-white/35 transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100 delay-75"}`}
+      >
+        {children}
+      </p>
+    </div>
   );
 }
 
@@ -136,16 +146,14 @@ function SidebarItem({
         to={tab.to}
         aria-current={active ? "page" : undefined}
         title={collapsed ? tab.label : undefined}
-        className={`group relative flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-all duration-200 ${
-          collapsed ? "justify-center px-0" : ""
-        } ${
+        className={`group relative flex h-10 items-center gap-3 rounded-lg pl-[17px] pr-3 text-sm transition-colors duration-150 ${
           active
             ? "bg-gradient-to-r from-[var(--gold)] to-[var(--gold-dark)] font-semibold text-white shadow-[0_6px_18px_rgba(178,128,105,0.35)]"
-            : "text-white/65 hover:translate-x-0.5 hover:bg-white/[0.06] hover:text-white"
+            : "text-white/65 hover:bg-white/[0.06] hover:text-white"
         }`}
       >
         <Icon size={18} strokeWidth={active ? 2.4 : 2} className="flex-shrink-0" />
-        {!collapsed && <span className="truncate">{tab.label}</span>}
+        <span className={labelCls(collapsed)}>{tab.label}</span>
       </Link>
     </li>
   );
@@ -153,7 +161,8 @@ function SidebarItem({
 
 /**
  * Cartão do usuário (abre Minha conta). Inspirado em "premium profile card":
- * faixa diagonal cobre atrás da foto, anel branco, cargo em etiqueta.
+ * faixa diagonal cobre atrás da foto, anel branco, cargo em etiqueta. Fechado,
+ * sobra só a foto, na mesma posição: o cartão aparece em volta dela ao abrir.
  */
 function ProfileCard({
   name,
@@ -170,47 +179,36 @@ function ProfileCard({
   active: boolean;
   collapsed: boolean;
 }) {
-  if (collapsed) {
-    return (
-      <Link
-        to="/settings/profile"
-        title={`${name} — Minha conta`}
-        className="mb-2 flex justify-center rounded-xl py-1.5 transition-transform duration-200 hover:-translate-y-0.5"
-      >
-        <span
-          className={`rounded-full p-[2px] ${active ? "bg-white" : "bg-gradient-to-br from-[var(--gold)] to-[var(--gold-dark)]"}`}
-        >
-          <Avatar
-            name={name}
-            color={color}
-            src={avatarUrl}
-            size={38}
-            className="ring-2 ring-[#262626]"
-          />
-        </span>
-      </Link>
-    );
-  }
+  const cardCls = collapsed
+    ? "border-transparent bg-transparent"
+    : active
+      ? "border-[var(--gold)]/60 bg-white/[0.08]"
+      : "border-white/10 bg-white/[0.05] hover:border-[var(--gold)]/40";
   return (
     <Link
       to="/settings/profile"
-      className={`group relative mb-2 flex items-center gap-3 overflow-hidden rounded-2xl border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(0,0,0,0.35)] ${
-        active
-          ? "border-[var(--gold)]/60 bg-white/[0.08]"
-          : "border-white/10 bg-white/[0.05] hover:border-[var(--gold)]/40"
-      }`}
+      title={collapsed ? `${name} — Minha conta` : undefined}
+      className={`group relative mb-2 flex h-[4.75rem] items-center gap-3 overflow-hidden rounded-2xl border pl-[3px] pr-3 transition-colors duration-150 ${cardCls}`}
     >
       {/* faixa diagonal em gradiente cobre atrás da foto */}
       <span
         aria-hidden
-        className="absolute -left-6 -top-4 -bottom-4 w-[4.6rem] -skew-x-12 bg-gradient-to-b from-[var(--gold)] to-[var(--gold-dark)] opacity-90 transition-[width] duration-300 group-hover:w-[5.2rem]"
+        className={`absolute -left-6 -top-4 -bottom-4 w-[4.6rem] -skew-x-12 bg-gradient-to-b from-[var(--gold)] to-[var(--gold-dark)] transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-90"}`}
       />
-      <span className="relative flex-shrink-0 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.35)] ring-[3px] ring-white/90">
-        <Avatar name={name} color={color} src={avatarUrl} size={44} />
+      <span
+        className={`relative flex-shrink-0 rounded-full p-[2px] ${
+          collapsed && !active
+            ? "bg-gradient-to-br from-[var(--gold)] to-[var(--gold-dark)]"
+            : "bg-white/90"
+        }`}
+      >
+        <Avatar name={name} color={color} src={avatarUrl} size={40} />
       </span>
-      <span className="relative min-w-0 flex-1">
+      <span
+        className={`relative min-w-0 flex-1 transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100 delay-75"}`}
+      >
         <span className="block truncate text-sm font-semibold leading-tight">{name}</span>
-        <span className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/75">
+        <span className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium text-white/75">
           <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[var(--gold)]" />
           <span className="truncate">{role}</span>
         </span>

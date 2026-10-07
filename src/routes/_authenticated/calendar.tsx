@@ -1,10 +1,11 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { RequireModule } from "@/components/RequireModule";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { addDays, format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, CalendarDays, ChevronLeft, ChevronRight, List, Plus, X } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Copy, List, MessageCircle, Plus, Send, X } from "lucide-react";
+import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrokers } from "@/hooks/useBrokers";
@@ -35,7 +36,9 @@ function CalendarPage() {
 }
 
 export function CalendarView({ mode, title }: { mode: "team" | "own"; title: string }) {
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin } = useAuth();
+  // link do relatório de visitas, para o admin enviar aos corretores
+  const [reportLinkOpen, setReportLinkOpen] = useState(false);
   const [month, setMonth] = useState(startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterBrokers, setFilterBrokers] = useState<string[]>([]);
@@ -155,6 +158,7 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
 
       <div className="flex-1 min-h-0 flex flex-col px-4 pt-3 pb-nav gap-2">
         {/* Calendário ou lista */}
+        <div className="flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
         <div className="inline-flex self-start rounded-lg border border-border bg-white p-0.5 flex-shrink-0" role="tablist">
           {([
             ["calendar", "Calendário", CalendarDays],
@@ -166,7 +170,7 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
               role="tab"
               aria-selected={view === key}
               onClick={() => setView(key)}
-              className={`h-8 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5 ${
+              className={`h-9 px-3 rounded-md text-sm font-medium inline-flex items-center gap-1.5 ${
                 view === key ? "bg-[var(--navy)] text-white" : "text-muted-foreground"
               }`}
             >
@@ -174,23 +178,51 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
             </button>
           ))}
         </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* relatório de visitas: quem preencheu e, para o admin, o link para enviar aos corretores */}
+            <>
+                <Link
+                  to="/relatorio-visitas"
+                  className="h-10 px-3 rounded-lg bg-white border border-border text-[var(--navy)] text-sm font-semibold inline-flex items-center gap-1.5"
+                >
+                  <ClipboardList size={15} /> Relatório de visitas
+                </Link>
+                {mode === "team" && isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setReportLinkOpen(true)}
+                    className="h-10 px-3 rounded-lg bg-white border border-border text-[var(--navy)] text-sm font-semibold inline-flex items-center gap-1.5"
+                  >
+                    <Send size={15} /> Enviar link
+                  </button>
+                )}
+            </>
+            <button
+              type="button"
+              onClick={() => { setEditing("new"); setDayModalOpen(false); }}
+              className="h-10 px-3 rounded-lg bg-[var(--gold)] text-[var(--navy)] text-sm font-semibold inline-flex items-center gap-1.5"
+            >
+              <Plus size={15} strokeWidth={2.5} /> Novo agendamento
+            </button>
+          </div>
+        </div>
 
         {view === "list" && (
           <div className="flex flex-wrap items-end gap-2 flex-shrink-0">
             <label className="block">
               <span className="text-[11px] font-semibold text-muted-foreground uppercase block mb-0.5">De</span>
               <input type="date" value={listFrom} max={listTo} onChange={(e) => e.target.value && setListFrom(e.target.value)}
-                className="h-9 px-2 rounded-lg bg-white border border-border text-sm" />
+                className="h-10 px-2 rounded-lg bg-white border border-border text-sm" />
             </label>
             <label className="block">
               <span className="text-[11px] font-semibold text-muted-foreground uppercase block mb-0.5">Até</span>
               <input type="date" value={listTo} min={listFrom} onChange={(e) => e.target.value && setListTo(e.target.value)}
-                className="h-9 px-2 rounded-lg bg-white border border-border text-sm" />
+                className="h-10 px-2 rounded-lg bg-white border border-border text-sm" />
             </label>
             <button
               type="button"
               onClick={() => setOrder((o) => (o === "asc" ? "desc" : "asc"))}
-              className="h-9 px-3 rounded-lg bg-white border border-border text-sm text-[var(--navy)] inline-flex items-center gap-1.5"
+              className="h-10 px-3 rounded-lg bg-white border border-border text-sm text-[var(--navy)] inline-flex items-center gap-1.5"
               title="Inverter a ordem"
             >
               {order === "asc" ? <ArrowUpNarrowWide size={15} /> : <ArrowDownWideNarrow size={15} />}
@@ -264,7 +296,7 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
           style={{ gridTemplateRows: `auto repeat(${numWeeks}, 1fr)` }}
         >
           {DAY_INITIALS.map((d, i) => (
-            <div key={i} className="text-center text-[10px] font-semibold text-muted-foreground py-1">{d}</div>
+            <div key={i} className="text-center text-xs font-semibold text-muted-foreground py-1">{d}</div>
           ))}
           {days.map((d) => {
             const ds = format(d, "yyyy-MM-dd");
@@ -286,11 +318,6 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
         )}
       </div>
 
-      <button onClick={() => { setEditing("new"); setDayModalOpen(false); }}
-        className="fixed right-4 bottom-24 z-30 w-14 h-14 rounded-full bg-[var(--gold)] text-[var(--navy)] shadow-lg flex items-center justify-center" aria-label="Novo agendamento">
-        <Plus size={28} strokeWidth={2.5} />
-      </button>
-
       {dayModalOpen && (
         <DayModal
           date={selectedDay}
@@ -303,6 +330,46 @@ export function CalendarView({ mode, title }: { mode: "team" | "own"; title: str
       )}
 
       {editing && <AppointmentForm appt={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
+      {reportLinkOpen && <VisitReportLink onClose={() => setReportLinkOpen(false)} />}
+    </div>
+  );
+}
+
+/** Link geral do relatório de visitas, para o admin enviar aos corretores. */
+function VisitReportLink({ onClose }: { onClose: () => void }) {
+  const link = `${window.location.origin}/relatorio-visitas`;
+  const message = `Pessoal, registrem aqui as visitas realizadas (ID do cliente, produto e observação). Elas entram direto no calendário de cada um:\n\n${link}`;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-[var(--navy)]">Relatório de visitas</h3>
+          <button onClick={onClose} className="text-muted-foreground" aria-label="Fechar"><X size={18} /></button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Um link só para todos. Cada corretor entra com o próprio login e informa o ID do cliente, o
+          produto e a observação; a visita entra no calendário dele como realizada.
+        </p>
+        <p className="text-xs break-all rounded-lg bg-[var(--surface)] border border-border px-3 py-2 text-[var(--navy)]">{link}</p>
+        <textarea readOnly value={message} rows={5} onFocus={(e) => e.currentTarget.select()}
+          className="w-full rounded-xl border border-border bg-[var(--surface)] p-3 text-sm text-[var(--navy)] resize-none" />
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => { navigator.clipboard.writeText(link); toast.success("Link copiado!"); }}
+            className="h-11 rounded-xl bg-white border border-border text-[var(--navy)] text-sm font-semibold inline-flex items-center justify-center gap-2"
+          >
+            <Copy size={15} /> Copiar link
+          </button>
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(message)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="h-11 rounded-xl bg-green-600 text-white text-sm font-semibold inline-flex items-center justify-center gap-2"
+          >
+            <MessageCircle size={15} /> Enviar no WhatsApp
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
