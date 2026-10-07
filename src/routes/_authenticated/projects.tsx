@@ -280,7 +280,7 @@ async function geminiErrorMessage(res: Response): Promise<string> {
   const msg = body?.error?.message;
   if (res.status === 503)
     return "A IA do Google está sobrecarregada agora. Já tentamos algumas vezes; aguarde alguns minutos e tente de novo.";
-  return msg ? `Erro ${res.status} na API Gemini: ${msg}` : `Erro ${res.status} na API Gemini`;
+  return msg ? `Erro ${res.status} na API de IA: ${msg}` : `Erro ${res.status} na API de IA`;
 }
 
 function geminiText(data: any): string {
@@ -303,7 +303,7 @@ function parseGeminiJson(data: any): any {
 
 // Retries on 429 (rate limit) honoring the Retry-After header, with exponential backoff as fallback.
 // Also retries when the model is overloaded or briefly unavailable (500/502/503/504), a few times.
-async function fetchGemini(
+async function fetchGeminiDirect(
   apiKey: string,
   systemPrompt: string,
   userContent: string,
@@ -336,6 +336,83 @@ async function fetchGemini(
     const waitMs = retryAfter > 0 ? retryAfter * 1000 : Math.min(3000 * 2 ** attempt, 60000);
     await sleep(waitMs);
   }
+}
+
+// ─── Groq (principal) ────────────────────────────────────────────────────────
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
+/** Há alguma IA configurada? (Groq é a principal; Gemini fica de reserva.) */
+function aiConfigured() {
+  return !!(import.meta.env.VITE_GROQ_API_KEY || import.meta.env.VITE_GEMINI_API_KEY);
+}
+
+async function fetchGroq(apiKey: string, systemPrompt: string, userContent: string) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.1,
+        max_tokens: 32768,
+        response_format: { type: "json_object" },
+      }),
+    });
+    const transient = [429, 500, 502, 503, 504].includes(res.status);
+    if (!transient || attempt >= 3) return res;
+    const retryAfter = Number(res.headers.get("retry-after"));
+    // espera longa demais (limite por minuto estourado): devolve para cair na reserva
+    if (retryAfter > 20) return res;
+    await sleep(retryAfter > 0 ? retryAfter * 1000 : Math.min(2000 * 2 ** attempt, 15000));
+  }
+}
+
+/**
+ * Chamada de IA usada na leitura de tabelões: Groq primeiro; se o Groq falhar
+ * (limite, arquivo grande demais, fora do ar) e houver chave do Gemini, usa o
+ * Gemini. A resposta volta sempre no formato do Gemini, que o resto do código lê.
+ */
+async function fetchGemini(
+  _apiKey: string,
+  systemPrompt: string,
+  userContent: string,
+): Promise<Response> {
+  const groqKey = import.meta.env.VITE_GROQ_API_KEY as string | undefined;
+  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+
+  if (groqKey) {
+    const res = await fetchGroq(groqKey, systemPrompt, userContent);
+    if (res.ok) {
+      const data: any = await res.json();
+      const choice = data?.choices?.[0];
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: { parts: [{ text: choice?.message?.content ?? "{}" }] },
+              finishReason: choice?.finish_reason === "length" ? "MAX_TOKENS" : "STOP",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (!geminiKey) {
+      const body: any = await res.json().catch(() => null);
+      const msg = body?.error?.message;
+      return new Response(
+        JSON.stringify({ error: { message: msg ? `Groq: ${msg}` : "Groq indisponível" } }),
+        { status: res.status, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+  if (!geminiKey) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
+  return fetchGeminiDirect(geminiKey, systemPrompt, userContent);
 }
 
 const SYSTEM_PROMPT = `Você é um especialista em extração de dados de tabelões imobiliários brasileiros.
@@ -378,8 +455,8 @@ Regras obrigatórias:
 - Retorne apenas JSON válido sem markdown ou explicações`;
 
 async function extractFromGemini(text: string): Promise<ExtractedProperty[]> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error("VITE_GEMINI_API_KEY não configurado no .env.local");
+  const apiKey = "";
+  if (!aiConfigured()) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
 
   const res = await fetchGemini(apiKey, SYSTEM_PROMPT, text);
   if (!res.ok) throw new Error(await geminiErrorMessage(res));
@@ -393,8 +470,8 @@ async function classifyFilenamesWithGemini(
   files: File[],
   projects: { id: string; name: string }[]
 ): Promise<ClassifiedFile[]> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error("VITE_GEMINI_API_KEY não configurado");
+  const apiKey = "";
+  if (!aiConfigured()) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
 
   const systemPrompt = "Você classifica arquivos de documentos imobiliários. Retorne apenas JSON válido, sem markdown.";
   const userContent = `Projetos imobiliários existentes:\n${projects.map(p => `- "${p.name}" (ID: ${p.id})`).join("\n")}\n\nArquivos para classificar:\n${files.map((f, i) => `${i + 1}. ${f.name}`).join("\n")}\n\nPara cada arquivo identifique:\n1. O projeto ao qual pertence (busca fuzzy pelo nome no arquivo)\n2. O tipo: "tabela" (planilha/tabela de preços/tabelão), "book" (apresentação/book do produto/material de venda), "condominio" (boleto/previsão de condomínio) ou "iptu" (boleto/carnê de IPTU)\n\nRetorne:\n{\n  "files": [\n    {\n      "filename": "nome_exato.pdf",\n      "project_id": "uuid-do-projeto-ou-null",\n      "project_name": "Nome do Projeto",\n      "type": "tabela"\n    }\n  ]\n}`;
@@ -438,8 +515,8 @@ function filterUnitsForProject(units: RawUnit[], projectName: string): RawUnit[]
 }
 
 async function extractRawUnitsFromGemini(text: string, projectName: string): Promise<RawUnit[]> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error("VITE_GEMINI_API_KEY não configurado");
+  const apiKey = "";
+  if (!aiConfigured()) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
 
   const systemPrompt = `Você extrai unidades individuais disponíveis de um documento imobiliário brasileiro.
 O empreendimento em questão se chama "${projectName}". O documento pode estar em um destes formatos — identifique qual e extraia de acordo:
