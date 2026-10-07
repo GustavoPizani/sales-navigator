@@ -6,7 +6,7 @@ import {
   Plus, MapPin, Edit2, EyeOff, Eye, Sparkles, Upload, X,
   Loader2, CheckSquare, Square, ChevronDown, Files, Download, ZoomIn, ZoomOut,
   Search, ArrowUpAZ, ArrowDownAZ, Share2, FileText, ArrowRight, BedDouble, Ruler,
-  Car, Bike, Footprints, Image as ImageIcon, RefreshCw, Trash2,
+  Car, Bike, Footprints, Image as ImageIcon, RefreshCw, Trash2, ArrowLeft, ClipboardPaste, Save, Star,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import JSZip from "jszip";
@@ -48,6 +48,10 @@ type Typology = {
   preco_m2?: number;
   valor_cheio?: number;
   unid_ref?: string;
+  dorms?: number;
+  suites?: number;
+  /** planta da tipologia (caminho no storage) */
+  plantaPath?: string;
 };
 
 type DistanceMode = "carro" | "pe" | "bike";
@@ -64,6 +68,11 @@ type RichDesc = {
   diferencial?: string;
   estrutura?: string;
   typologies?: Typology[];
+  /** galeria: a primeira é a capa (coverImagePath aponta para ela) */
+  images?: string[];
+  /** LANCAMENTO | EM_OBRAS | PRONTO */
+  status?: string;
+  propertyType?: string;
   coverImagePath?: string;
   amenities?: string[];
   distances?: DistanceItem[];
@@ -100,7 +109,8 @@ function coverRibbonLabel(entrega?: string): string | null {
 function dormsRangeLabel(typologies: Typology[]): string | null {
   if (!typologies.length) return null;
   const nums = typologies
-    .map((t) => parseInt(t.type.match(/\d+/)?.[0] ?? "", 10))
+    // usa o campo Dorms quando preenchido; senão, o número no nome ("2 dorms")
+    .map((t) => t.dorms ?? parseInt(t.type.match(/\d+/)?.[0] ?? "", 10))
     .filter((n) => !Number.isNaN(n));
   const hasStudio = typologies.some((t) => t.type.toLowerCase().includes("studio"));
   if (!nums.length) return hasStudio ? "Studios" : null;
@@ -2626,6 +2636,93 @@ function ImportModal({
 // ─── Project form ─────────────────────────────────────────────────────────────
 const INPUT = "w-full h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm";
 
+const STATUS_OPTIONS = [
+  { value: "LANCAMENTO", label: "Lançamento" },
+  { value: "EM_OBRAS", label: "Em Obras" },
+  { value: "PRONTO", label: "Pronto" },
+] as const;
+
+const PARSE_PROPERTY_PROMPT = `Você é um assistente especialista em extrair dados de blocos de texto sobre imóveis.
+Retorne APENAS um objeto JSON válido, sem markdown, sem explicações.
+
+Estrutura obrigatória:
+{
+  "title": "nome do empreendimento",
+  "address": "endereço completo",
+  "features": ["característica 1", "característica 2"],
+  "typologies": [
+    {
+      "name": "nome da tipologia",
+      "valor": número_ou_null,
+      "area": número_ou_null,
+      "dormitorios": número_ou_null,
+      "suites": número_ou_null,
+      "vagas": número_ou_null
+    }
+  ]
+}
+
+Regras:
+- Retorne SOMENTE o JSON puro, sem nada antes ou depois
+- Campos numéricos ausentes: use null
+- "features": itens listados como características/diferenciais do condomínio
+- "typologies": tipos de unidade (Garden, Apartamento, Studio, etc.)
+- "valor": apenas o número sem R$ ou pontos de milhar`;
+
+type ParsedProperty = {
+  title?: string;
+  address?: string;
+  features?: string[];
+  typologies?: {
+    name?: string;
+    valor?: number | string | null;
+    area?: number | string | null;
+    dormitorios?: number | string | null;
+    suites?: number | string | null;
+    vagas?: number | string | null;
+  }[];
+};
+
+/** Reduz a foto antes do envio (lado maior até 1920 px, JPEG). */
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1920 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.82));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
+/** Campo de valor em reais (digita só números; mostra R$ 0,00). */
+function CurrencyInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <input
+      className={INPUT}
+      inputMode="numeric"
+      value={value ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : ""}
+      placeholder="R$ 0,00"
+      onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, "")) / 100)}
+    />
+  );
+}
+
+// foto já salva (caminho no storage) ou escolhida agora (arquivo ainda não enviado)
+type FormImage = { path?: string; file?: File; preview: string };
+type FormTypology = Typology & { plantaFile?: File; plantaPreview?: string };
+
+/**
+ * Cadastro/edição de imóvel no mesmo formato do Real Sales: informações
+ * gerais, tipologias (com planta) e galeria de imagens com capa, além de
+ * "Importar de Texto" (a IA lê um bloco colado e preenche o formulário).
+ */
 function ProjectForm({
   project,
   managerId,
@@ -2639,319 +2736,595 @@ function ProjectForm({
   const rich = parseDesc(project?.description ?? null);
 
   const [name, setName] = useState(project?.name ?? "");
+  const [propertyType, setPropertyType] = useState(rich?.propertyType ?? "Apartamento");
   const [address, setAddress] = useState(project?.address ?? "");
   const [city, setCity] = useState(project?.city ?? "São Paulo");
+  const [status, setStatus] = useState<string>(rich?.status ?? "LANCAMENTO");
+  const [featuresText, setFeaturesText] = useState((rich?.amenities ?? []).join(", "));
+  const [typologies, setTypologies] = useState<FormTypology[]>(rich?.typologies ?? []);
+  const [images, setImages] = useState<FormImage[]>([]);
+  // campos próprios deste sistema (fichas, plantão)
   const [entrega, setEntrega] = useState(rich?.entrega ?? "");
   const [diferencial, setDiferencial] = useState(rich?.diferencial ?? "");
   const [estrutura, setEstrutura] = useState(rich?.estrutura ?? "");
-  const [typologies, setTypologies] = useState<Typology[]>(rich?.typologies ?? []);
+  const [distances, setDistances] = useState<DistanceItem[]>(rich?.distances ?? []);
   const [active, setActive] = useState(project?.is_active ?? true);
   const [temPlantao, setTemPlantao] = useState(project?.tem_plantao ?? false);
-  const [coverImagePath, setCoverImagePath] = useState(rich?.coverImagePath);
-  const [uploadingCover, setUploadingCover] = useState(false);
-  const [amenitiesText, setAmenitiesText] = useState((rich?.amenities ?? []).join("\n"));
-  const [distances, setDistances] = useState<DistanceItem[]>(rich?.distances ?? []);
-  const coverInputRef = useRef<HTMLInputElement>(null);
-  const qcCover = useQueryClient();
+  const [showExtras, setShowExtras] = useState(false);
 
-  const coverUrlQ = useQuery({
-    queryKey: ["project-cover", project?.id, coverImagePath],
+  // importar de texto
+  const [importOpen, setImportOpen] = useState(false);
+  const [textToParse, setTextToParse] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parsed, setParsed] = useState<ParsedProperty | null>(null);
+
+  // fotos e plantas já salvas: busca os links para mostrar
+  const savedPaths = [
+    ...(rich?.images ?? (rich?.coverImagePath ? [rich.coverImagePath] : [])),
+    ...((rich?.typologies ?? []).map((t) => t.plantaPath).filter(Boolean) as string[]),
+  ];
+  const savedQ = useQuery({
+    queryKey: ["project-form-images", project?.id, savedPaths.join("|")],
+    enabled: savedPaths.length > 0,
     queryFn: async () => {
-      if (!coverImagePath) return null;
-      const { data } = await supabase.storage.from("project-docs").createSignedUrl(coverImagePath, 3600);
-      return data?.signedUrl ?? null;
+      const { data } = await supabase.storage.from("project-docs").createSignedUrls(savedPaths, 3600);
+      const map: Record<string, string> = {};
+      (data ?? []).forEach((d) => {
+        if (d.path && d.signedUrl) map[d.path] = d.signedUrl;
+      });
+      return map;
     },
-    enabled: !!coverImagePath,
   });
+  useEffect(() => {
+    if (!savedQ.data) return;
+    const urls = savedQ.data;
+    const gallery = rich?.images ?? (rich?.coverImagePath ? [rich.coverImagePath] : []);
+    setImages((prev) =>
+      prev.length > 0 ? prev : gallery.filter((p) => urls[p]).map((p) => ({ path: p, preview: urls[p] })),
+    );
+    setTypologies((prev) =>
+      prev.map((t) =>
+        t.plantaPath && !t.plantaPreview && urls[t.plantaPath] ? { ...t, plantaPreview: urls[t.plantaPath] } : t,
+      ),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedQ.data]);
 
-  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !project) return;
-    setUploadingCover(true);
+  const addTypology = () => setTypologies((prev) => [...prev, { type: "", area: 0, vagas: 0 }]);
+  const updateTypology = (i: number, patch: Partial<FormTypology>) =>
+    setTypologies((prev) => prev.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+  const removeTypology = (i: number) => setTypologies((prev) => prev.filter((_, idx) => idx !== i));
+
+  const addDistance = () => setDistances((prev) => [...prev, { mode: "carro", label: "", minutes: 0 }]);
+  const updateDistance = (i: number, field: keyof DistanceItem, value: any) =>
+    setDistances((prev) => prev.map((d, idx) => (idx === i ? { ...d, [field]: value } : d)));
+  const removeDistance = (i: number) => setDistances((prev) => prev.filter((_, idx) => idx !== i));
+
+  const handleImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+    const compressed = await Promise.all(files.map(compressImage));
+    setImages((prev) => [...prev, ...compressed.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+  };
+  // a primeira imagem da lista é sempre a capa
+  const setCover = (i: number) => setImages((prev) => [prev[i], ...prev.filter((_, idx) => idx !== i)]);
+  const removeImage = (i: number) => setImages((prev) => prev.filter((_, idx) => idx !== i));
+
+  const handlePlanta = async (i: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.files?.[0];
+    e.target.value = "";
+    if (!raw) return;
+    const file = await compressImage(raw);
+    updateTypology(i, { plantaFile: file, plantaPreview: URL.createObjectURL(file) });
+  };
+
+  const parseText = async () => {
+    if (!textToParse.trim()) return toast.error("Cole algum texto.");
+    setParsing(true);
     try {
-      const path = `${project.id}/capa/${sanitizeStorageKey(file.name)}`;
-      const { error } = await supabase.storage.from("project-docs").upload(path, file, { upsert: true });
-      if (error) throw error;
-      setCoverImagePath(path);
-      qcCover.invalidateQueries({ queryKey: ["project-cover", project.id] });
-      toast.success("Foto de capa enviada");
+      if (!aiConfigured()) throw new Error("Nenhuma IA configurada (VITE_GROQ_API_KEY).");
+      const res = await fetchGemini("", PARSE_PROPERTY_PROMPT, textToParse);
+      if (!res.ok) throw new Error(await geminiErrorMessage(res));
+      setParsed(parseGeminiJson(await res.json()) as ParsedProperty);
+      setImportOpen(false);
+      setTextToParse("");
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || "Não foi possível analisar os dados.");
     } finally {
-      setUploadingCover(false);
-      if (coverInputRef.current) coverInputRef.current.value = "";
+      setParsing(false);
     }
   };
 
-  const addTypology = () =>
-    setTypologies((prev) => [...prev, { type: "", area: 0, vagas: 0 }]);
-
-  const updateTypology = (i: number, field: keyof Typology, value: any) =>
-    setTypologies((prev) => prev.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)));
-
-  const removeTypology = (i: number) =>
-    setTypologies((prev) => prev.filter((_, idx) => idx !== i));
-
-  const addDistance = () =>
-    setDistances((prev) => [...prev, { mode: "carro", label: "", minutes: 0 }]);
-
-  const updateDistance = (i: number, field: keyof DistanceItem, value: any) =>
-    setDistances((prev) => prev.map((d, idx) => (idx === i ? { ...d, [field]: value } : d)));
-
-  const removeDistance = (i: number) =>
-    setDistances((prev) => prev.filter((_, idx) => idx !== i));
+  const fillFromParsed = () => {
+    if (!parsed) return;
+    const num = (v: unknown) => Number(v) || 0;
+    if (parsed.title) setName(parsed.title);
+    if (parsed.address) setAddress(parsed.address);
+    if (parsed.features?.length) setFeaturesText(parsed.features.join(", "));
+    if (Array.isArray(parsed.typologies))
+      setTypologies(
+        parsed.typologies.map((t) => ({
+          type: t.name || "",
+          valor_cheio: num(t.valor) || undefined,
+          area: num(t.area),
+          dorms: num(t.dormitorios) || undefined,
+          suites: num(t.suites) || undefined,
+          vagas: num(t.vagas),
+        })),
+      );
+    setParsed(null);
+    toast.success("Formulário preenchido com os dados importados.");
+  };
 
   const save = useMutation({
     mutationFn: async () => {
-      const desc: RichDesc = {
-        neighborhood: rich?.neighborhood,
-        entrega: entrega || undefined,
-        diferencial: diferencial || undefined,
-        estrutura: estrutura || undefined,
-        typologies: typologies.filter((t) => t.type.trim()),
-        coverImagePath: coverImagePath || undefined,
-        amenities: amenitiesText.split("\n").map((s) => s.trim()).filter(Boolean),
-        distances: distances.filter((d) => d.label.trim()),
-      };
-      const payload = {
-        name,
-        address,
-        city,
-        description: JSON.stringify(desc),
+      if (!name.trim()) throw new Error("O título do imóvel é obrigatório.");
+      const base = {
+        name: name.trim(),
+        address: address.trim(),
+        city: city.trim() || "São Paulo",
         is_active: active,
         tem_plantao: temPlantao,
         manager_id: managerId,
       };
-      if (project) {
-        const { error } = await supabase.from("projects").update(payload).eq("id", project.id);
+
+      // 1. o imóvel precisa existir para as fotos terem onde ficar
+      let id = project?.id;
+      if (!id) {
+        const { data, error } = await supabase
+          .from("projects")
+          .insert({ ...base, description: "{}" })
+          .select("id")
+          .single();
         if (error) throw error;
-      } else {
-        const { error } = await supabase.from("projects").insert(payload);
-        if (error) throw error;
+        id = data.id;
       }
+
+      const upload = async (folder: string, file: File) => {
+        const path = `${id}/${folder}/${Date.now()}-${sanitizeStorageKey(file.name)}`;
+        const { error } = await supabase.storage.from("project-docs").upload(path, file, { upsert: true });
+        if (error) throw new Error(`Falha ao enviar ${file.name}: ${error.message}`);
+        return path;
+      };
+
+      // 2. fotos (a primeira é a capa) e plantas
+      const imagePaths: string[] = [];
+      for (const img of images) imagePaths.push(img.path ?? (await upload("fotos", img.file!)));
+      const savedTypologies: Typology[] = [];
+      for (const t of typologies.filter((x) => x.type.trim())) {
+        const { plantaFile, plantaPreview: _p, ...rest } = t;
+        savedTypologies.push({
+          ...rest,
+          plantaPath: plantaFile ? await upload("plantas", plantaFile) : rest.plantaPath,
+        });
+      }
+
+      // 3. fotos removidas saem do storage
+      const removed = (rich?.images ?? []).filter((p) => !imagePaths.includes(p));
+      if (removed.length) await supabase.storage.from("project-docs").remove(removed);
+
+      const desc: RichDesc = {
+        neighborhood: rich?.neighborhood,
+        propertyType: propertyType.trim() || undefined,
+        status,
+        entrega: entrega || (status === "PRONTO" ? "PRONTO" : undefined),
+        diferencial: diferencial || undefined,
+        estrutura: estrutura || undefined,
+        typologies: savedTypologies,
+        images: imagePaths,
+        coverImagePath: imagePaths[0],
+        amenities: featuresText
+          .split(/[,\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean),
+        distances: distances.filter((d) => d.label.trim()),
+      };
+      const { error } = await supabase
+        .from("projects")
+        .update({ ...base, description: JSON.stringify(desc) })
+        .eq("id", id);
+      if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects-all"] });
       qc.invalidateQueries({ queryKey: ["projects-active"] });
       qc.invalidateQueries({ queryKey: ["projects-for-dashboard"] });
-      toast.success("Salvo");
+      qc.invalidateQueries({ queryKey: ["project-cover"] });
+      toast.success(project ? "Imóvel atualizado." : "Imóvel cadastrado com sucesso.");
       onClose();
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      // o imóvel pode ter sido criado antes de uma foto falhar: atualiza a lista
+      qc.invalidateQueries({ queryKey: ["projects-all"] });
+      toast.error(e.message);
+    },
   });
 
+  const LABEL = "text-xs font-medium text-[var(--navy)] mb-1 block";
+  const CARD = "bg-white rounded-2xl border border-border p-4 space-y-4";
+  const numberField = (value: number | undefined, onChange: (v: number | undefined) => void, integer = false) => (
+    <input
+      type="number"
+      className={INPUT}
+      value={value || ""}
+      onChange={(e) => {
+        const v = integer ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
+        onChange(Number.isNaN(v) ? undefined : v);
+      }}
+    />
+  );
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end" onClick={onClose}>
-      <div
-        className="bg-white w-full rounded-t-2xl flex flex-col"
-        style={{ maxHeight: "92vh" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border flex-shrink-0">
-          <h3 className="text-lg font-semibold text-[var(--navy)]">
-            {project ? "Editar" : "Novo"} imóvel
-          </h3>
-          <button onClick={onClose} className="p-1 text-muted-foreground"><X size={18} /></button>
+    <div className="fixed inset-0 z-50 bg-[var(--surface)] overflow-y-auto">
+      <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-5 pb-24">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="h-10 w-10 rounded-xl bg-white border border-border flex items-center justify-center text-[var(--navy)]"
+              aria-label="Voltar"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-[var(--navy)]">{project ? "Editar Imóvel" : "Novo Imóvel"}</h1>
+              <p className="text-sm text-muted-foreground">
+                {project
+                  ? "Atualize os dados do empreendimento."
+                  : "Preencha os dados para cadastrar um novo empreendimento."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setImportOpen(true)}
+              className="h-10 px-4 rounded-xl bg-white border border-border text-sm font-semibold text-[var(--navy)] inline-flex items-center gap-2"
+            >
+              <ClipboardPaste size={16} /> Importar de Texto
+            </button>
+            <button
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
+              className="h-10 px-4 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50"
+            >
+              {save.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              {save.isPending ? "Salvando..." : "Salvar Imóvel"}
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <div className="space-y-2">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Informações básicas</label>
-            <input className={INPUT} placeholder="Nome do imóvel *" value={name} onChange={(e) => setName(e.target.value)} />
-            <input className={INPUT} placeholder="Endereço completo *" value={address} onChange={(e) => setAddress(e.target.value)} />
-            <div className="grid grid-cols-2 gap-2">
-              <input className={INPUT} placeholder="Cidade *" value={city} onChange={(e) => setCity(e.target.value)} />
-              <input className={INPUT} placeholder="Status obra (ex: PRONTO, ago-26)" value={entrega} onChange={(e) => setEntrega(e.target.value)} />
-            </div>
-            <input className={INPUT} placeholder="Diferencial (ex: 60m do Metrô)" value={diferencial} onChange={(e) => setDiferencial(e.target.value)} />
-            <input className={INPUT} placeholder="Estrutura de atendimento" value={estrutura} onChange={(e) => setEstrutura(e.target.value)} />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Tipologias</label>
-              <button
-                onClick={addTypology}
-                className="text-xs font-semibold text-[var(--navy)] flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface)] border border-border"
-              >
-                <Plus size={12} /> Adicionar
-              </button>
-            </div>
-            {typologies.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-3">Nenhuma tipologia. Clique em Adicionar.</p>
-            )}
-            {typologies.map((t, i) => (
-              <div key={i} className="border border-border rounded-xl p-3 space-y-2 bg-[var(--surface)]/40">
-                <div className="flex items-center gap-2">
-                  <input
-                    className={`${INPUT} flex-1`}
-                    placeholder="Tipo (Studio, 2 dorms, Laje...)"
-                    value={t.type}
-                    onChange={(e) => updateTypology(i, "type", e.target.value)}
-                  />
-                  <button onClick={() => removeTypology(i)} className="p-1.5 text-red-400 hover:text-red-600 flex-shrink-0">
-                    <X size={15} />
-                  </button>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2 space-y-5">
+            <section className={CARD}>
+              <h2 className="font-bold text-[var(--navy)]">Informações Gerais</h2>
+              <div>
+                <label className={LABEL}>Título do Empreendimento</label>
+                <input className={INPUT} value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={LABEL}>Tipo</label>
+                  <input className={INPUT} value={propertyType} onChange={(e) => setPropertyType(e.target.value)} />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    className={INPUT}
-                    placeholder="Área m²"
-                    value={t.area || ""}
-                    onChange={(e) => updateTypology(i, "area", parseFloat(e.target.value) || 0)}
-                  />
-                  <input
-                    type="number"
-                    className={INPUT}
-                    placeholder="Vagas"
-                    value={t.vagas || ""}
-                    onChange={(e) => updateTypology(i, "vagas", parseInt(e.target.value) || 0)}
-                  />
+                <div>
+                  <label className={LABEL}>Endereço</label>
+                  <input className={INPUT} value={address} onChange={(e) => setAddress(e.target.value)} />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    className={INPUT}
-                    placeholder="Preço/m²"
-                    value={t.preco_m2 ?? ""}
-                    onChange={(e) => updateTypology(i, "preco_m2", parseFloat(e.target.value) || undefined)}
-                  />
-                  <input
-                    type="number"
-                    className={INPUT}
-                    placeholder="Valor cheio (R$)"
-                    value={t.valor_cheio ?? ""}
-                    onChange={(e) => updateTypology(i, "valor_cheio", parseFloat(e.target.value) || undefined)}
-                  />
-                </div>
-                <input
-                  className={INPUT}
-                  placeholder="Unidade referência"
-                  value={t.unid_ref ?? ""}
-                  onChange={(e) => updateTypology(i, "unid_ref", e.target.value || undefined)}
+              </div>
+              <div>
+                <label className={LABEL}>Características Condominiais (separadas por vírgula)</label>
+                <textarea
+                  className="w-full rounded-lg bg-[var(--surface)] border border-border text-sm p-3 min-h-20"
+                  placeholder="Brinquedoteca, Churrasqueira, Elevador social..."
+                  value={featuresText}
+                  onChange={(e) => setFeaturesText(e.target.value)}
                 />
               </div>
-            ))}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Foto de capa (ficha)</label>
-            {project ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <div className="w-20 h-20 rounded-xl border border-border bg-[var(--surface)] flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {coverUrlQ.data ? (
-                      <img src={coverUrlQ.data} alt="Capa" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon size={22} className="text-muted-foreground/40" />
-                    )}
-                  </div>
-                  <button
-                    onClick={() => coverInputRef.current?.click()}
-                    disabled={uploadingCover}
-                    className="h-10 px-3 rounded-lg bg-[var(--surface)] border border-border text-sm font-medium text-[var(--navy)] flex items-center gap-2 disabled:opacity-50"
-                  >
-                    {uploadingCover ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                    {coverImagePath ? "Trocar foto" : "Enviar foto"}
-                  </button>
-                </div>
-                <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground">Salve o imóvel primeiro para poder enviar a foto de capa.</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Lazer (um item por linha)</label>
-            <textarea
-              className="w-full rounded-lg bg-[var(--surface)] border border-border text-sm p-3 min-h-20"
-              placeholder={"Brinquedoteca\nChurrasqueira\nCoworking\nPiscina"}
-              value={amenitiesText}
-              onChange={(e) => setAmenitiesText(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Distâncias</label>
-              <button
-                onClick={addDistance}
-                className="text-xs font-semibold text-[var(--navy)] flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface)] border border-border"
-              >
-                <Plus size={12} /> Adicionar
-              </button>
-            </div>
-            {distances.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-2">Nenhuma distância cadastrada.</p>
-            )}
-            {distances.map((d, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <select
-                  className="h-10 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm flex-shrink-0"
-                  value={d.mode}
-                  onChange={(e) => updateDistance(i, "mode", e.target.value as DistanceMode)}
-                >
-                  <option value="carro">Carro</option>
-                  <option value="pe">A pé</option>
-                  <option value="bike">Bike</option>
+              <div>
+                <label className={LABEL}>Status</label>
+                <select className={INPUT} value={status} onChange={(e) => setStatus(e.target.value)}>
+                  {STATUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
                 </select>
-                <input
-                  className={`${INPUT} flex-1`}
-                  placeholder="Ex: Shopping Bourbon"
-                  value={d.label}
-                  onChange={(e) => updateDistance(i, "label", e.target.value)}
-                />
-                <input
-                  type="number"
-                  className="w-16 h-10 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm flex-shrink-0"
-                  placeholder="min"
-                  value={d.minutes || ""}
-                  onChange={(e) => updateDistance(i, "minutes", parseInt(e.target.value) || 0)}
-                />
-                <button onClick={() => removeDistance(i)} className="p-1.5 text-red-400 hover:text-red-600 flex-shrink-0">
-                  <X size={15} />
+              </div>
+            </section>
+
+            <section className={CARD}>
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold text-[var(--navy)]">Tipologias</h2>
+                <button
+                  onClick={addTypology}
+                  className="h-9 px-3 rounded-lg bg-[var(--navy)] text-white text-sm font-semibold inline-flex items-center gap-1.5"
+                >
+                  <Plus size={15} /> Adicionar
                 </button>
               </div>
-            ))}
+              {typologies.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-3">
+                  Nenhuma tipologia. Clique em Adicionar.
+                </p>
+              )}
+              {typologies.map((t, i) => (
+                <div key={i} className="p-4 border border-border rounded-xl space-y-4 relative">
+                  <button
+                    onClick={() => removeTypology(i)}
+                    className="absolute top-2 right-2 p-1.5 text-muted-foreground hover:text-red-600"
+                    aria-label="Remover tipologia"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pr-8 md:pr-0">
+                    <div>
+                      <label className={LABEL}>Nome</label>
+                      <input className={INPUT} value={t.type} onChange={(e) => updateTypology(i, { type: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Valor</label>
+                      <CurrencyInput
+                        value={t.valor_cheio ?? 0}
+                        onChange={(v) => updateTypology(i, { valor_cheio: v || undefined })}
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Área (m²)</label>
+                      {numberField(t.area, (v) => updateTypology(i, { area: v ?? 0 }))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className={LABEL}>Dorms</label>
+                      {numberField(t.dorms, (v) => updateTypology(i, { dorms: v }), true)}
+                    </div>
+                    <div>
+                      <label className={LABEL}>Suítes</label>
+                      {numberField(t.suites, (v) => updateTypology(i, { suites: v }), true)}
+                    </div>
+                    <div>
+                      <label className={LABEL}>Vagas</label>
+                      {numberField(t.vagas, (v) => updateTypology(i, { vagas: v ?? 0 }), true)}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={LABEL}>Planta da Tipologia (Opcional)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handlePlanta(i, e)}
+                      className="block w-full text-sm text-muted-foreground file:mr-3 file:h-9 file:px-3 file:rounded-lg file:border file:border-border file:bg-[var(--surface)] file:text-sm file:font-medium file:text-[var(--navy)]"
+                    />
+                    {t.plantaPreview && (
+                      <img
+                        src={t.plantaPreview}
+                        alt={`Planta de ${t.type || "tipologia"}`}
+                        className="mt-2 h-24 w-auto rounded-md border border-border"
+                      />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            <section className={CARD}>
+              <button
+                type="button"
+                onClick={() => setShowExtras((v) => !v)}
+                className="w-full flex items-center justify-between"
+                aria-expanded={showExtras}
+              >
+                <h2 className="font-bold text-[var(--navy)]">Ficha e plantão</h2>
+                <ChevronDown size={18} className={`text-muted-foreground transition-transform ${showExtras ? "rotate-180" : ""}`} />
+              </button>
+              {showExtras && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className={LABEL}>Cidade</label>
+                      <input className={INPUT} value={city} onChange={(e) => setCity(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Previsão de entrega (ex: PRONTO, ago-26)</label>
+                      <input className={INPUT} value={entrega} onChange={(e) => setEntrega(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Diferencial (ex: 60m do Metrô)</label>
+                      <input className={INPUT} value={diferencial} onChange={(e) => setDiferencial(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Estrutura de atendimento</label>
+                      <input className={INPUT} value={estrutura} onChange={(e) => setEstrutura(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className={LABEL}>Distâncias</label>
+                      <button
+                        onClick={addDistance}
+                        className="text-xs font-semibold text-[var(--navy)] flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface)] border border-border"
+                      >
+                        <Plus size={12} /> Adicionar
+                      </button>
+                    </div>
+                    {distances.map((d, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <select
+                          className="h-10 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm flex-shrink-0"
+                          value={d.mode}
+                          onChange={(e) => updateDistance(i, "mode", e.target.value as DistanceMode)}
+                        >
+                          <option value="carro">Carro</option>
+                          <option value="pe">A pé</option>
+                          <option value="bike">Bike</option>
+                        </select>
+                        <input
+                          className={`${INPUT} flex-1`}
+                          placeholder="Ex: Shopping Bourbon"
+                          value={d.label}
+                          onChange={(e) => updateDistance(i, "label", e.target.value)}
+                        />
+                        <input
+                          type="number"
+                          className="w-16 h-10 px-2 rounded-lg bg-[var(--surface)] border border-border text-sm flex-shrink-0"
+                          placeholder="min"
+                          value={d.minutes || ""}
+                          onChange={(e) => updateDistance(i, "minutes", parseInt(e.target.value) || 0)}
+                        />
+                        <button onClick={() => removeDistance(i)} className="p-1.5 text-red-400 hover:text-red-600 flex-shrink-0">
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
+                      <span className="text-sm font-medium text-[var(--navy)]">Ativo</span>
+                      <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="w-5 h-5 accent-[var(--gold)] cursor-pointer" />
+                    </label>
+                    <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
+                      <span className="text-sm font-medium text-[var(--navy)]">Tem Plantão</span>
+                      <input type="checkbox" checked={temPlantao} onChange={(e) => setTemPlantao(e.target.checked)} className="w-5 h-5 accent-[var(--gold)] cursor-pointer" />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </section>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
-              <span className="text-sm font-medium text-[var(--navy)]">Ativo</span>
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
-                className="w-5 h-5 accent-[var(--gold)] cursor-pointer"
-              />
-            </label>
-            <label className="flex items-center justify-between px-4 py-3 rounded-xl bg-[var(--surface)] border border-border cursor-pointer">
-              <span className="text-sm font-medium text-[var(--navy)]">Tem Plantão</span>
-              <input
-                type="checkbox"
-                checked={temPlantao}
-                onChange={(e) => setTemPlantao(e.target.checked)}
-                className="w-5 h-5 accent-[var(--gold)] cursor-pointer"
-              />
-            </label>
+          <div className="space-y-5">
+            <section className={CARD}>
+              <h2 className="font-bold text-[var(--navy)]">Imagens</h2>
+              <label className="flex items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-xl cursor-pointer hover:bg-[var(--surface)]">
+                <div className="text-center">
+                  <Upload className="mx-auto text-muted-foreground" size={28} />
+                  <p className="text-sm text-muted-foreground mt-1">Clique para enviar</p>
+                </div>
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleImages} />
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {images.map((img, i) => (
+                  <div key={img.preview} className="relative group">
+                    <img src={img.preview} alt={`Imagem ${i + 1}`} className="w-full h-24 object-cover rounded-md" />
+                    {i === 0 ? (
+                      <span className="absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--navy)] text-white">
+                        Capa
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setCover(i)}
+                        title="Tornar capa"
+                        className="absolute top-1 left-1 h-6 w-6 rounded bg-white/90 text-[var(--navy)] flex items-center justify-center lg:opacity-0 group-hover:opacity-100"
+                      >
+                        <Star size={14} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => removeImage(i)}
+                      title="Remover"
+                      className="absolute top-1 right-1 h-6 w-6 rounded bg-red-600 text-white flex items-center justify-center lg:opacity-0 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                A primeira imagem é a capa (usada também na ficha). Use a estrela para trocar.
+              </p>
+            </section>
           </div>
-        </div>
-
-        <div className="px-5 pb-5 pt-3 border-t border-border flex-shrink-0 flex gap-2">
-          <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">
-            Cancelar
-          </button>
-          <button
-            onClick={() => save.mutate()}
-            disabled={!name || !address || !city || save.isPending}
-            className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
-          >
-            {save.isPending ? "Salvando..." : "Salvar"}
-          </button>
         </div>
       </div>
+
+      {importOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setImportOpen(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="font-bold text-[var(--navy)] text-lg">Importar Imóvel de Texto</h3>
+              <p className="text-sm text-muted-foreground">Copie todo o bloco de informações do imóvel e cole abaixo.</p>
+            </div>
+            <textarea
+              value={textToParse}
+              onChange={(e) => setTextToParse(e.target.value)}
+              className="w-full h-48 rounded-lg bg-[var(--surface)] border border-border text-sm font-mono p-3"
+              placeholder="Cole o texto do imóvel aqui..."
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setImportOpen(false)} className="h-10 px-4 rounded-xl bg-[var(--surface)] text-sm font-medium text-[var(--navy)]">
+                Cancelar
+              </button>
+              <button
+                onClick={parseText}
+                disabled={parsing}
+                className="h-10 px-4 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {parsing && <Loader2 size={16} className="animate-spin" />}
+                {parsing ? "Analisando..." : "Analisar e Importar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {parsed && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setParsed(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="font-bold text-[var(--navy)] text-lg">Confirmar Dados Importados</h3>
+              <p className="text-sm text-muted-foreground">Verifique os dados extraídos antes de preencher o formulário.</p>
+            </div>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+              <div>
+                <h4 className="font-semibold text-sm text-[var(--navy)]">Título</h4>
+                <p className="text-sm text-muted-foreground p-2 bg-[var(--surface)] rounded-md">{parsed.title || "Não encontrado"}</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-sm text-[var(--navy)]">Endereço</h4>
+                <p className="text-sm text-muted-foreground p-2 bg-[var(--surface)] rounded-md">{parsed.address || "Não encontrado"}</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-sm text-[var(--navy)]">
+                  Características Encontradas ({parsed.features?.length ?? 0})
+                </h4>
+                <div className="flex flex-wrap gap-2 p-2 bg-[var(--surface)] rounded-md">
+                  {(parsed.features ?? []).map((f, i) => (
+                    <span key={i} className="text-xs bg-white border border-border rounded-full px-2 py-0.5">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-semibold text-sm text-[var(--navy)] mb-2">
+                  Tipologias Encontradas ({parsed.typologies?.length ?? 0})
+                </h4>
+                <div className="space-y-2">
+                  {(parsed.typologies ?? []).map((t, i) => (
+                    <div key={i} className="text-xs text-muted-foreground p-2 border border-border rounded-md">
+                      <p className="font-bold text-[var(--navy)]">{t.name}</p>
+                      <p>
+                        Área: {t.area || "N/A"} m² | Dorms: {t.dormitorios || "N/A"} | Suítes: {t.suites || "N/A"} | Vagas:{" "}
+                        {t.vagas || "N/A"}
+                      </p>
+                      <p>Valor: {fmtBRL(Number(t.valor) || 0)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setParsed(null)} className="h-10 px-4 rounded-xl bg-[var(--surface)] text-sm font-medium text-[var(--navy)]">
+                Cancelar
+              </button>
+              <button onClick={fillFromParsed} className="h-10 px-4 rounded-xl bg-[var(--navy)] text-white text-sm font-semibold">
+                Preencher Formulário
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
