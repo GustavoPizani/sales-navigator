@@ -21,6 +21,8 @@ export interface Profile {
   team_name: string | null;
   cargo_id: string | null;
   /** Nome do cargo (ADM, RH, Gestor, Corretor ou um cargo criado pelo ADM). */
+  /** Conta de teste: invisível para os outros usuários; vê as funções em teste. */
+  is_test?: boolean;
   cargo_name: string | null;
 }
 
@@ -38,6 +40,8 @@ interface AuthContextValue {
   isManager: boolean;
   /** RH: acessa o log de check-ins e os módulos liberados pelo ADM. */
   isHr: boolean;
+  /** Conta de teste: enxerga as funções novas ainda não liberadas. */
+  isTester: boolean;
   /** Nível do usuário no módulo, pela matriz de permissões do cargo. */
   level: (module: ModuleKey) => PermissionLevel;
   /** O usuário alcança o nível mínimo no módulo? */
@@ -196,6 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isSuperAdmin,
     isManager: profile?.role === "master",
     isHr: profile?.role === "hr",
+    isTester: profile?.is_test === true,
     level,
     can,
     canSeeCheckinLog: isSuperAdmin || profile?.role === "hr",

@@ -584,6 +584,7 @@ export type Database = {
           full_name: string
           id: string
           is_active: boolean
+          is_test: boolean
           manager_id: string | null
           phone: string | null
           reminder_minutes: number[]
@@ -602,6 +603,7 @@ export type Database = {
           full_name?: string
           id: string
           is_active?: boolean
+          is_test?: boolean
           manager_id?: string | null
           phone?: string | null
           reminder_minutes?: number[]
@@ -620,6 +622,7 @@ export type Database = {
           full_name?: string
           id?: string
           is_active?: boolean
+          is_test?: boolean
           manager_id?: string | null
           phone?: string | null
           reminder_minutes?: number[]

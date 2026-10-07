@@ -37,8 +37,14 @@ function AuthenticatedLayout() {
 // Desktop: trilho de ícones à esquerda, que abre ao passar o mouse por cima
 // do conteúdo (o conteúdo não se desloca). Celular: barra inferior.
 function AppShell() {
+  const { isTester, profile } = useAuth();
   return (
     <div className="min-h-screen bg-[var(--surface)]">
+      {isTester && (
+        <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[80] pointer-events-none rounded-full bg-fuchsia-600 px-3 py-1 text-[11px] font-bold text-white shadow-lg">
+          CONTA DE TESTE · {profile?.cargo_name ?? profile?.role}
+        </div>
+      )}
       <PushSubscriber />
       <Sidebar />
       <div
