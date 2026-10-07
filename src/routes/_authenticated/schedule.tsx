@@ -72,13 +72,14 @@ Regras:
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: text },
       ],
       temperature: 0.1,
-      max_tokens: 4096,
+      max_tokens: 16384,
       response_format: { type: "json_object" },
     }),
   });

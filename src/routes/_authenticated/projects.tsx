@@ -340,7 +340,7 @@ async function fetchGeminiDirect(
 
 // ─── Groq (principal) ────────────────────────────────────────────────────────
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+const GROQ_MODEL = "openai/gpt-oss-120b";
 
 /** Há alguma IA configurada? (Groq é a principal; Gemini fica de reserva.) */
 function aiConfigured() {
@@ -360,6 +360,7 @@ async function fetchGroq(apiKey: string, systemPrompt: string, userContent: stri
         ],
         temperature: 0.1,
         max_tokens: 32768,
+        reasoning_effort: "low",
         response_format: { type: "json_object" },
       }),
     });
