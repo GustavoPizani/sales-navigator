@@ -142,7 +142,19 @@ export function PainelColeta({
 
   return (
     <div className="space-y-4 p-4 text-[var(--navy)]">
-      <Favorito href={col.favorito} instalado={instalado} />
+      {col.favoritoDesatualizado && (
+        <p
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+        >
+          <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" aria-hidden />
+          <span>
+            O favorito <b>Guia da coleta</b> salvo no seu navegador é de uma versão antiga. Apague o
+            antigo da barra e arraste o novo abaixo.
+          </span>
+        </p>
+      )}
+      <Favorito href={col.favorito} instalado={instalado && !col.favoritoDesatualizado} />
 
       <section
         aria-labelledby="coleta-sessao"

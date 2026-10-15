@@ -209,7 +209,12 @@ export function juntar(estado: EstadoGuia, l: Leitura): EstadoGuia {
     for (const x of l.linhas as LinhaCliente[])
       guarda(d.clientes, x.id, { ...x, midia: midia || d.clientes[x.id]?.midia || null });
     it.contagem = Object.keys(d.clientes).length;
-    completo = total != null && l.linhas.length > 0 && it.contagem >= total;
+    const vazias = (l.linhas as LinhaCliente[]).filter((x) => !x.c1.length && !x.c2.length).length;
+    if (vazias)
+      avisos.push(
+        `${fmt(vazias)} linhas vieram com as colunas vazias: troque o favorito Guia da coleta pelo novo e leia esta tela de novo.`,
+      );
+    completo = !vazias && total != null && l.linhas.length > 0 && it.contagem >= total;
   } else if (l.passo === "visitas") {
     for (const x of l.linhas as LinhaVisita[]) guarda(d.visitas, x.visita_id, x);
     const tipo = l.cab.campos.tipoPeriodo || "padrao";

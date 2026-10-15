@@ -49,6 +49,9 @@ export type EstadoLen = {
   } | null;
 };
 
+/** Versão do código do favorito (VERSAO em guia-hypnobox.js). */
+export const VERSAO_FAVORITO = 2;
+
 const CHAVE = "sn-coleta-guiada";
 const lenVazio = (): EstadoLen => ({
   status: "pendente",
@@ -95,6 +98,7 @@ function resumoParaPainel(e: EstadoGuia) {
 export function useColetaGuiada() {
   const [guia, setGuia] = useState<EstadoGuia>(() => estadoInicial(periodoPadrao()));
   const [len, setLen] = useState<EstadoLen>(lenVazio);
+  const [versaoFavorito, setVersaoFavorito] = useState<number | null>(null);
   const [naTela, setNaTela] = useState<{ passo: PassoId | null; url: string; em: number } | null>(
     null,
   );
@@ -141,6 +145,7 @@ export function useColetaGuiada() {
     const aoMensagem = (ev: MessageEvent) => {
       if (ev.origin !== HYPNOBOX || !ev.data || ev.data.origem !== "sn-guia") return;
       painel.current = ev.source;
+      setVersaoFavorito(typeof ev.data.versao === "number" ? ev.data.versao : 1);
       const d = ev.data as
         | { tipo: "ola"; url: string; passo: PassoId | null }
         | { tipo: "leitura"; leitura: Leitura }
@@ -275,6 +280,8 @@ export function useColetaGuiada() {
     len,
     naTela,
     janelaAberta,
+    /** versão do favorito que falou com esta aba (null = ainda nenhum) */
+    favoritoDesatualizado: versaoFavorito !== null && versaoFavorito < VERSAO_FAVORITO,
     passoAtual: passoAtual(guia),
     favorito,
     sincronizar,

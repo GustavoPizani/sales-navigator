@@ -5,6 +5,8 @@
  * __SN_ORIGEM__ é trocado pelo endereço do Sales Navigator ao montar o favorito. */
 (function () {
   var ORIGEM = "__SN_ORIGEM__";
+  // sobe a cada mudança no leitor: a Coleta avisa quando o favorito salvo é antigo
+  var VERSAO = 2;
   var HYPNOBOX = "paesegregori.hypnobox.com.br";
   if (location.hostname !== HYPNOBOX) {
     alert("O Guia da coleta funciona nas páginas do Hypnobox (" + HYPNOBOX + ").");
@@ -140,16 +142,35 @@
       });
   }
 
+  // Linhas de uma célula como aparecem na tela (innerText respeita <br> e blocos).
+  // Texto cortado ("...") é trocado pelo title do elemento, quando existe. A
+  // etiqueta Cliente/Não cliente (.coluna) fica fora.
+  function linhasDaCelula(td) {
+    if (!td) return [];
+    var tiraColuna = arr(td.querySelectorAll(".coluna")).map(function (e) {
+      return limpa(e.innerText || e.textContent);
+    });
+    var linhas = String(td.innerText || td.textContent || "")
+      .split(/\n/)
+      .map(limpa)
+      .filter(Boolean);
+    tiraColuna.forEach(function (t) {
+      var i = linhas.lastIndexOf(t);
+      if (i >= 0) linhas.splice(i, 1);
+    });
+    return linhas.map(function (t) {
+      if (!/(\.\.\.|…)$/.test(t)) return t;
+      var base = t.replace(/\s*(\.\.\.|…)$/, "");
+      var el = arr(td.querySelectorAll("[title], [data-original-title]")).filter(function (e) {
+        return limpa(e.textContent).indexOf(base) === 0;
+      })[0];
+      var titulo = el && limpa(el.getAttribute("title") || el.getAttribute("data-original-title"));
+      return titulo && titulo.indexOf(base) === 0 ? titulo : t;
+    });
+  }
+
   function lerClientes() {
-    var psCli = function (td) {
-      return td
-        ? arr(td.querySelectorAll("p"))
-            .filter(function (p) {
-              return !p.closest(".coluna");
-            })
-            .map(txt)
-        : [];
-    };
+    var psCli = linhasDaCelula;
     return arr(document.querySelectorAll("tbody tr"))
       .map(function (tr) {
         var chk = tr.querySelector('input[name="check_cliente_selecionado[]"]');
@@ -267,7 +288,7 @@
     }
   };
   var enviar = function (msg) {
-    if (ligado()) sn.postMessage(Object.assign({ origem: "sn-guia" }, msg), ORIGEM);
+    if (ligado()) sn.postMessage(Object.assign({ origem: "sn-guia", versao: VERSAO }, msg), ORIGEM);
   };
   var estado = null;
   var ultimaAssinatura = "";
