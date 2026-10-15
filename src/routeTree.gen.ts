@@ -19,14 +19,17 @@ import { Route as AuthenticatedCheckinRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedCheckinLogRouteImport } from './routes/_authenticated/checkin-log'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDealsRouteImport } from './routes/_authenticated/deals'
+import { Route as AuthenticatedHypnoboxRouteImport } from './routes/_authenticated/hypnobox'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedRelatorioVisitasRouteImport } from './routes/_authenticated/relatorio-visitas'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as EscalaTokenRouteImport } from './routes/escala.$token'
+import { Route as AuthenticatedHypnoboxColetaRouteImport } from './routes/_authenticated/hypnobox_.coleta'
 import { Route as AuthenticatedLeadsLeadIdRouteImport } from './routes/_authenticated/leads.$leadId'
 import { Route as AuthenticatedSettingsPermissionsRouteImport } from './routes/_authenticated/settings/permissions'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
+import { Route as ApiMcpTokenRouteImport } from './routes/api/mcp.$token'
 import { Route as AuthenticatedDashboardCorretorIdRouteImport } from './routes/_authenticated/dashboard/corretor/$id'
 import { Route as AuthenticatedScheduleClaimTokenRouteImport } from './routes/_authenticated/schedule_.claim.$token'
 
@@ -80,6 +83,11 @@ const AuthenticatedDealsRoute = AuthenticatedDealsRouteImport.update({
   path: '/deals',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedHypnoboxRoute = AuthenticatedHypnoboxRouteImport.update({
+  id: '/hypnobox',
+  path: '/hypnobox',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
@@ -106,6 +114,12 @@ const EscalaTokenRoute = EscalaTokenRouteImport.update({
   path: '/escala/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedHypnoboxColetaRoute =
+  AuthenticatedHypnoboxColetaRouteImport.update({
+    id: '/hypnobox_/coleta',
+    path: '/hypnobox/coleta',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedLeadsLeadIdRoute =
   AuthenticatedLeadsLeadIdRouteImport.update({
     id: '/leads/$leadId',
@@ -124,6 +138,11 @@ const AuthenticatedSettingsProfileRoute =
     path: '/settings/profile',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const ApiMcpTokenRoute = ApiMcpTokenRouteImport.update({
+  id: '/api/mcp/$token',
+  path: '/api/mcp/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedDashboardCorretorIdRoute =
   AuthenticatedDashboardCorretorIdRouteImport.update({
     id: '/corretor/$id',
@@ -147,14 +166,17 @@ export interface FileRoutesByFullPath {
   '/checkin-log': typeof AuthenticatedCheckinLogRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/deals': typeof AuthenticatedDealsRoute
+  '/hypnobox': typeof AuthenticatedHypnoboxRoute
   '/projects': typeof AuthenticatedProjectsRoute
   '/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
+  '/hypnobox/coleta': typeof AuthenticatedHypnoboxColetaRoute
   '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/api/mcp/$token': typeof ApiMcpTokenRoute
   '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/schedule/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
@@ -168,14 +190,17 @@ export interface FileRoutesByTo {
   '/checkin-log': typeof AuthenticatedCheckinLogRoute
   '/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/deals': typeof AuthenticatedDealsRoute
+  '/hypnobox': typeof AuthenticatedHypnoboxRoute
   '/projects': typeof AuthenticatedProjectsRoute
   '/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
+  '/hypnobox/coleta': typeof AuthenticatedHypnoboxColetaRoute
   '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/api/mcp/$token': typeof ApiMcpTokenRoute
   '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/schedule/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
@@ -191,14 +216,17 @@ export interface FileRoutesById {
   '/_authenticated/checkin-log': typeof AuthenticatedCheckinLogRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRouteWithChildren
   '/_authenticated/deals': typeof AuthenticatedDealsRoute
+  '/_authenticated/hypnobox': typeof AuthenticatedHypnoboxRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRoute
   '/_authenticated/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
+  '/_authenticated/hypnobox_/coleta': typeof AuthenticatedHypnoboxColetaRoute
   '/_authenticated/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/_authenticated/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/api/mcp/$token': typeof ApiMcpTokenRoute
   '/_authenticated/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/_authenticated/schedule_/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
@@ -214,14 +242,17 @@ export interface FileRouteTypes {
     | '/checkin-log'
     | '/dashboard'
     | '/deals'
+    | '/hypnobox'
     | '/projects'
     | '/relatorio-visitas'
     | '/schedule'
     | '/team'
     | '/escala/$token'
+    | '/hypnobox/coleta'
     | '/leads/$leadId'
     | '/settings/permissions'
     | '/settings/profile'
+    | '/api/mcp/$token'
     | '/dashboard/corretor/$id'
     | '/schedule/claim/$token'
   fileRoutesByTo: FileRoutesByTo
@@ -235,14 +266,17 @@ export interface FileRouteTypes {
     | '/checkin-log'
     | '/dashboard'
     | '/deals'
+    | '/hypnobox'
     | '/projects'
     | '/relatorio-visitas'
     | '/schedule'
     | '/team'
     | '/escala/$token'
+    | '/hypnobox/coleta'
     | '/leads/$leadId'
     | '/settings/permissions'
     | '/settings/profile'
+    | '/api/mcp/$token'
     | '/dashboard/corretor/$id'
     | '/schedule/claim/$token'
   id:
@@ -257,14 +291,17 @@ export interface FileRouteTypes {
     | '/_authenticated/checkin-log'
     | '/_authenticated/dashboard'
     | '/_authenticated/deals'
+    | '/_authenticated/hypnobox'
     | '/_authenticated/projects'
     | '/_authenticated/relatorio-visitas'
     | '/_authenticated/schedule'
     | '/_authenticated/team'
     | '/escala/$token'
+    | '/_authenticated/hypnobox_/coleta'
     | '/_authenticated/leads/$leadId'
     | '/_authenticated/settings/permissions'
     | '/_authenticated/settings/profile'
+    | '/api/mcp/$token'
     | '/_authenticated/dashboard/corretor/$id'
     | '/_authenticated/schedule_/claim/$token'
   fileRoutesById: FileRoutesById
@@ -275,6 +312,7 @@ export interface RootRouteChildren {
   CadastroRoute: typeof CadastroRoute
   LoginRoute: typeof LoginRoute
   EscalaTokenRoute: typeof EscalaTokenRoute
+  ApiMcpTokenRoute: typeof ApiMcpTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -349,6 +387,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDealsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/hypnobox': {
+      id: '/_authenticated/hypnobox'
+      path: '/hypnobox'
+      fullPath: '/hypnobox'
+      preLoaderRoute: typeof AuthenticatedHypnoboxRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/projects': {
       id: '/_authenticated/projects'
       path: '/projects'
@@ -384,6 +429,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EscalaTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/hypnobox_/coleta': {
+      id: '/_authenticated/hypnobox_/coleta'
+      path: '/hypnobox/coleta'
+      fullPath: '/hypnobox/coleta'
+      preLoaderRoute: typeof AuthenticatedHypnoboxColetaRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/leads/$leadId': {
       id: '/_authenticated/leads/$leadId'
       path: '/leads/$leadId'
@@ -404,6 +456,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/profile'
       preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/api/mcp/$token': {
+      id: '/api/mcp/$token'
+      path: '/api/mcp/$token'
+      fullPath: '/api/mcp/$token'
+      preLoaderRoute: typeof ApiMcpTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/dashboard/corretor/$id': {
       id: '/_authenticated/dashboard/corretor/$id'
@@ -444,10 +503,12 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCheckinLogRoute: typeof AuthenticatedCheckinLogRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRouteWithChildren
   AuthenticatedDealsRoute: typeof AuthenticatedDealsRoute
+  AuthenticatedHypnoboxRoute: typeof AuthenticatedHypnoboxRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedRelatorioVisitasRoute: typeof AuthenticatedRelatorioVisitasRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
+  AuthenticatedHypnoboxColetaRoute: typeof AuthenticatedHypnoboxColetaRoute
   AuthenticatedLeadsLeadIdRoute: typeof AuthenticatedLeadsLeadIdRoute
   AuthenticatedSettingsPermissionsRoute: typeof AuthenticatedSettingsPermissionsRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
@@ -461,10 +522,12 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCheckinLogRoute: AuthenticatedCheckinLogRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRouteWithChildren,
   AuthenticatedDealsRoute: AuthenticatedDealsRoute,
+  AuthenticatedHypnoboxRoute: AuthenticatedHypnoboxRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedRelatorioVisitasRoute: AuthenticatedRelatorioVisitasRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
+  AuthenticatedHypnoboxColetaRoute: AuthenticatedHypnoboxColetaRoute,
   AuthenticatedLeadsLeadIdRoute: AuthenticatedLeadsLeadIdRoute,
   AuthenticatedSettingsPermissionsRoute: AuthenticatedSettingsPermissionsRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
@@ -481,6 +544,7 @@ const rootRouteChildren: RootRouteChildren = {
   CadastroRoute: CadastroRoute,
   LoginRoute: LoginRoute,
   EscalaTokenRoute: EscalaTokenRoute,
+  ApiMcpTokenRoute: ApiMcpTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

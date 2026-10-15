@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Navigate, Outlet, useLocation } from "@tanstack/react-router";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,7 +37,16 @@ function AuthenticatedLayout() {
 // Desktop: trilho de ícones à esquerda, que abre ao passar o mouse por cima
 // do conteúdo (o conteúdo não se desloca). Celular: barra inferior.
 function AppShell() {
-  const { isTester, profile } = useAuth();
+  const { isTester, isSuperAdmin, profile } = useAuth();
+  const { pathname } = useLocation();
+  // A Análise Hypnobox é um subsistema em tela cheia, com menu próprio.
+  if (isSuperAdmin && pathname.startsWith("/hypnobox"))
+    return (
+      <>
+        <PushSubscriber />
+        <Outlet />
+      </>
+    );
   return (
     <div className="min-h-screen bg-[var(--surface)]">
       {isTester && (

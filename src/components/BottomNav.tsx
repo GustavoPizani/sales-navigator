@@ -8,7 +8,7 @@ import { isTabActive, useNavTabs } from "@/components/nav/useNavTabs";
  * barra, com contorno cobre brilhante, e desliza até a aba tocada.
  */
 export function BottomNav() {
-  const tabs = useNavTabs();
+  const tabs = useNavTabs().filter((t) => !t.sidebarOnly);
   const { pathname } = useLocation();
   // A ondulação desliza já no toque (antes de a rota terminar de carregar),
   // para a troca de aba parecer imediata.

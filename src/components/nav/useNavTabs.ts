@@ -2,14 +2,22 @@ import {
   BarChart,
   Calendar,
   CalendarDays,
+  ChartNoAxesCombined,
   Building2,
   Users,
   ClipboardList,
-  MapPinCheck,  ScrollText,
+  MapPinCheck,
+  ScrollText,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
-export type NavTab = { to: string; label: string; icon: React.ElementType };
+export type NavTab = {
+  to: string;
+  label: string;
+  icon: React.ElementType;
+  /** Fica fora da barra do celular. */
+  sidebarOnly?: boolean;
+};
 
 /**
  * Abas da navegação (barra do celular e sidebar), montadas pela matriz de
@@ -42,9 +50,18 @@ export function useNavTabs(): NavTab[] {
         : { to: "/calendar", label: "Agendamentos", icon: CalendarDays },
     );
   if (can("projects")) tabs.push({ to: "/projects", label: "Imóveis", icon: Building2 });
-  if (can("team") && managesTeam) tabs.push({ to: "/team", label: "Time", icon: Users });  // RH: o log de check-ins é a tela principal (o ADM acessa pelo menu "Geral")
+  if (can("team") && managesTeam) tabs.push({ to: "/team", label: "Time", icon: Users });
+  // RH: o log de check-ins é a tela principal (o ADM acessa pelo menu "Geral")
   if (isHr && !isSuperAdmin)
     tabs.push({ to: "/checkin-log", label: "Log de check-ins", icon: ScrollText });
+  // subsistema com navegação própria, só para o ADM e só no menu do desktop
+  if (isSuperAdmin)
+    tabs.push({
+      to: "/hypnobox",
+      label: "Análise Hypnobox",
+      icon: ChartNoAxesCombined,
+      sidebarOnly: true,
+    });
   return tabs;
 }
 
