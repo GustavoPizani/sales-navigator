@@ -47,7 +47,8 @@ async function readTable(table: string, order?: string) {
   return rows;
 }
 
-// Dados de contato (LGPD) não vão para o painel: ele não usa e não precisa carregá-los.
+// Dados de contato (LGPD): só nome, e-mail e telefone dos leads vão para o painel
+// (que é só do ADM), para a ficha do lead. Os das visitas continuam de fora.
 const OMITIDAS = new Set([
   "carregado_em",
   "nome",
@@ -58,10 +59,12 @@ const OMITIDAS = new Set([
   "email_cliente",
 ]);
 
-function toSheetRow(row: Record<string, unknown>): HypnoboxRow {
+const CONTATO_DO_LEAD = new Set(["nome", "email", "telefone"]);
+
+function toSheetRow(row: Record<string, unknown>, comContato = false): HypnoboxRow {
   const out: HypnoboxRow = {};
   for (const [key, value] of Object.entries(row)) {
-    if (OMITIDAS.has(key)) continue;
+    if (OMITIDAS.has(key) && !(comContato && CONTATO_DO_LEAD.has(key))) continue;
     out[key] = value == null ? "" : String(value);
   }
   // a carga de 14/10 renomeou outubro_1a13 para outubro; o painel lê o nome antigo
@@ -82,7 +85,9 @@ export const getHypnoboxData = createServerFn({ method: "POST" })
 
     const entries = await Promise.all(
       Object.entries(SOURCES).map(async ([id, src]) => {
-        const rows = (await readTable(src.table, src.order)).map(toSheetRow);
+        const rows = (await readTable(src.table, src.order)).map((r) =>
+          toSheetRow(r, src.table === "al_leads"),
+        );
         return [id, rows] as const;
       }),
     );

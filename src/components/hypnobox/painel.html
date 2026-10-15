@@ -1435,18 +1435,24 @@
     linkLead(id);
   }
   window.snOpenLead = openLeadById;
+  // 5511999991234 -> (11) 99999-1234 (só exibição)
+  function telBr(t) {
+    const d = esc(t).replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+    if (d.length === 11) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
+    if (d.length === 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
+    return esc(t);
+  }
   function openLead(r) {
     const e = ET[r.etapa] || { label: r.etapa };
     modal('Cliente ' + r.id, f => {
-      kv(f, [['Produto', prodName(r.produto)], ['Etapa', e.label], ['Submomento', r.submomento], ['Corretor', r.corretor], ['Gerente', r.gerente], ['Canal', r.canal], ['Campanha', r.campanha + (r.palavra_chave ? ' · ' + r.palavra_chave : '')], ['Cadastro', brDate(r.cadastro)], ['Última atualização', brDate(r.atualizacao) + ' (' + N(r.dias_sem_atualizar) + ' dias)']]);
+      kv(f, [['Nome', r.nome], ['E-mail', r.email], ['Telefone', telBr(r.telefone)], ['Produto', prodName(r.produto)], ['Etapa', e.label], ['Submomento', r.submomento], ['Corretor', r.corretor], ['Gerente', r.gerente], ['Canal', r.canal], ['Campanha', r.campanha + (r.palavra_chave ? ' · ' + r.palavra_chave : '')], ['Cadastro', brDate(r.cadastro)], ['Última atualização', brDate(r.atualizacao) + ' (' + N(r.dias_sem_atualizar) + ' dias)']]);
       const vs = visData().filter(v => v.id_cliente === r.id).sort((a, b) => a.data < b.data ? -1 : 1);
       f.appendChild(el('div', 'lbl', 'Visitas no Hypnobox'));
       if (!vs.length) f.appendChild(el('div', 'info am', 'Nenhuma visita registrada para este cliente.'));
       vs.forEach(v => f.appendChild(el('div', 'info ' + (v.status === 'Realizada' ? 'gr' : 'am'), brDate(v.data) + ' às ' + v.hora + ' · ' + v.status + ' · ' + v.corretor + ' · registrado por ' + v.quem_registrou)));
       const act = el('div', 'act'); const c = el('button', 'cancel', 'Fechar'); c.type = 'button'; c.addEventListener('click', () => { closeModal(); });
-      const a = el('button', 'gold', 'Agendar visita'); a.type = 'button'; a.addEventListener('click', () => openNewAppt({ id: r.id, produto: r.produto, corretor: r.corretor }));
       const h = el('button', 'hist-btn', 'Análise de histórico'); h.type = 'button'; h.addEventListener('click', () => histBlock(f, r.id));
-      act.appendChild(c); act.appendChild(h); act.appendChild(hypnoBtn(r.id)); act.appendChild(a); f.appendChild(act);
+      act.appendChild(c); act.appendChild(h); act.appendChild(hypnoBtn(r.id)); f.appendChild(act);
     });
     linkLead(r.id);
   }
