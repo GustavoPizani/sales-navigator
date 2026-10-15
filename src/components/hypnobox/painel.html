@@ -1463,8 +1463,9 @@
   function openLead(r) {
     const e = ET[r.etapa] || { label: r.etapa };
     modal('Cliente ' + r.id, f => {
-      const oc = 'Oculto · mostre em Minha conta', mostrarContato = mostrarContatoAgora();
-      kv(f, [['Nome', mostrarContato ? r.nome : oc], ['E-mail', mostrarContato ? r.email : oc], ['Telefone', mostrarContato ? telBr(r.telefone) : oc], ['Produto', prodName(r.produto)], ['Etapa', e.label], ['Submomento', r.submomento], ['Corretor', r.corretor], ['Gerente', r.gerente], ['Canal', r.canal], ['Campanha', r.campanha + (r.palavra_chave ? ' · ' + r.palavra_chave : '')], ['Cadastro', brDate(r.cadastro)], ['Última atualização', brDate(r.atualizacao) + ' (' + N(r.dias_sem_atualizar) + ' dias)']]);
+      // contatos só entram na ficha se o ADM ligou em Minha conta; senão as linhas não existem
+      const contato = mostrarContatoAgora() ? [['Nome', r.nome], ['E-mail', r.email], ['Telefone', telBr(r.telefone)]] : [];
+      kv(f, [...contato, ['Produto', prodName(r.produto)], ['Etapa', e.label], ['Submomento', r.submomento], ['Corretor', r.corretor], ['Gerente', r.gerente], ['Canal', r.canal], ['Campanha', r.campanha + (r.palavra_chave ? ' · ' + r.palavra_chave : '')], ['Cadastro', brDate(r.cadastro)], ['Última atualização', brDate(r.atualizacao) + ' (' + N(r.dias_sem_atualizar) + ' dias)']]);
       const vs = visData().filter(v => v.id_cliente === r.id).sort((a, b) => a.data < b.data ? -1 : 1);
       f.appendChild(el('div', 'lbl', 'Visitas no Hypnobox'));
       if (!vs.length) f.appendChild(el('div', 'info am', 'Nenhuma visita registrada para este cliente.'));

@@ -13,11 +13,15 @@ import * as R from "./regras";
 const API = "https://api.keepi.com.br";
 const SHARE = "688775e1cb24fa001e917002";
 
-async function pedir(url: any, init: any, tentativas: any = 3) {
+// A API da LEN às vezes demora minutos ou recusa uma consulta e logo depois
+// funciona: cada pedido tem tempo máximo e é repetido (a função de servidor da
+// Vercel não pode passar de ~60 s, por isso o navegador também repete a página).
+async function pedir(url: any, init: any, tentativas: any = 2, limiteMs: any = 22000) {
   let erro;
   for (let i = 0; i < tentativas; i++) {
     try {
       const res = await fetch(url, {
+        signal: AbortSignal.timeout(limiteMs),
         ...init,
         headers: {
           accept: "application/json",
@@ -213,7 +217,22 @@ async function lerPaginaApi(dash: any, numero: any, de: any, ate: any) {
     body: JSON.stringify(corpo),
   });
   const respostas = res.responses || [];
-  const falhas = respostas.filter((r) => !r || r.error || !r.aggregations);
+  // consulta recusada (ex.: search_phase_execution_exception): repete só ela
+  const pares0 = cartoes.flat();
+  const falhou = (r) => !r || r.error || !r.aggregations;
+  for (let volta = 0; volta < 2 && respostas.some(falhou); volta++) {
+    await new Promise((r) => setTimeout(r, 1200 * (volta + 1)));
+    const idx = pares0.map((_, k) => k).filter((k) => falhou(respostas[k]));
+    const r2 = await pedir(`${API}/queries/msearch?${qs}`, {
+      method: "POST",
+      body: JSON.stringify(idx.flatMap((k) => pares0[k])),
+    }).catch(() => null);
+    if (r2 && r2.responses)
+      idx.forEach((k, j) => {
+        if (!falhou(r2.responses[j])) respostas[k] = r2.responses[j];
+      });
+  }
+  const falhas = respostas.filter(falhou);
   if (falhas.length) {
     const motivo = falhas
       .map((r) => (r && r.error && (r.error.reason || r.error.type)) || "sem dados")

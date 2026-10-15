@@ -134,7 +134,7 @@ function HypnoboxSection() {
     <SectionCard title="Análise Hypnobox">
       <FeatureToggle
         label="Mostrar dados de contato dos clientes"
-        description="Nome, e-mail e telefone na ficha do lead. Desligado, aparecem como Oculto. Vale neste navegador."
+        description="Nome, e-mail e telefone na ficha do lead. Desligado, eles não aparecem. Vale neste navegador."
         icon={ContactRound}
         enabled={mostrar}
         onChange={mudar}
