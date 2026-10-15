@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { lerParteLen, type ParteLen } from "@/lib/coleta.functions";
-import { montarCargaGuiada } from "@/lib/coleta/carga";
+import { diagnosticoGuiado, montarCargaGuiada } from "@/lib/coleta/carga";
 import {
   HYPNOBOX,
   PASSOS,
@@ -294,6 +294,8 @@ export function useColetaGuiada() {
       avisarPainel(novo);
     },
     carga,
+    /** Resumo sem dado pessoal do que foi lido (para entender quem virou lead LEN). */
+    diagnostico: () => diagnosticoGuiado(guiaRef.current.dados, guiaRef.current.periodo) as unknown,
   };
 }
 

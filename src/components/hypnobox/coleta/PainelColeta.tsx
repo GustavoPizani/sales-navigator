@@ -5,6 +5,7 @@ import {
   Bookmark,
   CheckCircle2,
   ChevronDown,
+  ClipboardCopy,
   Database,
   ExternalLink,
   Loader2,
@@ -294,7 +295,25 @@ export function PainelColeta({
       <Gravar gravacao={gravacao} disabled={!algoOk || ocupado} onGravar={onGravar} />
 
       {algoOk && (
-        <div className="text-right">
+        <div className="flex flex-wrap items-center justify-end gap-4">
+          <button
+            type="button"
+            className={B_LINK}
+            onClick={async () => {
+              const texto = JSON.stringify(col.diagnostico(), null, 1);
+              try {
+                await navigator.clipboard.writeText(texto);
+                setErro(null);
+                window.alert(
+                  "Diagnóstico copiado (sem nome, e-mail ou telefone). Cole na conversa com o Claude.",
+                );
+              } catch {
+                setErro("Não foi possível copiar o diagnóstico.");
+              }
+            }}
+          >
+            <ClipboardCopy size={12} aria-hidden /> Copiar diagnóstico
+          </button>
           <button
             type="button"
             className={B_LINK}

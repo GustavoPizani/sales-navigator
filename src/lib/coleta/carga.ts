@@ -420,13 +420,57 @@ function indiceDeContatos(contatos) {
  * Carga a partir do roteiro guiado. `prontos` diz quais passos foram concluídos;
  * os contatos entram mesmo incompletos (só ajudam a achar a mídia).
  */
+/** Mídia completa das mensagens recebidas ("Mídia: ..."), pelo telefone e pelo e-mail do cliente. */
+function indiceDeMensagens(mensagens) {
+  const porTel = new Map();
+  const porEmail = new Map();
+  const nomes = new Set();
+  for (const m of mensagens) {
+    const x = (m.c6 || []).find((t) => /^m[ií]dia:/i.test(t));
+    const midia = x ? R.limpa(x.replace(/^m[ií]dia:\s*/i, "")) : "";
+    if (!midia || cortado(midia)) continue;
+    nomes.add(midia);
+    const [, email = "", ...tels] = (m.c4 || []).map(R.semTraco);
+    const em = R.normalizaEmail(email);
+    if (em && !porEmail.has(em)) porEmail.set(em, midia);
+    for (const t of tels) {
+      const n = R.normalizaTelefone(t);
+      if (n && !porTel.has(n)) porTel.set(n, midia);
+    }
+  }
+  const doCliente = (c) => {
+    const [, email = "", tel = ""] = c.c1.map(R.semTraco);
+    return porTel.get(R.normalizaTelefone(tel)) || porEmail.get(R.normalizaEmail(email)) || null;
+  };
+  /** Mídia cortada na tela ("google-ad...") completada pelo nome inteiro, se só um nome combina. */
+  doCliente.completar = (texto) => {
+    if (!texto || !cortado(texto)) return texto;
+    const base = texto.replace(/\s*(\.\.\.|…)$/, "").toLowerCase();
+    if (base.length < 4) return texto;
+    const cands = [...nomes].filter((n) => n.toLowerCase().startsWith(base));
+    return cands.length === 1 ? cands[0] : texto;
+  };
+  return doCliente;
+}
+
+/** Mídia do cliente: filtro de uma mídia só > relatório de contatos (se não veio cortada) > mensagens. */
+function midiaDoCliente(c, o, daMensagem) {
+  if (c.midia) return c.midia;
+  const doRelatorio = o && o.midia ? daMensagem.completar(o.midia) : null;
+  if (doRelatorio && /len/i.test(doRelatorio)) return doRelatorio;
+  const msg = daMensagem(c);
+  if (msg && (/len/i.test(msg) || !doRelatorio || cortado(doRelatorio))) return msg;
+  return doRelatorio;
+}
+
 export function montarCargaGuiada(dados, prontos, periodo, len) {
   const contatos = Object.values(dados.contatos);
   const origem = indiceDeContatos(contatos);
+  const daMensagem = indiceDeMensagens(Object.values(dados.mensagens));
   const todos = prontos.clientes
     ? Object.values(dados.clientes).map((c) => {
         const o = origem.origemDoCliente(c);
-        const midia = c.midia || (o && o.midia) || null;
+        const midia = midiaDoCliente(c, o, daMensagem);
         // a ficha do cliente também traz o canal de contato (c4[1]) e o subcanal (c4[2])
         return {
           ...c,
@@ -514,4 +558,65 @@ export function montarCargaGuiada(dados, prontos, periodo, len) {
     });
   }
   return carga;
+}
+
+/**
+ * Resumo do que foi lido, sem dado pessoal (nada de nome, e-mail ou telefone),
+ * para entender por que um cliente entrou ou não como lead LEN.
+ */
+export function diagnosticoGuiado(dados, periodo) {
+  const contatos = Object.values(dados.contatos);
+  const clientes = Object.values(dados.clientes);
+  const origem = indiceDeContatos(contatos);
+  const daMensagem = indiceDeMensagens(Object.values(dados.mensagens));
+  const conta = (xs) =>
+    Object.entries(xs.reduce((a, k) => ((a[k] = (a[k] || 0) + 1), a), {}))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 25);
+  const cad = clientes
+    .map((c) => R.dataBR(c.c2[1]))
+    .filter(Boolean)
+    .sort();
+  const grupos = clientes.map((c) => {
+    const o = origem.origemDoCliente(c);
+    const midia = midiaDoCliente(c, o, daMensagem);
+    return {
+      grupo: grupoDoCliente(midia, [...((o && o.linhas) || []), ...c.c4.slice(1)]) || "sem grupo",
+      achouContato: Boolean(o),
+      achouMensagem: Boolean(daMensagem(c)),
+      midia: midia || "(sem mídia)",
+      noPeriodo: Boolean(
+        R.dataBR(c.c2[1]) && R.dataBR(c.c2[1]) >= periodo.de && R.dataBR(c.c2[1]) <= periodo.ate,
+      ),
+    };
+  });
+  return {
+    periodo,
+    contatos: {
+      linhas: contatos.length,
+      com_id_cliente: contatos.filter((c) => c.id_cliente).length,
+      com_texto_cortado: contatos.filter((c) => c.cortados).length,
+      celulas_canal_midia: conta(contatos.map((c) => (c.canal || []).join(" | "))),
+    },
+    clientes: {
+      linhas: clientes.length,
+      cadastro_de: cad[0] || null,
+      cadastro_ate: cad[cad.length - 1] || null,
+      no_periodo: grupos.filter((g) => g.noPeriodo).length,
+      achou_no_relatorio: grupos.filter((g) => g.achouContato).length,
+      achou_nas_mensagens: grupos.filter((g) => g.achouMensagem).length,
+      por_grupo: conta(grupos.map((g) => g.grupo)),
+      midias: conta(grupos.map((g) => g.midia)),
+      canal_da_ficha: conta(clientes.map((c) => (c.c4 || []).slice(1).join(" | "))),
+    },
+    visitas: Object.keys(dados.visitas).length,
+    mensagens: {
+      linhas: Object.keys(dados.mensagens).length,
+      midias: conta(
+        Object.values(dados.mensagens).map(
+          (m) => (m.c6 || []).find((t) => /^m[ií]dia:/i.test(t)) || "(sem mídia)",
+        ),
+      ),
+    },
+  };
 }

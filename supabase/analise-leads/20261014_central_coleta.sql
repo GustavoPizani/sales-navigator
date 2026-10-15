@@ -224,6 +224,9 @@ alter table al_visitas add column if not exists email_cliente text;
 create or replace function public.al_sincronizar(p jsonb)
 returns jsonb
 language plpgsql
+-- roda como o dono das tabelas: o "truncate ... restart identity" dos resumos
+-- exige ser dono das sequências (o service_role não é). Só o servidor executa.
+security definer
 set search_path = public
 as $$
 declare
