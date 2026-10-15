@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Eye, EyeOff, Bell, X, Camera, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Bell, X, Camera, Trash2, ContactRound } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -103,6 +103,43 @@ function FeatureToggle({
         />
       </button>
     </div>
+  );
+}
+
+// Análise Hypnobox: nome, e-mail e telefone dos clientes ficam ocultos na ficha
+// do lead até o ADM ligar aqui. O painel lê a mesma chave (vale neste navegador).
+const PREF_CONTATO_HYPNOBOX = "sn-hypnobox-mostrar-contato";
+
+function HypnoboxSection() {
+  const [mostrar, setMostrar] = useState(false);
+  useEffect(() => {
+    try {
+      setMostrar(localStorage.getItem(PREF_CONTATO_HYPNOBOX) === "1");
+    } catch {
+      /* sem storage: fica oculto */
+    }
+  }, []);
+  const mudar = (v: boolean) => {
+    setMostrar(v);
+    try {
+      localStorage.setItem(PREF_CONTATO_HYPNOBOX, v ? "1" : "0");
+      toast.success(
+        v ? "Dados de contato visíveis na Análise Hypnobox" : "Dados de contato ocultos",
+      );
+    } catch {
+      toast.error("Não foi possível salvar neste navegador");
+    }
+  };
+  return (
+    <SectionCard title="Análise Hypnobox">
+      <FeatureToggle
+        label="Mostrar dados de contato dos clientes"
+        description="Nome, e-mail e telefone na ficha do lead. Desligado, aparecem como Oculto. Vale neste navegador."
+        icon={ContactRound}
+        enabled={mostrar}
+        onChange={mudar}
+      />
+    </SectionCard>
   );
 }
 
@@ -679,6 +716,8 @@ function ProfileSettingsPage() {
             </div>
           </SectionCard>
         )}
+
+        {isSuperAdmin && <HypnoboxSection />}
 
         {/* ── Módulos (admin only) ── */}
         {isSuperAdmin && (

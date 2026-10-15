@@ -1,17 +1,46 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RequireModule } from "@/components/RequireModule";
 import { ROLE_LABELS, useHomePath } from "@/components/nav/useNavTabs";
 import { useAuth } from "@/hooks/useAuth";
-import { getHypnoboxData } from "@/lib/hypnobox.functions";
+import { getHypnoboxData, type HypnoboxRow } from "@/lib/hypnobox.functions";
+import { lerDashLen, type DashLen } from "@/lib/coleta/len-cliente";
+import type { LenInfo } from "@/components/hypnobox/HypnoboxFrame";
 
 // o painel (página + biblioteca de gráficos) só é baixado ao abrir esta tela
 const HypnoboxFrame = lazy(() => import("@/components/hypnobox/HypnoboxFrame"));
 
 // lead: ID do Hypnobox; numérico fica como número para o endereço sair ?lead=192822
 type Search = { tab?: string; lead?: string | number };
-const leadParam = (id: string) => (/^d+$/.test(id) ? Number(id) : id);
+const leadParam = (id: string) => (/^\d+$/.test(id) ? Number(id) : id);
+
+// tabela do dash da LEN -> conjunto de dados do painel (valores como texto, igual ao banco)
+const CONJUNTOS_LEN: Record<string, string> = {
+  al_funil_produto: "funil_produto",
+  al_status_geral: "status_geral",
+  al_fontes: "fontes",
+  al_descarte: "descarte",
+  al_veiculo: "veiculo",
+  al_mkt_campanhas: "mkt_campanhas",
+  al_mkt_anuncios: "mkt_anuncios",
+  al_mkt_palavras: "mkt_palavras",
+  al_mkt_diario: "mkt_diario",
+};
+function conjuntosDoDash(d: DashLen) {
+  const out: Record<string, HypnoboxRow[]> = {};
+  for (const [tabela, id] of Object.entries(CONJUNTOS_LEN)) {
+    const linhas = (d.tabelas[tabela] ?? []).map((r) => {
+      const o: HypnoboxRow = {};
+      for (const [k, v] of Object.entries(r)) o[k] = v == null ? "" : String(v);
+      if ("outubro" in o && !("outubro_1a13" in o)) o.outubro_1a13 = o.outubro;
+      return o;
+    });
+    if (id === "status_geral") linhas.sort((a, b) => Number(a.ordem) - Number(b.ordem));
+    out[id] = linhas;
+  }
+  return out;
+}
 
 export const Route = createFileRoute("/_authenticated/hypnobox")({
   validateSearch: (s: Record<string, unknown>): Search => ({
@@ -42,6 +71,53 @@ function HypnoboxPage() {
     staleTime: Infinity,
   });
 
+  // dash da LEN de outros períodos (filtro de datas das abas de campanhas), guardado por período
+  const cache = useRef(new Map<string, DashLen>());
+  const [lenAtual, setLenAtual] = useState<DashLen | null>(null);
+  const [lenInfo, setLenInfo] = useState<LenInfo>({ estado: "coleta" });
+  const pedindo = useRef<string | null>(null);
+  const pedirLen = useCallback(async (de: string | null, ate: string | null) => {
+    // sem datas = volta para o período da última coleta (o que está no banco)
+    if (!de || !ate) {
+      pedindo.current = null;
+      setLenAtual(null);
+      setLenInfo({ estado: "coleta" });
+      return;
+    }
+    const chave = `${de}|${ate}`;
+    if (pedindo.current === chave) return;
+    const pronto = cache.current.get(chave);
+    if (pronto) {
+      pedindo.current = null;
+      setLenAtual(pronto);
+      setLenInfo({ estado: "ok", de, ate });
+      return;
+    }
+    pedindo.current = chave;
+    setLenInfo({ estado: "carregando", de, ate, feitas: 0, total: 18 });
+    try {
+      const d = await lerDashLen(de, ate, (feitas, total) => {
+        if (pedindo.current === chave) setLenInfo({ estado: "carregando", de, ate, feitas, total });
+      });
+      cache.current.set(chave, d);
+      if (pedindo.current !== chave) return;
+      pedindo.current = null;
+      setLenAtual(d);
+      setLenInfo({ estado: "ok", de, ate });
+    } catch (e) {
+      if (pedindo.current !== chave) return;
+      pedindo.current = null;
+      setLenInfo({ estado: "erro", de, ate, erro: e instanceof Error ? e.message : String(e) });
+    }
+  }, []);
+  const dados = useMemo(
+    () =>
+      dataQ.data && lenAtual
+        ? { ...dataQ.data, datasets: { ...dataQ.data.datasets, ...conjuntosDoDash(lenAtual) } }
+        : dataQ.data,
+    [dataQ.data, lenAtual],
+  );
+
   if (dataQ.isLoading) return <Centered>Carregando análise…</Centered>;
   if (dataQ.error || !dataQ.data)
     return (
@@ -71,7 +147,9 @@ function HypnoboxPage() {
   return (
     <Suspense fallback={<Centered>Carregando análise…</Centered>}>
       <HypnoboxFrame
-        data={dataQ.data}
+        data={dados!}
+        lenInfo={lenInfo}
+        onPedirLen={pedirLen}
         initialTab={initialTab}
         initialLead={initialLead}
         userName={profile?.full_name ?? ""}

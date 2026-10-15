@@ -733,32 +733,43 @@
   // Período da última coleta (o Sales Navigator troca esta linha). As colunas
   // "setembro" e "outubro" do dash da LEN são os dois últimos meses do período.
   const META = { de: '2026-09-01', ate: '2026-10-13' };
+  // período da coleta (fixo) e período do dash da LEN que está na tela (muda com o filtro de datas das abas de campanhas)
+  const META0 = { de: META.de, ate: META.ate };
   const MESES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   const mesAnt = ym => { const [y, m] = ym.split('-').map(Number); return m === 1 ? (y - 1) + '-12' : y + '-' + String(m - 1).padStart(2, '0'); };
   const diaIso = s => Date.parse(s + 'T00:00:00Z');
   const diasEntre = (a, b) => Math.round((diaIso(b) - diaIso(a)) / 864e5) + 1;
   const fimMes = ym => { const [y, m] = ym.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
-  const M2 = META.ate.slice(0, 7), M1 = mesAnt(M2);
-  const M1_INI = META.de > M1 + '-01' && META.de <= fimMes(M1) ? META.de : M1 + '-01', M2_INI = META.de > M2 + '-01' ? META.de : M2 + '-01';
-  const M1_DIAS = diasEntre(M1_INI, fimMes(M1)), M2_DIAS = diasEntre(M2_INI, META.ate);
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const rotMes = (ym, ini, fim) => { const nome = cap(MESES_NOME[+ym.slice(5, 7) - 1]);
     return (ini.slice(8) === '01' && fim === fimMes(ym)) ? nome : nome + ' ' + (+ini.slice(8)) + '–' + (+fim.slice(8)); };
-  const ROT1 = rotMes(M1, M1_INI, fimMes(M1)), ROT2 = rotMes(M2, M2_INI, META.ate);
   const curto = r => r.replace(/^(\S{3})\S*/, '$1');
   const brD = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
-  const PER_TXT = brD(META.de) + ' a ' + brD(META.ate);
-  (function textosDoPeriodo() {
+  const COLETA_TXT = brD(META0.de) + ' a ' + brD(META0.ate);
+  let M1, M2, M1_INI, M2_INI, M1_DIAS, M2_DIAS, ROT1, ROT2, PER_TXT;
+  function definirPeriodo(de, ate) {
+    META.de = de; META.ate = ate;
+    M2 = ate.slice(0, 7); M1 = mesAnt(M2);
+    M1_INI = de > M1 + '-01' && de <= fimMes(M1) ? de : M1 + '-01'; M2_INI = de > M2 + '-01' ? de : M2 + '-01';
+    // período dentro de um mês só: o "mês anterior" não tem dias no período
+    M1_DIAS = de > fimMes(M1) ? 0 : diasEntre(M1_INI, fimMes(M1)); M2_DIAS = diasEntre(M2_INI, ate);
+    ROT1 = rotMes(M1, M1_INI, fimMes(M1)); ROT2 = rotMes(M2, M2_INI, ate);
+    PER_TXT = brD(de) + ' a ' + brD(ate);
+  }
+  function textosDoPeriodo() {
     const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
-    set('note-midia', 'Visão da agência (dash da LEN, ' + PER_TXT + '). Estes números não mudam com os filtros. Incluem orgânico e acesso direto, por isso o total é maior que o das campanhas no Hypnobox. Status, fontes e descarte mostram os dois últimos meses (' + ROT1 + ' e ' + ROT2 + ').');
-    set('note-cmp', 'Compara o que a agência reporta (dash da LEN, ' + PER_TXT + ') com os leads de campanha LEN no Hypnobox no mesmo período; orgânicos e carteira do corretor ficam fora. O total da LEN inclui orgânico e acesso direto; "LEN pago" tira o orgânico para a comparação ficar na mesma base. O status compara só ' + ROT1 + ' e ' + ROT2 + '. Os filtros não se aplicam aqui.');
-    set('note-vis', 'Módulo de Visitas do Hypnobox, coleta de ' + PER_TXT + ' (inclui as já marcadas para depois), com o ID do cliente e a origem dele. Filtros de período, gerente, corretor e produto valem aqui; o período usa a data da visita.');
-    set('note-ag', 'Agendamentos do módulo de Visitas do Hypnobox (coleta de ' + PER_TXT + ').');
+    set('note-midia', 'Visão da agência (dash da LEN, ' + PER_TXT + '). Use as datas no topo para ver outro período. Incluem orgânico e acesso direto, por isso o total é maior que o das campanhas no Hypnobox. Status, fontes e descarte mostram os dois últimos meses do período (' + ROT1 + ' e ' + ROT2 + ').');
+    set('note-cmp', 'Compara o que a agência reporta (dash da LEN, ' + PER_TXT + ') com os leads de campanha LEN cadastrados no Hypnobox no mesmo período; orgânicos e carteira do corretor ficam fora. O total da LEN inclui orgânico e acesso direto; "LEN pago" tira o orgânico para a comparação ficar na mesma base. O status compara só ' + ROT1 + ' e ' + ROT2 + '. Só as datas valem aqui.');
+    set('note-vis', 'Módulo de Visitas do Hypnobox, coleta de ' + COLETA_TXT + ' (inclui as já marcadas para depois), com o ID do cliente e a origem dele. Filtros de período, gerente, corretor e produto valem aqui; o período usa a data da visita.');
+    set('note-ag', 'Agendamentos do módulo de Visitas do Hypnobox (coleta de ' + COLETA_TXT + ').');
     document.querySelectorAll('[data-mes]').forEach(th => { th.textContent = (th.dataset.pre || '') + curto(th.dataset.mes === '1' ? ROT1 : ROT2); });
+    document.querySelectorAll('[data-mes-btn]').forEach(b => { b.textContent = b.dataset.mesBtn === '1' ? ROT1 : ROT2; });
     document.querySelectorAll('[data-sub="dois"]').forEach(e => { e.textContent = ROT1 + ' e ' + ROT2; });
     document.querySelectorAll('[data-sub="ritmo"]').forEach(e => { e.textContent = 'Média diária: ' + ROT1 + ' ÷ ' + M1_DIAS + ' dias e ' + ROT2 + ' ÷ ' + M2_DIAS + ' dias'; });
     document.querySelectorAll('[data-sub="fontes"]').forEach(e => { e.textContent = 'Leads por fonte registrada, ' + ROT1 + ' e ' + ROT2; });
-  })();
+  }
+  definirPeriodo(META0.de, META0.ate);
+  textosDoPeriodo();
   // ===================== Mídia LEN (dados agregados da agência) =====================
   dash.calc('totais', {
     title: 'Totais do período', description: 'Soma dos 9 empreendimentos: leads, investimento, sem contato, visitas e propostas.',
@@ -777,7 +788,7 @@
   dash.calc('ritmo', {
     title: 'Leads por dia, dois últimos meses', description: 'Leads de cada um dos dois últimos meses ÷ dias do mês no período, por empreendimento.',
     inputs: ['funil_produto'],
-    fn: (funil_produto) => funil_produto.map(r => ({ produto: r.produto, setembro: +r.leads_set / M1_DIAS, outubro: +r.leads_out / M2_DIAS }))
+    fn: (funil_produto) => funil_produto.map(r => ({ produto: r.produto, setembro: M1_DIAS ? +r.leads_set / M1_DIAS : 0, outubro: +r.leads_out / M2_DIAS }))
   });
   dash.calc('cpl_canal', {
     title: 'CPL Meta vs Google', description: 'Investimento do canal ÷ leads do canal, por empreendimento.',
@@ -840,11 +851,14 @@
     document.querySelectorAll('.sn-panel').forEach(p => { p.hidden = p.id !== 'p-' + t; });
     $('titulo').textContent = SEC_TITLE[sec];
     $('kpis').hidden = !(t === 'graficos' || t === 'corretores');
-    $('fbar').hidden = t === 'midia' || t === 'pago' || t === 'comparacao';
+    // nas abas do dash da LEN só as datas valem: os outros filtros somem
+    const lenTab = t === 'midia' || t === 'pago' || t === 'comparacao';
+    $('fbar').hidden = false;
+    ['ger', 'cor', 'prod', 'can'].forEach(k => { const l = fields[k].closest('label'); if (l) l.hidden = lenTab; });
     dash.setLink('tab-' + t);
     render();
   }
-  document.querySelectorAll('.sn-side .it, .sn-bottom button').forEach(b => b.addEventListener('click', () => setTab(SEC_FIRST[b.dataset.sec])));
+  document.querySelectorAll('.sn-side .it[data-sec], .sn-bottom button[data-sec]').forEach(b => b.addEventListener('click', () => setTab(SEC_FIRST[b.dataset.sec])));
   document.querySelectorAll('.sn-side .sb').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
   function sideBadges() {
     const set = (id, v, alert) => { const e = $(id); if (!e) return; e.hidden = v == null; if (v != null) { e.textContent = int(v); e.classList.toggle('alert', !!alert); } };
@@ -1197,7 +1211,8 @@
   // orgânicos e carteira do corretor vêm do Hypnobox, não da LEN: ficam fora da comparação
   const FORA_LEN = new Set(['Orgânico', 'Carteira do corretor']);
   function drawComparacao(todos) {
-    const leads = todos.filter(r => !FORA_LEN.has(r.canal));
+    // mesmo período do dash da LEN que está na tela, só campanhas LEN
+    const leads = todos.filter(r => !FORA_LEN.has(r.canal) && r.cadastro >= META.de && r.cadastro <= META.ate);
     const FP = dash.data('funil_produto'), VE = dash.data('veiculo'), SG = dash.data('status_geral');
     const boxes = ['ch-cmp-prod', 'ch-cmp-veic', 'ch-cmp-st'].map($);
     if (FP.status !== 'ok' || VE.status !== 'ok' || SG.status !== 'ok') { if (![FP, VE, SG].some(d => d.status === 'loading')) boxes.forEach(b => fail(b, 'error')); return; }
@@ -1442,10 +1457,14 @@
     if (d.length === 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
     return esc(t);
   }
+  // Nome, e-mail e telefone ficam ocultos até o ADM ligar em Minha conta › Análise Hypnobox
+  const PREF_CONTATO = 'sn-hypnobox-mostrar-contato';
+  const mostrarContatoAgora = () => { try { return localStorage.getItem(PREF_CONTATO) === '1'; } catch (e) { return false; } };
   function openLead(r) {
     const e = ET[r.etapa] || { label: r.etapa };
     modal('Cliente ' + r.id, f => {
-      kv(f, [['Nome', r.nome], ['E-mail', r.email], ['Telefone', telBr(r.telefone)], ['Produto', prodName(r.produto)], ['Etapa', e.label], ['Submomento', r.submomento], ['Corretor', r.corretor], ['Gerente', r.gerente], ['Canal', r.canal], ['Campanha', r.campanha + (r.palavra_chave ? ' · ' + r.palavra_chave : '')], ['Cadastro', brDate(r.cadastro)], ['Última atualização', brDate(r.atualizacao) + ' (' + N(r.dias_sem_atualizar) + ' dias)']]);
+      const oc = 'Oculto · mostre em Minha conta', mostrarContato = mostrarContatoAgora();
+      kv(f, [['Nome', mostrarContato ? r.nome : oc], ['E-mail', mostrarContato ? r.email : oc], ['Telefone', mostrarContato ? telBr(r.telefone) : oc], ['Produto', prodName(r.produto)], ['Etapa', e.label], ['Submomento', r.submomento], ['Corretor', r.corretor], ['Gerente', r.gerente], ['Canal', r.canal], ['Campanha', r.campanha + (r.palavra_chave ? ' · ' + r.palavra_chave : '')], ['Cadastro', brDate(r.cadastro)], ['Última atualização', brDate(r.atualizacao) + ' (' + N(r.dias_sem_atualizar) + ' dias)']]);
       const vs = visData().filter(v => v.id_cliente === r.id).sort((a, b) => a.data < b.data ? -1 : 1);
       f.appendChild(el('div', 'lbl', 'Visitas no Hypnobox'));
       if (!vs.length) f.appendChild(el('div', 'info am', 'Nenhuma visita registrada para este cliente.'));
@@ -1622,8 +1641,31 @@
   }
 
   // ===================== Render =====================
+  // ===================== Dash da LEN no período das datas =====================
+  // Datas vazias = período da coleta (o que está no banco). Outro período é buscado
+  // na API da LEN pelo Sales Navigator; enquanto chega, fica o anterior na tela.
+  let lenMostrado = { de: META0.de, ate: META0.ate };
+  function sincronizarLen() {
+    if (!dash.len) return;
+    const want = { de: F.de || META0.de, ate: F.ate || META0.ate };
+    const info = dash.len();
+    const ehColeta = want.de === META0.de && want.ate === META0.ate;
+    const alvo = info.estado === 'coleta' ? META0 : info;
+    if (ehColeta) { if (info.estado !== 'coleta') dash.pedirLen(null, null); }
+    else if (alvo.de !== want.de || alvo.ate !== want.ate) dash.pedirLen(want.de, want.ate);
+    if (info.estado === 'ok') lenMostrado = { de: info.de, ate: info.ate };
+    else if (info.estado === 'coleta') lenMostrado = { de: META0.de, ate: META0.ate };
+    if (lenMostrado.de !== META.de || lenMostrado.ate !== META.ate) { definirPeriodo(lenMostrado.de, lenMostrado.ate); textosDoPeriodo(); }
+    const per = $('per-label');
+    if (info.estado === 'carregando') per.textContent = 'Buscando o dash da LEN de ' + brD(info.de) + ' a ' + brD(info.ate) + '… ' + info.feitas + ' de ' + info.total + ' páginas (na tela: ' + PER_TXT + ')';
+    else if (info.estado === 'erro') { per.textContent = 'Não foi possível buscar o dash da LEN de ' + brD(info.de) + ' a ' + brD(info.ate) + ': ' + info.erro + ' '; const b = el('button', 'sn-btn', 'Tentar de novo'); b.type = 'button'; b.addEventListener('click', () => dash.pedirLen(info.de, info.ate)); per.appendChild(b); }
+    else per.textContent = 'Dash da LEN de ' + PER_TXT + (ehColeta ? ' (período da última coleta)' : '') + ' · as datas valem para Mídia LEN, Mídia paga e LEN x Hypnobox';
+  }
+
   function render() {
     try { sideBadges(); } catch (e) {}
+    // o período da LEN tem de estar certo antes de desenhar as abas de campanhas
+    if (TAB === 'midia' || TAB === 'pago' || TAB === 'comparacao') sincronizarLen();
     const L = dash.data('leads_hypnobox');
     if (L.status === 'ok') {
       const all = L.data;
@@ -1653,6 +1695,7 @@
     } else if (L.status !== 'loading') {
       ['ch-semana-contato', 'ch-semana-visita', 'ch-status', 'ch-prod', 'ch-canal-contato', 'ch-parado'].forEach(id => fail($(id), L.status));
     }
+    if (TAB === 'midia' || TAB === 'pago' || TAB === 'comparacao') sincronizarLen();
     if (TAB === 'midia') drawMidia();
     if (TAB === 'pago') drawPago();
   }

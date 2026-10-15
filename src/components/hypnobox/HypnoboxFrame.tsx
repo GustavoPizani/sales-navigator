@@ -43,8 +43,19 @@ const ICON_CLOUD =
 const ICON_BACK =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>';
 
+/** Situação do dash da LEN mostrado nas abas de campanhas. */
+export type LenInfo =
+  | { estado: "coleta" }
+  | { estado: "carregando"; de: string; ate: string; feitas: number; total: number }
+  | { estado: "ok"; de: string; ate: string }
+  | { estado: "erro"; de: string; ate: string; erro: string };
+
 type Props = {
   data: HypnoboxData;
+  /** Dash da LEN: período da coleta, carregando outro período, ou outro período pronto. */
+  lenInfo: LenInfo;
+  /** Pede o dash da LEN de outro período (null = volta para o da coleta). */
+  onPedirLen: (de: string | null, ate: string | null) => void;
   initialTab?: string;
   /** ID do lead a abrir assim que o painel carrega. */
   initialLead?: string;
@@ -78,7 +89,7 @@ export default function HypnoboxFrame(props: Props) {
   latest.current = props;
   const redraw = useRef<() => void>(() => {});
 
-  useEffect(() => redraw.current(), [props.data]);
+  useEffect(() => redraw.current(), [props.data, props.lenInfo]);
 
   const start = () => {
     const win = frame.current?.contentWindow as PanelWindow | null | undefined;
@@ -128,6 +139,9 @@ export default function HypnoboxFrame(props: Props) {
       setLead: (id: string | null) => {
         if (ready) latest.current.onLead(id);
       },
+      // dash da LEN de outro período (filtro de datas das abas de campanhas)
+      pedirLen: (de: string | null, ate: string | null) => latest.current.onPedirLen(de, ate),
+      len: () => latest.current.lenInfo,
       refresh: () => {},
       params: () => ({}),
       setParams: () => {},
