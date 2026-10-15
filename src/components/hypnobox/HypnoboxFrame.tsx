@@ -136,11 +136,19 @@ export default function HypnoboxFrame(props: Props) {
     };
 
     // "hoje" do painel = dia da coleta dos dados (define o que está vencido)
-    const { coletadoEm } = latest.current.data;
+    // e o período da última coleta define meses, notas e colunas do painel
+    const { coletadoEm, periodo } = latest.current.data;
+    const iso = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
+    let codigo = SCRIPT;
+    if (coletadoEm && iso(coletadoEm))
+      codigo = codigo.replace("const HOJE = '2026-10-13';", () => `const HOJE = '${coletadoEm}';`);
+    if (periodo && iso(periodo.de) && iso(periodo.ate))
+      codigo = codigo.replace(
+        "const META = { de: '2026-09-01', ate: '2026-10-13' };",
+        () => `const META = { de: '${periodo.de}', ate: '${periodo.ate}' };`,
+      );
     const script = doc.createElement("script");
-    script.textContent = coletadoEm
-      ? SCRIPT.replace("const HOJE = '2026-10-13';", () => `const HOJE = '${coletadoEm}';`)
-      : SCRIPT;
+    script.textContent = codigo;
     doc.body.appendChild(script);
 
     // o painel redesenha os gráficos quando a largura muda

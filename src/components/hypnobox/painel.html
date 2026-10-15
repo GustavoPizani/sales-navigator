@@ -327,7 +327,7 @@
           </li>
           <li>
             <button class="it" type="button" data-sec="campanhas" id="nav-campanhas" title="Campanhas"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg><span class="lab">Campanhas</span><span class="badge" id="badge-campanhas" hidden></span></button>
-            <ul class="subs" data-sec="campanhas"><li><button class="sb" type="button" data-tab="campanhas" id="side-campanhas"><span class="lab">Conversão por campanha</span><span class="badge" id="sbadge-campanhas" hidden></span></button></li><li><button class="sb" type="button" data-tab="midia" id="side-midia"><span class="lab">Mídia LEN</span><span class="badge" id="sbadge-midia" hidden></span></button></li><li><button class="sb" type="button" data-tab="comparacao" id="side-comparacao"><span class="lab">LEN x Hypnobox</span></button></li></ul>
+            <ul class="subs" data-sec="campanhas"><li><button class="sb" type="button" data-tab="campanhas" id="side-campanhas"><span class="lab">Conversão por campanha</span><span class="badge" id="sbadge-campanhas" hidden></span></button></li><li><button class="sb" type="button" data-tab="midia" id="side-midia"><span class="lab">Mídia LEN</span><span class="badge" id="sbadge-midia" hidden></span></button></li><li><button class="sb" type="button" data-tab="pago" id="side-pago"><span class="lab">Mídia paga</span></button></li><li><button class="sb" type="button" data-tab="comparacao" id="side-comparacao"><span class="lab">LEN x Hypnobox</span></button></li></ul>
           </li>
         </ul>
       </nav>
@@ -351,6 +351,7 @@
       <button type="button" role="tab" class="sn-tab" data-tab="visitas" data-sec="agenda" id="tab-visitas">Relatório de visitas</button>
       <button type="button" role="tab" class="sn-tab" data-tab="campanhas" data-sec="campanhas" id="tab-campanhas">Conversão por campanha</button>
       <button type="button" role="tab" class="sn-tab" data-tab="midia" data-sec="campanhas" id="tab-midia">Mídia LEN</button>
+      <button type="button" role="tab" class="sn-tab" data-tab="pago" data-sec="campanhas" id="tab-pago">Mídia paga</button>
       <button type="button" role="tab" class="sn-tab" data-tab="comparacao" data-sec="campanhas" id="tab-comparacao">LEN x Hypnobox</button>
     </div>
     <div class="sn-fbar" id="fbar">
@@ -422,7 +423,7 @@
   </section>
 
   <section class="sn-panel" id="p-visitas" role="tabpanel" aria-labelledby="tab-visitas" hidden>
-    <p class="sn-note">Módulo de Visitas do Hypnobox: visitas com data entre 01/09 e 31/10/2026 (inclui as já marcadas para depois de hoje), com o ID do cliente e a origem dele. Filtros de período, gerente, corretor e produto valem aqui; o período usa a data da visita.</p>
+    <p class="sn-note" id="note-vis"></p>
     <div class="sn-kpis" data-source="visitas_hypnobox">
       <div class="sn-kpi"><div class="v" id="v-total">—</div><div class="l">Visitas registradas</div></div>
       <button class="sn-kpi click" type="button" data-vk="Realizada"><div class="v" id="v-real">—</div><div class="l">Realizadas</div><div class="h">ver detalhes</div></button>
@@ -524,7 +525,7 @@
       </div>
     </div>
     <div class="sn-list" id="agenda" data-source="visitas_hypnobox"></div>
-    <p class="sn-note">Agendamentos do módulo de Visitas do Hypnobox (01/09 a 31/10). "Novo agendamento" monta o convite no Outlook Calendar, como no Sales Navigator; o registro da visita continua sendo feito no Hypnobox.</p>
+    <p class="sn-note"><span id="note-ag">Agendamentos do módulo de Visitas do Hypnobox.</span> "Novo agendamento" monta o convite no Outlook Calendar, como no Sales Navigator; o registro da visita continua sendo feito no Hypnobox.</p>
   </section>
 
   <section class="sn-panel" id="p-campanhas" role="tabpanel" aria-labelledby="tab-campanhas" hidden>
@@ -566,8 +567,55 @@
     <p class="sn-note">Clique numa campanha da tabela (ou escolha no seletor) para ver o funil só dela. Cada etapa conta quem chegou a ela ou a uma etapa depois: "Em contato" = em tratativa ou adiante; "Agendados" = visita marcada no Hypnobox ou adiante; "Visitas" = visita realizada; "Vendas" = clientes no momento de venda (ainda não lançadas no CRM). Descartado sem visita registrada conta só como lead novo. Campanhas Google agrupadas por tipo e empreendimento. Vermelho: mais de 30% de descartados.</p>
   </section>
 
+  <section class="sn-panel" id="p-pago" role="tabpanel" aria-labelledby="tab-pago" hidden>
+    <p class="sn-note">Campanhas, anúncios e palavras-chave do dash da LEN (Meta e Google). Estes números não mudam com os filtros do topo.</p>
+    <div class="sn-pbar">
+      <div class="sn-seg" role="group" aria-label="Janela">
+        <button type="button" data-jan="periodo" aria-pressed="true">Período</button>
+        <button type="button" data-jan="anterior" aria-pressed="false">Período anterior</button>
+        <button type="button" data-jan="setembro" aria-pressed="false" data-mes-btn="1">Mês 1</button>
+        <button type="button" data-jan="outubro" aria-pressed="false" data-mes-btn="2">Mês 2</button>
+      </div>
+      <label class="camp">Canal<select class="sn-sel" id="pg-canal"><option value="">Todos</option></select></label>
+    </div>
+    <div class="sn-kpis" id="pg-kpis"></div>
+    <div class="sn-grid2">
+      <div class="sn-card"><h3>Investimento por semana</h3><p class="sub">Meta e Google, período inteiro da coleta</p><div class="sn-chart" id="ch-pg-semana"></div></div>
+      <div class="sn-card"><h3>Investimento por empreendimento</h3><p class="sub">Campanhas da janela escolhida</p><div class="sn-chart" id="ch-pg-prod"></div></div>
+    </div>
+    <div class="sn-tablecard">
+      <div class="sn-tablebar"><h3>Campanhas</h3><input class="sn-search" id="q-pg-camp" type="search" placeholder="Buscar campanha, produto, objetivo…"></div>
+      <div class="sn-tw">
+        <table class="sn-table" id="tb-pg-camp">
+          <thead><tr><th>Campanha</th><th>Canal</th><th>Produto</th><th>Objetivo</th><th class="num">Investimento</th><th class="num">Impressões</th><th class="num">Cliques</th><th class="num">CTR</th><th class="num">CPC</th><th class="num">Conversões</th><th class="num">Custo/conv.</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sn-tablecard">
+      <div class="sn-tablebar"><h3>Anúncios (Meta)</h3><input class="sn-search" id="q-pg-anu" type="search" placeholder="Buscar anúncio, produto, formato…"></div>
+      <div class="sn-tw">
+        <table class="sn-table" id="tb-pg-anu">
+          <thead><tr><th>Anúncio</th><th>Produto</th><th>Formato</th><th class="num">Investimento</th><th class="num">Impressões</th><th class="num">Cliques</th><th class="num">CTR</th><th class="num">Leads (form.)</th><th class="num">Leads (pixel)</th><th class="num">CPL</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="sn-pager"><span id="pg-anu-info"></span></div>
+    </div>
+    <div class="sn-tablecard">
+      <div class="sn-tablebar"><h3>Palavras-chave do Google</h3></div>
+      <div class="sn-tw">
+        <table class="sn-table" id="tb-pg-kw">
+          <thead><tr><th>Palavra-chave</th><th class="num">Investimento</th><th class="num">Impressões</th><th class="num">Cliques</th><th class="num">CPC</th><th class="num">Conversões</th><th class="num">Custo/conv.</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <p class="sn-note">CTR = cliques ÷ impressões. Conversões são as que cada plataforma informa (não são leads no CRM). As palavras-chave são as 80 com mais investimento no período inteiro. Anúncios: os 150 com mais investimento na janela; a busca procura em todos.</p>
+  </section>
+
   <section class="sn-panel" id="p-comparacao" role="tabpanel" aria-labelledby="tab-comparacao" hidden>
-    <p class="sn-note">Compara o que a agência reporta (dash da LEN, 01/09 a 13/10/2026, CRM em 09/10) com o que está cadastrado no Hypnobox com mídia de campanha LEN no mesmo período. O total da LEN inclui orgânico e acesso direto; "LEN pago" tira o orgânico para a comparação ficar na mesma base. Os filtros não se aplicam aqui.</p>
+    <p class="sn-note" id="note-cmp"></p>
     <div class="sn-kpis" id="cmp-kpis" data-source="funil_produto leads_hypnobox"></div>
     <div class="sn-grid2">
       <div class="sn-card"><h3 id="g-cmp-prod">Leads por empreendimento</h3><p class="sub">Leads pagos no dash da LEN x leads no Hypnobox</p><div class="sn-chart" id="ch-cmp-prod" data-source="funil_produto leads_hypnobox"></div></div>
@@ -580,7 +628,7 @@
           <thead><tr>
             <th>Empreendimento</th><th class="num">LEN total</th><th class="num">LEN pago</th><th class="num">Hypnobox</th>
             <th class="num">Diferença</th><th class="num">Hypnobox ÷ LEN pago</th>
-            <th class="num">LEN set</th><th class="num">Hypnobox set</th><th class="num">LEN out 1–13</th><th class="num">Hypnobox out 1–13</th>
+            <th class="num" data-mes="1" data-pre="LEN ">LEN set</th><th class="num" data-mes="1" data-pre="Hypnobox ">Hypnobox set</th><th class="num" data-mes="2" data-pre="LEN ">LEN out</th><th class="num" data-mes="2" data-pre="Hypnobox ">Hypnobox out</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -602,7 +650,7 @@
   </section>
 
   <section class="sn-panel" id="p-midia" role="tabpanel" aria-labelledby="tab-midia" hidden>
-    <p class="sn-note">Visão da agência (dash da LEN, 01/09 a 13/10/2026, CRM em 09/10). Estes números não mudam com os filtros. Incluem orgânico e acesso direto, por isso o total é maior que o do Hypnobox.</p>
+    <p class="sn-note" id="note-midia"></p>
     <div class="sn-kpis">
       <div class="sn-kpi"><div class="v" data-source="totais" data-field="leads">—</div><div class="l">Leads no período</div></div>
       <div class="sn-kpi"><div class="v" data-source="totais" data-field="investimento">—</div><div class="l">Investimento em mídia</div></div>
@@ -618,8 +666,8 @@
           <thead><tr>
             <th data-field="produto" data-k="produto">Empreendimento</th>
             <th data-field="leads" data-k="leads" class="num">Leads</th>
-            <th data-field="leads_set" data-k="leads_set" class="num">Set</th>
-            <th data-field="leads_out" data-k="leads_out" class="num">Out 1–13</th>
+            <th data-field="leads_set" data-k="leads_set" class="num" data-mes="1">Set</th>
+            <th data-field="leads_out" data-k="leads_out" class="num" data-mes="2">Out</th>
             <th data-field="investimento" data-k="investimento" class="num">Investimento</th>
             <th data-source="ind_produto" data-field="cpl" data-k="cpl" class="num">CPL</th>
             <th data-source="ind_produto" data-field="pct_sem_contato" data-k="pct_sem_contato" class="num">% sem contato</th>
@@ -634,15 +682,15 @@
       </div>
     </div>
     <div class="sn-grid2">
-      <div class="sn-card"><h3 id="g-len-status">Status dos leads no CRM</h3><p class="sub">Setembro e outubro (1 a 13)</p><div class="sn-chart" id="ch-len-status" data-source="status_geral"></div></div>
-      <div class="sn-card"><h3 id="g-len-ritmo">Leads por dia</h3><p class="sub">Média diária, setembro ÷ 30 e outubro ÷ 13</p><div class="sn-chart" id="ch-len-ritmo" data-source="ritmo"></div></div>
+      <div class="sn-card"><h3 id="g-len-status">Status dos leads no CRM</h3><p class="sub" data-sub="dois">Últimos dois meses</p><div class="sn-chart" id="ch-len-status" data-source="status_geral"></div></div>
+      <div class="sn-card"><h3 id="g-len-ritmo">Leads por dia</h3><p class="sub" data-sub="ritmo">Média diária dos dois últimos meses</p><div class="sn-chart" id="ch-len-ritmo" data-source="ritmo"></div></div>
     </div>
     <div class="sn-grid2">
       <div class="sn-card"><h3 id="g-len-cpl">Custo por lead: Meta vs Google</h3><p class="sub">Investimento do canal ÷ leads do canal</p><div class="sn-chart" id="ch-len-cpl" data-source="cpl_canal"></div></div>
-      <div class="sn-card"><h3 id="g-len-fontes">Fontes de contato</h3><p class="sub">Leads por fonte registrada, setembro e outubro</p><div class="sn-chart" id="ch-len-fontes" data-source="fontes"></div></div>
+      <div class="sn-card"><h3 id="g-len-fontes">Fontes de contato</h3><p class="sub" data-sub="fontes">Leads por fonte registrada</p><div class="sn-chart" id="ch-len-fontes" data-source="fontes"></div></div>
     </div>
     <div class="sn-grid2">
-      <div class="sn-card"><h3 id="g-len-desc">Motivos de descarte</h3><p class="sub">Setembro e outubro (1 a 13)</p><div class="sn-chart" id="ch-len-desc" data-source="descarte"></div></div>
+      <div class="sn-card"><h3 id="g-len-desc">Motivos de descarte</h3><p class="sub" data-sub="dois">Últimos dois meses</p><div class="sn-chart" id="ch-len-desc" data-source="descarte"></div></div>
       <div class="sn-tablecard">
         <div class="sn-tablebar"><h3>Planejado vs realizado por veículo</h3></div>
         <div class="sn-tw">
@@ -682,6 +730,35 @@
 
 <script>
 (function () {
+  // Período da última coleta (o Sales Navigator troca esta linha). As colunas
+  // "setembro" e "outubro" do dash da LEN são os dois últimos meses do período.
+  const META = { de: '2026-09-01', ate: '2026-10-13' };
+  const MESES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const mesAnt = ym => { const [y, m] = ym.split('-').map(Number); return m === 1 ? (y - 1) + '-12' : y + '-' + String(m - 1).padStart(2, '0'); };
+  const diaIso = s => Date.parse(s + 'T00:00:00Z');
+  const diasEntre = (a, b) => Math.round((diaIso(b) - diaIso(a)) / 864e5) + 1;
+  const fimMes = ym => { const [y, m] = ym.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+  const M2 = META.ate.slice(0, 7), M1 = mesAnt(M2);
+  const M1_INI = META.de > M1 + '-01' && META.de <= fimMes(M1) ? META.de : M1 + '-01', M2_INI = META.de > M2 + '-01' ? META.de : M2 + '-01';
+  const M1_DIAS = diasEntre(M1_INI, fimMes(M1)), M2_DIAS = diasEntre(M2_INI, META.ate);
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const rotMes = (ym, ini, fim) => { const nome = cap(MESES_NOME[+ym.slice(5, 7) - 1]);
+    return (ini.slice(8) === '01' && fim === fimMes(ym)) ? nome : nome + ' ' + (+ini.slice(8)) + '–' + (+fim.slice(8)); };
+  const ROT1 = rotMes(M1, M1_INI, fimMes(M1)), ROT2 = rotMes(M2, M2_INI, META.ate);
+  const curto = r => r.replace(/^(\S{3})\S*/, '$1');
+  const brD = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+  const PER_TXT = brD(META.de) + ' a ' + brD(META.ate);
+  (function textosDoPeriodo() {
+    const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+    set('note-midia', 'Visão da agência (dash da LEN, ' + PER_TXT + '). Estes números não mudam com os filtros. Incluem orgânico e acesso direto, por isso o total é maior que o das campanhas no Hypnobox. Status, fontes e descarte mostram os dois últimos meses (' + ROT1 + ' e ' + ROT2 + ').');
+    set('note-cmp', 'Compara o que a agência reporta (dash da LEN, ' + PER_TXT + ') com os leads de campanha LEN no Hypnobox no mesmo período; orgânicos e carteira do corretor ficam fora. O total da LEN inclui orgânico e acesso direto; "LEN pago" tira o orgânico para a comparação ficar na mesma base. O status compara só ' + ROT1 + ' e ' + ROT2 + '. Os filtros não se aplicam aqui.');
+    set('note-vis', 'Módulo de Visitas do Hypnobox, coleta de ' + PER_TXT + ' (inclui as já marcadas para depois), com o ID do cliente e a origem dele. Filtros de período, gerente, corretor e produto valem aqui; o período usa a data da visita.');
+    set('note-ag', 'Agendamentos do módulo de Visitas do Hypnobox (coleta de ' + PER_TXT + ').');
+    document.querySelectorAll('[data-mes]').forEach(th => { th.textContent = (th.dataset.pre || '') + curto(th.dataset.mes === '1' ? ROT1 : ROT2); });
+    document.querySelectorAll('[data-sub="dois"]').forEach(e => { e.textContent = ROT1 + ' e ' + ROT2; });
+    document.querySelectorAll('[data-sub="ritmo"]').forEach(e => { e.textContent = 'Média diária: ' + ROT1 + ' ÷ ' + M1_DIAS + ' dias e ' + ROT2 + ' ÷ ' + M2_DIAS + ' dias'; });
+    document.querySelectorAll('[data-sub="fontes"]').forEach(e => { e.textContent = 'Leads por fonte registrada, ' + ROT1 + ' e ' + ROT2; });
+  })();
   // ===================== Mídia LEN (dados agregados da agência) =====================
   dash.calc('totais', {
     title: 'Totais do período', description: 'Soma dos 9 empreendimentos: leads, investimento, sem contato, visitas e propostas.',
@@ -698,9 +775,9 @@
         visitas: +r.visita_agendada + +r.visita_realizada, pct_descarte: +r.descarte / L, pct_meta: L / +r.meta_leads }; })
   });
   dash.calc('ritmo', {
-    title: 'Leads por dia, set vs out', description: 'Leads de setembro ÷ 30 e de outubro (1 a 13) ÷ 13, por empreendimento.',
+    title: 'Leads por dia, dois últimos meses', description: 'Leads de cada um dos dois últimos meses ÷ dias do mês no período, por empreendimento.',
     inputs: ['funil_produto'],
-    fn: (funil_produto) => funil_produto.map(r => ({ produto: r.produto, setembro: +r.leads_set / 30, outubro: +r.leads_out / 13 }))
+    fn: (funil_produto) => funil_produto.map(r => ({ produto: r.produto, setembro: +r.leads_set / M1_DIAS, outubro: +r.leads_out / M2_DIAS }))
   });
   dash.calc('cpl_canal', {
     title: 'CPL Meta vs Google', description: 'Investimento do canal ÷ leads do canal, por empreendimento.',
@@ -751,7 +828,7 @@
   let filled = false, TAB = 'graficos', page = 1;
   Object.entries(fields).forEach(([k, el]) => el.addEventListener('change', () => { F[k] = el.value; if (k === 'ger') { F.cor = ''; fields.cor.value = ''; } page = 1; render(); }));
   $('f-limpar').addEventListener('click', () => { Object.keys(F).forEach(k => { F[k] = ''; fields[k].value = ''; }); page = 1; render(); });
-  const SEC_OF = { graficos: 'dashboard', corretores: 'dashboard', atendimentos: 'dashboard', agenda: 'agenda', visitas: 'agenda', campanhas: 'campanhas', midia: 'campanhas', comparacao: 'campanhas' };
+  const SEC_OF = { graficos: 'dashboard', corretores: 'dashboard', atendimentos: 'dashboard', agenda: 'agenda', visitas: 'agenda', campanhas: 'campanhas', midia: 'campanhas', pago: 'campanhas', comparacao: 'campanhas' };
   const SEC_TITLE = { dashboard: 'Dashboard', agenda: 'Agendamentos', campanhas: 'Campanhas' };
   const SEC_FIRST = { dashboard: 'graficos', agenda: 'agenda', campanhas: 'campanhas' };
   function setTab(t) {
@@ -763,7 +840,7 @@
     document.querySelectorAll('.sn-panel').forEach(p => { p.hidden = p.id !== 'p-' + t; });
     $('titulo').textContent = SEC_TITLE[sec];
     $('kpis').hidden = !(t === 'graficos' || t === 'corretores');
-    $('fbar').hidden = t === 'midia' || t === 'comparacao';
+    $('fbar').hidden = t === 'midia' || t === 'pago' || t === 'comparacao';
     dash.setLink('tab-' + t);
     render();
   }
@@ -1131,7 +1208,7 @@
       if (!prods.has(key)) prods.set(key, { name: prodName(name), len: 0, pago: 0, lenSet: 0, lenOut: 0, hyp: 0, hypSet: 0, hypOut: 0, inLen: false });
       return prods.get(key); };
     FP.data.forEach(r => { const p = slot(r.produto); p.name = r.produto; p.inLen = true; p.len += N(r.leads); p.pago += N(r.leads) - N(r.organico_leads); p.lenSet += N(r.leads_set); p.lenOut += N(r.leads_out); });
-    leads.forEach(r => { const p = slot(r.produto); p.hyp++; if (esc(r.cadastro).slice(5, 7) === '09') p.hypSet++; else p.hypOut++; });
+    leads.forEach(r => { const p = slot(r.produto); p.hyp++; const m = esc(r.cadastro).slice(0, 7); if (m === M1) p.hypSet++; else if (m === M2) p.hypOut++; });
     const P = [...prods.values()].sort((a, b) => b.pago - a.pago || b.hyp - a.hyp);
     const tot = k => P.reduce((a, p) => a + p[k], 0);
     const len = tot('len'), pago = tot('pago'), hyp = tot('hyp');
@@ -1160,9 +1237,11 @@
     hbar(boxes[1], [...veics.values()].filter(v => v.l || v.h).sort((a, b) => b.l - a.l || b.h - a.h), { fmt: x => int(x), series: CMP_SERIES });
 
     // por status
+    // o status da LEN cobre os dois últimos meses: o Hypnobox entra com os mesmos meses
     const lenTot = SG.data.reduce((a, r) => a + N(r.setembro) + N(r.outubro_1a13), 0);
-    const st = ST_CMP.map(c => { const l = SG.data.filter(r => c.len.test(r.etapa)).reduce((a, r) => a + N(r.setembro) + N(r.outubro_1a13), 0), h = leads.filter(c.hyp).length;
-      return { name: c.name, ln: l, hn: h, l: share(l, lenTot), h: share(h, leads.length) }; });
+    const doisMeses = leads.filter(r => { const m = esc(r.cadastro).slice(0, 7); return m === M1 || m === M2; });
+    const st = ST_CMP.map(c => { const l = SG.data.filter(r => c.len.test(r.etapa)).reduce((a, r) => a + N(r.setembro) + N(r.outubro_1a13), 0), h = doisMeses.filter(c.hyp).length;
+      return { name: c.name, ln: l, hn: h, l: share(l, lenTot), h: share(h, doisMeses.length) }; });
     hbar(boxes[2], st, { fmt: x => pct1(x), series: CMP_SERIES });
     fillRows(document.querySelector('#tb-cmp-st tbody'), st.map(s => { const d = (s.h - s.l) * 100;
       return [[s.name, 'strong'], [int(s.ln), 'num'], [pct1(s.l), 'num'], [int(s.hn), 'num'], [pct1(s.h), 'num'], [(d > 0 ? '+' : '') + d.toFixed(1).replace('.', ','), 'num']]; }));
@@ -1451,6 +1530,61 @@
   // ===================== Mídia LEN =====================
   let pSortK = 'leads', pSortDir = -1;
   document.querySelectorAll('#tb-prod th[data-k]').forEach(th => th.addEventListener('click', () => { const k = th.dataset.k; if (pSortK === k) pSortDir = -pSortDir; else { pSortK = k; pSortDir = k === 'produto' ? 1 : -1; } render(); }));
+  // ===================== Mídia paga (campanhas, anúncios, palavras, diário) =====================
+  let PGJ = 'periodo';
+  const pgJanelaTxt = () => ({ periodo: 'Período ' + PER_TXT, anterior: 'Período anterior (mesmo nº de dias)', setembro: ROT1, outubro: ROT2 })[PGJ];
+  document.querySelectorAll('[data-mes-btn]').forEach(b => { b.textContent = b.dataset.mesBtn === '1' ? ROT1 : ROT2; });
+  document.querySelectorAll('[data-jan]').forEach(b => b.addEventListener('click', () => { PGJ = b.dataset.jan;
+    document.querySelectorAll('[data-jan]').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false')); render(); }));
+  ['pg-canal', 'q-pg-camp', 'q-pg-anu'].forEach(id => $(id).addEventListener('input', () => render()));
+  const ctr = (c, i) => i > 0 ? (c / i * 100).toFixed(1).replace('.', ',') + '%' : '–';
+  const div = (a, b) => b > 0 ? brl(a / b) : '–';
+  const busca = (id, campos) => { const q = $(id).value.trim().toLowerCase(); return r => !q || campos.map(k => esc(r[k])).join(' ').toLowerCase().includes(q); };
+  function drawPago() {
+    const C = dash.data('mkt_campanhas'), A = dash.data('mkt_anuncios'), K = dash.data('mkt_palavras'), D = dash.data('mkt_diario');
+    if ([C, A, K, D].some(d => d.status === 'loading')) return;
+    const can = $('pg-canal');
+    if (C.status === 'ok' && can.options.length === 1) [...new Set(C.data.map(r => r.canal))].sort().forEach(c => { const o = el('option', null, c); o.value = c; can.appendChild(o); });
+    const canal = can.value;
+    const camps = C.status === 'ok' ? C.data.filter(r => r.janela === PGJ && (!canal || r.canal === canal)) : [];
+    const s = (xs, k) => xs.reduce((a, r) => a + N(r[k]), 0);
+    const inv = s(camps, 'investimento'), imp = s(camps, 'impressoes'), cli = s(camps, 'cliques'), conv = s(camps, 'conversoes_plataforma');
+    const kp = $('pg-kpis'); kp.innerHTML = '';
+    kpiTile(kp, brlK(inv), 'Investimento', pgJanelaTxt());
+    kpiTile(kp, int(imp), 'Impressões');
+    kpiTile(kp, int(cli), 'Cliques', 'CTR ' + ctr(cli, imp));
+    kpiTile(kp, div(inv, cli), 'CPC');
+    kpiTile(kp, int(conv), 'Conversões', 'informadas pelas plataformas');
+    kpiTile(kp, div(inv, conv), 'Custo por conversão');
+    kpiTile(kp, int(camps.length), 'Campanhas');
+    // semana a semana (diário do período inteiro)
+    if (D.status === 'ok') {
+      const sem = new Map();
+      D.data.filter(r => !canal || (canal.startsWith('Google') ? r.canal === 'Google Ads' : r.canal === canal)).forEach(r => {
+        const d = new Date(Date.parse(r.data + 'T00:00:00Z')); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+        const k = d.toISOString().slice(0, 10); const o = sem.get(k) || { name: 'Semana de ' + brDate(k), m: 0, g: 0 };
+        if (r.canal === 'Meta Ads') o.m += N(r.investimento); else o.g += N(r.investimento); sem.set(k, o); });
+      hbar($('ch-pg-semana'), [...sem.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1).map(([, o]) => o), { fmt: x => brlK(x), series: [{ key: 'm', name: 'Meta', color: NAVY }, { key: 'g', name: 'Google', color: COPPER }] });
+    } else fail($('ch-pg-semana'), D.status);
+    const porProd = d3.rollups(camps, v => s(v, 'investimento'), r => r.produto || '(sem produto)').map(([name, v]) => ({ name, v })).sort((a, b) => b.v - a.v);
+    hbar($('ch-pg-prod'), porProd, { fmt: x => brlK(x) });
+    // campanhas
+    const cf = camps.filter(busca('q-pg-camp', ['campanha', 'produto', 'objetivo', 'canal'])).sort((a, b) => N(b.investimento) - N(a.investimento));
+    fillRows(document.querySelector('#tb-pg-camp tbody'), cf.map(r => [[r.campanha, 'strong wrap'], [r.canal], [r.produto], [r.objetivo], [brl(N(r.investimento)), 'num'], [int(N(r.impressoes)), 'num'], [int(N(r.cliques)), 'num'],
+      [ctr(N(r.cliques), N(r.impressoes)), 'num'], [div(N(r.investimento), N(r.cliques)), 'num'], [int(N(r.conversoes_plataforma)), 'num'], [div(N(r.investimento), N(r.conversoes_plataforma)), 'num']]));
+    // anúncios
+    const anus = A.status === 'ok' ? A.data.filter(r => r.janela === PGJ).filter(busca('q-pg-anu', ['anuncio', 'produto', 'formato'])).sort((a, b) => N(b.investimento) - N(a.investimento)) : [];
+    const aShow = $('q-pg-anu').value.trim() ? anus : anus.slice(0, 150);
+    fillRows(document.querySelector('#tb-pg-anu tbody'), aShow.map(r => { const leads = N(r.leads_formulario) + N(r.leads_pixel);
+      return [[r.anuncio, 'strong wrap'], [r.produto], [r.formato], [brl(N(r.investimento)), 'num'], [int(N(r.impressoes)), 'num'], [int(N(r.cliques)), 'num'], [ctr(N(r.cliques), N(r.impressoes)), 'num'],
+        [int(N(r.leads_formulario)), 'num'], [int(N(r.leads_pixel)), 'num'], [div(N(r.investimento), leads), 'num']]; }));
+    $('pg-anu-info').textContent = int(aShow.length) + ' de ' + int(anus.length) + ' anúncios';
+    // palavras
+    const kws = K.status === 'ok' ? [...K.data].sort((a, b) => N(b.investimento) - N(a.investimento)) : [];
+    fillRows(document.querySelector('#tb-pg-kw tbody'), kws.map(r => [[r.palavra_chave, 'strong wrap'], [brl(N(r.investimento)), 'num'], [int(N(r.impressoes)), 'num'], [int(N(r.cliques)), 'num'],
+      [div(N(r.investimento), N(r.cliques)), 'num'], [int(N(r.conversoes)), 'num'], [div(N(r.investimento), N(r.conversoes)), 'num']]));
+  }
+
   function drawMidia() {
     const t = dash.data('totais');
     const setV = (f, txt) => document.querySelectorAll('[data-source="totais"][data-field="' + f + '"]').forEach(e => { e.textContent = txt; });
@@ -1472,7 +1606,7 @@
         [[r.veiculo, 'strong'], [prev ? brl(prev) : '–', 'num'], [real ? brl(real) : '–', 'num' + (prev && real > prev ? ' bad' : '')], [int(N(r.leads)), 'num'], [N(r.meta_leads) ? int(N(r.meta_leads)) : '–', 'num'], [k.cpl == null ? '–' : brl(k.cpl), 'num']]
           .forEach(([t2, cl]) => { const td = document.createElement('td'); td.textContent = t2; if (cl) td.className = cl; tr.appendChild(td); });
         tv.appendChild(tr); }); }
-    const two = [{ key: 's', name: 'Setembro', color: NAVY }, { key: 'o', name: 'Outubro 1–13', color: COPPER }];
+    const two = [{ key: 's', name: ROT1, color: NAVY }, { key: 'o', name: ROT2, color: COPPER }];
     const draw = (id, ds, fn) => { const d = dash.data(ds), el = $(id); if (d.status === 'ok') fn(el, d.data); else if (d.status !== 'loading') fail(el, d.status); };
     draw('ch-len-status', 'status_geral', (el, data) => hbar(el, data.map(r => ({ name: r.etapa, o2: +r.ordem, s: +r.setembro, o: +r.outubro_1a13 })).sort((a, b) => a.o2 - b.o2), { fmt: x => int(x), series: two }));
     draw('ch-len-ritmo', 'ritmo', (el, data) => hbar(el, data.map(r => ({ name: r.produto, s: r.setembro, o: r.outubro })).sort((a, b) => b.s - a.s), { fmt: dec, series: two }));
@@ -1491,10 +1625,17 @@
         filled = true;
         const ds = all.map(r => r.cadastro).sort();
         fields.de.min = fields.ate.min = ds[0]; fields.de.max = fields.ate.max = ds[ds.length - 1];
+        // abre no último mês (30 dias até o dia da coleta); "Limpar" mostra o banco inteiro
+        if (!F.de && !F.ate && ds.length) {
+          const fim = ds[ds.length - 1] < HOJE ? ds[ds.length - 1] : HOJE;
+          const ini = new Date(Date.parse(fim + 'T00:00:00Z') - 29 * 864e5).toISOString().slice(0, 10);
+          F.de = fields.de.value = ini < ds[0] ? ds[0] : ini;
+          F.ate = fields.ate.value = fim;
+        }
       }
       fillFacets(all);
       const R = rowsFiltered(all); lastR = R;
-      $('per-label').textContent = 'Leads das campanhas LEN no Hypnobox · cadastro de ' + brDate(F.de || fields.de.min) + ' a ' + brDate(F.ate || fields.de.max) + (F.cor ? ' · ' + F.cor : F.ger ? ' · equipe ' + F.ger : '') + ' · ' + int(R.length) + ' atendimentos';
+      $('per-label').textContent = 'Leads no Hypnobox (campanhas LEN, orgânicos e carteira) · cadastro de ' + brDate(F.de || fields.de.min) + ' a ' + brDate(F.ate || fields.de.max) + (F.cor ? ' · ' + F.cor : F.ger ? ' · equipe ' + F.ger : '') + ' · ' + int(R.length) + ' atendimentos';
       drawKpis(R);
       if (TAB === 'graficos') drawGraficos(R);
       if (TAB === 'corretores') { const m = dash.data('mensagens_corretor'); drawCorretores(R, m.status === 'ok' ? m.data : []); }
@@ -1507,6 +1648,7 @@
       ['ch-semana-contato', 'ch-semana-visita', 'ch-status', 'ch-prod', 'ch-canal-contato', 'ch-parado'].forEach(id => fail($(id), L.status));
     }
     if (TAB === 'midia') drawMidia();
+    if (TAB === 'pago') drawPago();
   }
 
   setTab('graficos');

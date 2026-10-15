@@ -10,6 +10,8 @@ export type HypnoboxData = {
   datasets: Record<string, HypnoboxRow[]>;
   /** Dia da última coleta (AAAA-MM-DD, horário de Brasília), se registrado. */
   coletadoEm: string | null;
+  /** Período da última coleta (AAAA-MM-DD), se registrado. */
+  periodo: { de: string; ate: string } | null;
 };
 
 // Nome do conjunto de dados no painel -> tabela no segundo banco. Sem `order`,
@@ -24,6 +26,10 @@ const SOURCES: Record<string, { table: string; order?: string }> = {
   fontes: { table: "al_fontes" },
   descarte: { table: "al_descarte" },
   veiculo: { table: "al_veiculo" },
+  mkt_campanhas: { table: "al_mkt_campanhas", order: "id" },
+  mkt_anuncios: { table: "al_mkt_anuncios", order: "id" },
+  mkt_palavras: { table: "al_mkt_palavras" },
+  mkt_diario: { table: "al_mkt_diario", order: "data" },
 };
 
 const PAGE = 1000;
@@ -86,7 +92,7 @@ export const getHypnoboxData = createServerFn({ method: "POST" })
 
     const { data: coleta } = await secondaryAdmin
       .from("al_coletas")
-      .select("coletado_em")
+      .select("coletado_em, periodo_inicio, periodo_fim")
       .order("coletado_em", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -96,5 +102,10 @@ export const getHypnoboxData = createServerFn({ method: "POST" })
         )
       : null;
 
-    return { datasets, coletadoEm };
+    const periodo =
+      coleta?.periodo_inicio && coleta?.periodo_fim
+        ? { de: String(coleta.periodo_inicio), ate: String(coleta.periodo_fim) }
+        : null;
+
+    return { datasets, coletadoEm, periodo };
   });
