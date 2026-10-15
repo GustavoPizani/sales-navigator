@@ -254,14 +254,21 @@ const buckets = (a: any, chave: any) => (a && a[chave] && a[chave].buckets) || [
 /** Janelas de marketing: período, o mesmo número de dias antes, 1º mês e 2º mês. */
 function janelas(de: any, ate: any) {
   const dias = R.diasEntre(de, ate) + 1;
-  const mes2 = `${de.slice(0, 7) === ate.slice(0, 7) ? ate.slice(0, 7) : nextMonth(de)}-01`;
+  // "setembro" e "outubro" são os dois ÚLTIMOS meses do período (penúltimo e
+  // o mês da data final), cortados pelo período; os nomes ficaram da 1ª coleta
+  const mes2 = `${ate.slice(0, 7)}-01`;
+  const mes1 = `${prevMonth(ate.slice(0, 7))}-01`;
   const fimMes1 = R.somaDias(mes2, -1);
   return [
     { janela: "periodo", de, ate },
     { janela: "anterior", de: R.somaDias(de, -dias), ate: R.somaDias(de, -1) },
-    { janela: "setembro", de, ate: fimMes1 < ate ? fimMes1 : ate },
-    { janela: "outubro", de: mes2 > ate ? ate : mes2, ate },
+    { janela: "setembro", de: de > mes1 && de <= fimMes1 ? de : mes1, ate: fimMes1 },
+    { janela: "outubro", de: de > mes2 ? de : mes2, ate },
   ];
+}
+function prevMonth(ym: any) {
+  const [y, m] = ym.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 }
 function nextMonth(iso: any) {
   const [y, m] = iso.split("-").map(Number);
@@ -365,13 +372,14 @@ function lerProduto(aggs: any, produto: any, m1: any, m2: any) {
   };
   for (const b of buckets(achar(aggs, "status_len"), "status_len")) {
     const p = porMes(b);
-    const n = (p[m1] || 0) + (p[m2] || 0);
+    // o funil conta o período inteiro; leads_set/leads_out são os dois últimos meses
+    const n = Object.values(p).reduce((a: number, v: any) => a + v, 0);
     linha.leads_set += p[m1] || 0;
     linha.leads_out += p[m2] || 0;
     const col = COLUNA_STATUS.find(([rx]) => rx.test(b.key));
     linha[col ? col[1] : "sem_status"] += n;
   }
-  linha.leads = linha.leads_set + linha.leads_out;
+  linha.leads = COLUNA_STATUS.reduce((a, [, c]) => a + linha[c], linha.sem_status);
   const veic = achar(aggs, "nome_veiculo");
   if (veic) {
     linha.investimento = inteiro(veic.investment);
@@ -516,8 +524,8 @@ export async function lerTarefaLen(indice, de, ate) {
   const tarefas = tarefasLen(de, ate);
   const t = tarefas[indice];
   if (!t) throw new Error("Tarefa da LEN inexistente.");
-  const m1 = de.slice(0, 7);
-  const m2 = nextMonth(de);
+  const m2 = ate.slice(0, 7);
+  const m1 = prevMonth(m2);
   const nome = nomeTarefa(t);
   const aggs = await lerPaginaApi(await dashAtual(), t.pag, t.j ? t.j.de : de, t.j ? t.j.ate : ate);
   if (!aggs.length) throw new Error(`O dash da LEN não devolveu dados na ${nome}.`);
