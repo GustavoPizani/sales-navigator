@@ -8,6 +8,11 @@
 import * as R from "./regras";
 
 const brIso = (s) => R.dataBR(s);
+/** Valor da tela só se não veio cortado ("..."). */
+const inteiro = (s) => {
+  const v = R.semTraco(s);
+  return v && !/(\.\.\.|…)$/.test(v) ? v : null;
+};
 
 /** Canais dos clientes que não vieram da LEN (orgânico e carteira do corretor). */
 export const CANAIS_FORA_LEN = ["Orgânico", "Carteira do corretor"];
@@ -90,8 +95,9 @@ function montarLeads(clientes, dataColeta) {
       status_cliente: /n[ãa]o/i.test(c.coluna) ? "Não cliente" : "Cliente",
       dias_desde_cadastro: R.diasEntre(cadastro, dataColeta),
       dias_sem_atualizar: R.diasEntre(atualizacao, dataColeta),
-      nome: nome || null,
-      email: R.normalizaEmail(email) || null,
+      // texto cortado na tela ("fulano@ya...") não vai para o banco: fica o que já estava
+      nome: nome && !cortado(nome) ? nome : null,
+      email: email && !cortado(email) ? R.normalizaEmail(email) : null,
       telefone: R.normalizaTelefone(tel) || null,
       telefone_original: tel || null,
       // auxiliares (não vão para o banco)
@@ -140,8 +146,8 @@ function montarVisitas(brutas, { idCliente, origem }, leadsPeriodo, todosLen) {
       cadastro_lead: lead ? lead.cadastro : null,
       dias_cadastro_ate_visita: lead ? R.diasEntre(lead.cadastro, data) : null,
       etapa_no_crm: lead ? lead.etapa : null,
-      nome_cliente: R.semTraco(v.c2[0]) || null,
-      email_cliente: R.normalizaEmail(R.semTraco(v.c2[1])) || null,
+      nome_cliente: inteiro(v.c2[0]),
+      email_cliente: inteiro(v.c2[1]) ? R.normalizaEmail(inteiro(v.c2[1])) : null,
     };
   });
 }
@@ -312,15 +318,55 @@ const ehTelefone = (s) => soDigitos(s).length >= 8 && !/[a-z]/i.test(s);
 const cortado = (s) => /(\.\.\.|…)$/.test(s);
 
 /** Nome, e-mail e telefone da célula "Cliente" do relatório (as linhas variam: só telefone, nome+e-mail+telefone...). */
-function contatoDoCliente(linhas) {
-  const l = linhas.map(R.semTraco).filter(Boolean);
+/**
+ * Pessoa de uma célula (nome, e-mail, telefones), reconhecendo cada linha pelo
+ * conteúdo. O Hypnobox corta na tela e-mail e nome compridos ("fulano@ya..."):
+ * o pedaço que sobra é guardado com a marca de cortado, para comparar pelo começo.
+ */
+const semCorte = (s) => R.limpa(s).replace(/\s*(\.\.\.|…)$/, "");
+function pessoa(linhas) {
+  const l = (linhas || []).map(R.semTraco).filter(Boolean);
   const email = l.find(ehEmail) || "";
-  const tel = l.find(ehTelefone) || "";
-  const nome = l.find((x) => x !== email && x !== tel && !ehTelefone(x)) || "";
+  const nome =
+    l.find(
+      (x) => x !== email && !ehTelefone(x) && !/^(m[ií]dia|canal|sub ?canal|cadastro)\b/i.test(x),
+    ) || "";
   return {
-    nome: cortado(nome) ? "" : nome,
-    email: cortado(email) ? "" : R.normalizaEmail(email),
-    telefone: R.normalizaTelefone(tel),
+    email: semCorte(email).toLowerCase().replace(/\s+/g, ""),
+    emailCortado: cortado(email),
+    nome: chaveNome(semCorte(nome)),
+    nomeCortado: cortado(nome),
+    tels: l.filter(ehTelefone).map(R.normalizaTelefone).filter(Boolean),
+  };
+}
+const chavePessoa = (p, id) => id || p.tels[0] || (p.email && !p.emailCortado ? p.email : "") || "";
+
+/** Índice por telefone (exato) e por e-mail/nome (exato ou pelo começo, se cortado). Só devolve quando há um único candidato. */
+function criarIndice() {
+  const porTel = new Map();
+  const emails = [];
+  const nomes = [];
+  const unico = (lista, q, qCortado, minimo) => {
+    if (!q || q.length < minimo) return null;
+    let achado = null;
+    for (const [k, kCortado, v] of lista) {
+      const ok = k === q || (qCortado && k.startsWith(q)) || (kCortado && q.startsWith(k));
+      if (!ok) continue;
+      if (achado !== null && achado !== v) return null; // mais de um candidato
+      achado = v;
+    }
+    return achado;
+  };
+  return {
+    add(p, valor) {
+      for (const t of p.tels) if (!porTel.has(t)) porTel.set(t, valor);
+      if (p.email) emails.push([p.email, p.emailCortado, valor]);
+      if (p.nome) nomes.push([p.nome, p.nomeCortado, valor]);
+    },
+    achar(p) {
+      for (const t of p.tels) if (porTel.has(t)) return porTel.get(t);
+      return unico(emails, p.email, p.emailCortado, 6) || unico(nomes, p.nome, p.nomeCortado, 8);
+    },
   };
 }
 
@@ -332,80 +378,46 @@ function midiaDaCelula(linhas) {
 
 function indiceDeContatos(contatos) {
   const porId = new Map();
-  const porTel = new Map();
-  const porEmail = new Map();
-  const porNome = new Map();
+  const indice = criarIndice();
+  const porPessoa = new Map(); // o mesmo cliente em vários contatos vira um só
   // o contato mais antigo de cada cliente define a origem
   const ordenados = [...contatos].sort((a, b) =>
     String(brIso(a.data[0]) || "").localeCompare(String(brIso(b.data[0]) || "")),
   );
   for (const c of ordenados) {
-    const k = contatoDoCliente(c.cliente);
-    const info = {
+    const p = pessoa(c.cliente);
+    const chave = chavePessoa(p, c.id_cliente);
+    const info = (chave && porPessoa.get(chave)) || {
       id: c.id_cliente,
       linhas: c.canal,
       midia: midiaDaCelula(c.canal),
       canal: R.semTraco(c.canal[0]) || null,
-      ...k,
     };
-    const pos = (m, chave) => {
-      if (chave && !m.has(chave)) m.set(chave, info);
-    };
-    pos(porId, c.id_cliente);
-    pos(porTel, k.telefone);
-    pos(porEmail, k.email);
-    if (k.nome) {
-      const n = chaveNome(k.nome);
-      porNome.set(n, porNome.has(n) && porNome.get(n) !== info ? null : info); // nome repetido não serve
-    }
+    if (chave && !porPessoa.has(chave)) porPessoa.set(chave, info);
+    if (c.id_cliente && !porId.has(c.id_cliente)) porId.set(c.id_cliente, info);
+    indice.add(p, info);
   }
-  const achar = ({ id, telefone, email, nome }) =>
-    (id && porId.get(id)) ||
-    (telefone && porTel.get(telefone)) ||
-    (email && porEmail.get(email)) ||
-    (nome && porNome.get(chaveNome(nome))) ||
-    null;
+  const achar = (id, p) => (id && porId.get(id)) || indice.achar(p) || null;
 
   return {
     /** contato do cliente no relatório (mídia e linhas de canal), ou null */
     origemDoCliente(c) {
-      const [nome = "", email = "", tel = ""] = c.c1.map(R.semTraco);
-      return achar({
-        id: c.id,
-        telefone: R.normalizaTelefone(tel),
-        email: R.normalizaEmail(email),
-        nome,
-      });
+      return achar(c.id, pessoa(c.c1));
     },
     midiaDoCliente(c) {
-      const [nome = "", email = "", tel = ""] = c.c1.map(R.semTraco);
-      const x = achar({
-        id: c.id,
-        telefone: R.normalizaTelefone(tel),
-        email: R.normalizaEmail(email),
-        nome,
-      });
+      const x = achar(c.id, pessoa(c.c1));
       return x && x.midia ? x.midia : null;
     },
-    /** id do cliente de cada visita (pelo e-mail ou nome do cliente da visita) e origem de quem não está na lista de clientes. */
+    /** id do cliente de cada visita (pelo cliente da visita) e origem de quem não está na lista de clientes. */
     detalhesDasVisitas(visitas, clientes) {
-      const cliEmail = new Map();
-      const cliNome = new Map();
-      for (const c of clientes) {
-        const [nome = "", email = ""] = c.c1.map(R.semTraco);
-        if (email) cliEmail.set(R.normalizaEmail(email), c.id);
-        if (nome) {
-          const n = chaveNome(nome);
-          cliNome.set(n, cliNome.has(n) ? null : c.id);
-        }
-      }
+      const cli = criarIndice();
+      for (const c of clientes) cli.add(pessoa(c.c1), c.id);
       const idCliente = {};
       const origem = {};
       for (const v of visitas) {
-        const nome = R.semTraco(v.c2[0]);
-        const email = R.normalizaEmail(R.semTraco(v.c2[1]));
-        let id = (email && cliEmail.get(email)) || (nome && cliNome.get(chaveNome(nome))) || null;
-        const ct = achar({ email, nome });
+        const p = pessoa(v.c2);
+        let id = cli.achar(p);
+        const ct = achar(null, p);
         if (!id && ct && ct.id) id = ct.id;
         if (!id) continue;
         idCliente[v.visita_id] = id;
@@ -416,36 +428,27 @@ function indiceDeContatos(contatos) {
   };
 }
 
-/**
- * Carga a partir do roteiro guiado. `prontos` diz quais passos foram concluídos;
- * os contatos entram mesmo incompletos (só ajudam a achar a mídia).
- */
-/** Mídia completa das mensagens recebidas ("Mídia: ..."), pelo telefone e pelo e-mail do cliente. */
+/** Mídia completa das mensagens recebidas ("Mídia: ..."), achada pelo cliente da mensagem. */
 function indiceDeMensagens(mensagens) {
-  const porTel = new Map();
-  const porEmail = new Map();
+  const indice = criarIndice();
+  const porPessoa = new Map();
   const nomes = new Set();
   for (const m of mensagens) {
     const x = (m.c6 || []).find((t) => /^m[ií]dia:/i.test(t));
     const midia = x ? R.limpa(x.replace(/^m[ií]dia:\s*/i, "")) : "";
     if (!midia || cortado(midia)) continue;
     nomes.add(midia);
-    const [, email = "", ...tels] = (m.c4 || []).map(R.semTraco);
-    const em = R.normalizaEmail(email);
-    if (em && !porEmail.has(em)) porEmail.set(em, midia);
-    for (const t of tels) {
-      const n = R.normalizaTelefone(t);
-      if (n && !porTel.has(n)) porTel.set(n, midia);
-    }
+    const p = pessoa(m.c4);
+    const chave = chavePessoa(p);
+    const valor = (chave && porPessoa.get(chave)) || midia;
+    if (chave && !porPessoa.has(chave)) porPessoa.set(chave, valor);
+    indice.add(p, valor);
   }
-  const doCliente = (c) => {
-    const [, email = "", tel = ""] = c.c1.map(R.semTraco);
-    return porTel.get(R.normalizaTelefone(tel)) || porEmail.get(R.normalizaEmail(email)) || null;
-  };
+  const doCliente = (c) => indice.achar(pessoa(c.c1));
   /** Mídia cortada na tela ("google-ad...") completada pelo nome inteiro, se só um nome combina. */
   doCliente.completar = (texto) => {
     if (!texto || !cortado(texto)) return texto;
-    const base = texto.replace(/\s*(\.\.\.|…)$/, "").toLowerCase();
+    const base = semCorte(texto).toLowerCase();
     if (base.length < 4) return texto;
     const cands = [...nomes].filter((n) => n.toLowerCase().startsWith(base));
     return cands.length === 1 ? cands[0] : texto;
