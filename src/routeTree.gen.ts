@@ -13,6 +13,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known/oauth-authorization-server'
+import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known/oauth-protected-resource'
 import { Route as AuthenticatedAppointmentsRouteImport } from './routes/_authenticated/appointments'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedCheckinRouteImport } from './routes/_authenticated/checkin'
@@ -25,11 +27,16 @@ import { Route as AuthenticatedRelatorioVisitasRouteImport } from './routes/_aut
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as EscalaTokenRouteImport } from './routes/escala.$token'
+import { Route as DotwellKnownOauthProtectedResourceSplatRouteImport } from './routes/[.]well-known/oauth-protected-resource.$'
 import { Route as AuthenticatedHypnoboxColetaRouteImport } from './routes/_authenticated/hypnobox_.coleta'
 import { Route as AuthenticatedLeadsLeadIdRouteImport } from './routes/_authenticated/leads.$leadId'
 import { Route as AuthenticatedSettingsPermissionsRouteImport } from './routes/_authenticated/settings/permissions'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
-import { Route as ApiMcpTokenRouteImport } from './routes/api/mcp.$token'
+import { Route as ApiMcpIndexRouteImport } from './routes/api/mcp/index'
+import { Route as ApiMcpTokenRouteImport } from './routes/api/mcp/$token'
+import { Route as ApiOauthAuthorizeRouteImport } from './routes/api/oauth/authorize'
+import { Route as ApiOauthRegisterRouteImport } from './routes/api/oauth/register'
+import { Route as ApiOauthTokenRouteImport } from './routes/api/oauth/token'
 import { Route as AuthenticatedDashboardCorretorIdRouteImport } from './routes/_authenticated/dashboard/corretor/$id'
 import { Route as AuthenticatedScheduleClaimTokenRouteImport } from './routes/_authenticated/schedule_.claim.$token'
 
@@ -52,6 +59,18 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownOauthAuthorizationServerRoute =
+  DotwellKnownOauthAuthorizationServerRouteImport.update({
+    id: '/.well-known/oauth-authorization-server',
+    path: '/.well-known/oauth-authorization-server',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DotwellKnownOauthProtectedResourceRoute =
+  DotwellKnownOauthProtectedResourceRouteImport.update({
+    id: '/.well-known/oauth-protected-resource',
+    path: '/.well-known/oauth-protected-resource',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthenticatedAppointmentsRoute =
   AuthenticatedAppointmentsRouteImport.update({
     id: '/appointments',
@@ -114,6 +133,12 @@ const EscalaTokenRoute = EscalaTokenRouteImport.update({
   path: '/escala/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownOauthProtectedResourceSplatRoute =
+  DotwellKnownOauthProtectedResourceSplatRouteImport.update({
+    id: '/$',
+    path: '/$',
+    getParentRoute: () => DotwellKnownOauthProtectedResourceRoute,
+  } as any)
 const AuthenticatedHypnoboxColetaRoute =
   AuthenticatedHypnoboxColetaRouteImport.update({
     id: '/hypnobox_/coleta',
@@ -138,9 +163,29 @@ const AuthenticatedSettingsProfileRoute =
     path: '/settings/profile',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const ApiMcpIndexRoute = ApiMcpIndexRouteImport.update({
+  id: '/api/mcp/',
+  path: '/api/mcp/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMcpTokenRoute = ApiMcpTokenRouteImport.update({
   id: '/api/mcp/$token',
   path: '/api/mcp/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthAuthorizeRoute = ApiOauthAuthorizeRouteImport.update({
+  id: '/api/oauth/authorize',
+  path: '/api/oauth/authorize',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthRegisterRoute = ApiOauthRegisterRouteImport.update({
+  id: '/api/oauth/register',
+  path: '/api/oauth/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiOauthTokenRoute = ApiOauthTokenRouteImport.update({
+  id: '/api/oauth/token',
+  path: '/api/oauth/token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedDashboardCorretorIdRoute =
@@ -160,6 +205,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/appointments': typeof AuthenticatedAppointmentsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/checkin': typeof AuthenticatedCheckinRoute
@@ -172,11 +219,16 @@ export interface FileRoutesByFullPath {
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/hypnobox/coleta': typeof AuthenticatedHypnoboxColetaRoute
   '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/api/mcp/$token': typeof ApiMcpTokenRoute
+  '/api/oauth/authorize': typeof ApiOauthAuthorizeRoute
+  '/api/oauth/register': typeof ApiOauthRegisterRoute
+  '/api/oauth/token': typeof ApiOauthTokenRoute
+  '/api/mcp/': typeof ApiMcpIndexRoute
   '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/schedule/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
@@ -184,6 +236,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/appointments': typeof AuthenticatedAppointmentsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/checkin': typeof AuthenticatedCheckinRoute
@@ -196,11 +250,16 @@ export interface FileRoutesByTo {
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/hypnobox/coleta': typeof AuthenticatedHypnoboxColetaRoute
   '/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/api/mcp/$token': typeof ApiMcpTokenRoute
+  '/api/oauth/authorize': typeof ApiOauthAuthorizeRoute
+  '/api/oauth/register': typeof ApiOauthRegisterRoute
+  '/api/oauth/token': typeof ApiOauthTokenRoute
+  '/api/mcp': typeof ApiMcpIndexRoute
   '/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/schedule/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
@@ -210,6 +269,8 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/_authenticated/appointments': typeof AuthenticatedAppointmentsRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/checkin': typeof AuthenticatedCheckinRoute
@@ -222,11 +283,16 @@ export interface FileRoutesById {
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/escala/$token': typeof EscalaTokenRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/_authenticated/hypnobox_/coleta': typeof AuthenticatedHypnoboxColetaRoute
   '/_authenticated/leads/$leadId': typeof AuthenticatedLeadsLeadIdRoute
   '/_authenticated/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/api/mcp/$token': typeof ApiMcpTokenRoute
+  '/api/oauth/authorize': typeof ApiOauthAuthorizeRoute
+  '/api/oauth/register': typeof ApiOauthRegisterRoute
+  '/api/oauth/token': typeof ApiOauthTokenRoute
+  '/api/mcp/': typeof ApiMcpIndexRoute
   '/_authenticated/dashboard/corretor/$id': typeof AuthenticatedDashboardCorretorIdRoute
   '/_authenticated/schedule_/claim/$token': typeof AuthenticatedScheduleClaimTokenRoute
 }
@@ -236,6 +302,8 @@ export interface FileRouteTypes {
     | '/'
     | '/cadastro'
     | '/login'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/appointments'
     | '/calendar'
     | '/checkin'
@@ -248,11 +316,16 @@ export interface FileRouteTypes {
     | '/schedule'
     | '/team'
     | '/escala/$token'
+    | '/.well-known/oauth-protected-resource/$'
     | '/hypnobox/coleta'
     | '/leads/$leadId'
     | '/settings/permissions'
     | '/settings/profile'
     | '/api/mcp/$token'
+    | '/api/oauth/authorize'
+    | '/api/oauth/register'
+    | '/api/oauth/token'
+    | '/api/mcp/'
     | '/dashboard/corretor/$id'
     | '/schedule/claim/$token'
   fileRoutesByTo: FileRoutesByTo
@@ -260,6 +333,8 @@ export interface FileRouteTypes {
     | '/'
     | '/cadastro'
     | '/login'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/appointments'
     | '/calendar'
     | '/checkin'
@@ -272,11 +347,16 @@ export interface FileRouteTypes {
     | '/schedule'
     | '/team'
     | '/escala/$token'
+    | '/.well-known/oauth-protected-resource/$'
     | '/hypnobox/coleta'
     | '/leads/$leadId'
     | '/settings/permissions'
     | '/settings/profile'
     | '/api/mcp/$token'
+    | '/api/oauth/authorize'
+    | '/api/oauth/register'
+    | '/api/oauth/token'
+    | '/api/mcp'
     | '/dashboard/corretor/$id'
     | '/schedule/claim/$token'
   id:
@@ -285,6 +365,8 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/cadastro'
     | '/login'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/_authenticated/appointments'
     | '/_authenticated/calendar'
     | '/_authenticated/checkin'
@@ -297,11 +379,16 @@ export interface FileRouteTypes {
     | '/_authenticated/schedule'
     | '/_authenticated/team'
     | '/escala/$token'
+    | '/.well-known/oauth-protected-resource/$'
     | '/_authenticated/hypnobox_/coleta'
     | '/_authenticated/leads/$leadId'
     | '/_authenticated/settings/permissions'
     | '/_authenticated/settings/profile'
     | '/api/mcp/$token'
+    | '/api/oauth/authorize'
+    | '/api/oauth/register'
+    | '/api/oauth/token'
+    | '/api/mcp/'
     | '/_authenticated/dashboard/corretor/$id'
     | '/_authenticated/schedule_/claim/$token'
   fileRoutesById: FileRoutesById
@@ -311,8 +398,14 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   CadastroRoute: typeof CadastroRoute
   LoginRoute: typeof LoginRoute
+  DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute
+  DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   EscalaTokenRoute: typeof EscalaTokenRoute
   ApiMcpTokenRoute: typeof ApiMcpTokenRoute
+  ApiOauthAuthorizeRoute: typeof ApiOauthAuthorizeRoute
+  ApiOauthRegisterRoute: typeof ApiOauthRegisterRoute
+  ApiOauthTokenRoute: typeof ApiOauthTokenRoute
+  ApiMcpIndexRoute: typeof ApiMcpIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -343,6 +436,20 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-authorization-server': {
+      id: '/.well-known/oauth-authorization-server'
+      path: '/.well-known/oauth-authorization-server'
+      fullPath: '/.well-known/oauth-authorization-server'
+      preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-protected-resource': {
+      id: '/.well-known/oauth-protected-resource'
+      path: '/.well-known/oauth-protected-resource'
+      fullPath: '/.well-known/oauth-protected-resource'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/appointments': {
@@ -429,6 +536,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EscalaTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/.well-known/oauth-protected-resource/$': {
+      id: '/.well-known/oauth-protected-resource/$'
+      path: '/$'
+      fullPath: '/.well-known/oauth-protected-resource/$'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceSplatRouteImport
+      parentRoute: typeof DotwellKnownOauthProtectedResourceRoute
+    }
     '/_authenticated/hypnobox_/coleta': {
       id: '/_authenticated/hypnobox_/coleta'
       path: '/hypnobox/coleta'
@@ -457,11 +571,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/mcp/': {
+      id: '/api/mcp/'
+      path: '/api/mcp'
+      fullPath: '/api/mcp/'
+      preLoaderRoute: typeof ApiMcpIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/mcp/$token': {
       id: '/api/mcp/$token'
       path: '/api/mcp/$token'
       fullPath: '/api/mcp/$token'
       preLoaderRoute: typeof ApiMcpTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/authorize': {
+      id: '/api/oauth/authorize'
+      path: '/api/oauth/authorize'
+      fullPath: '/api/oauth/authorize'
+      preLoaderRoute: typeof ApiOauthAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/register': {
+      id: '/api/oauth/register'
+      path: '/api/oauth/register'
+      fullPath: '/api/oauth/register'
+      preLoaderRoute: typeof ApiOauthRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/oauth/token': {
+      id: '/api/oauth/token'
+      path: '/api/oauth/token'
+      fullPath: '/api/oauth/token'
+      preLoaderRoute: typeof ApiOauthTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/dashboard/corretor/$id': {
@@ -538,13 +680,36 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
   AuthenticatedRouteChildren,
 )
 
+interface DotwellKnownOauthProtectedResourceRouteChildren {
+  DotwellKnownOauthProtectedResourceSplatRoute: typeof DotwellKnownOauthProtectedResourceSplatRoute
+}
+
+const DotwellKnownOauthProtectedResourceRouteChildren: DotwellKnownOauthProtectedResourceRouteChildren =
+  {
+    DotwellKnownOauthProtectedResourceSplatRoute:
+      DotwellKnownOauthProtectedResourceSplatRoute,
+  }
+
+const DotwellKnownOauthProtectedResourceRouteWithChildren =
+  DotwellKnownOauthProtectedResourceRoute._addFileChildren(
+    DotwellKnownOauthProtectedResourceRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   CadastroRoute: CadastroRoute,
   LoginRoute: LoginRoute,
+  DotwellKnownOauthAuthorizationServerRoute:
+    DotwellKnownOauthAuthorizationServerRoute,
+  DotwellKnownOauthProtectedResourceRoute:
+    DotwellKnownOauthProtectedResourceRouteWithChildren,
   EscalaTokenRoute: EscalaTokenRoute,
   ApiMcpTokenRoute: ApiMcpTokenRoute,
+  ApiOauthAuthorizeRoute: ApiOauthAuthorizeRoute,
+  ApiOauthRegisterRoute: ApiOauthRegisterRoute,
+  ApiOauthTokenRoute: ApiOauthTokenRoute,
+  ApiMcpIndexRoute: ApiMcpIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
