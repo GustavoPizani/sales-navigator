@@ -590,8 +590,34 @@ export function diagnosticoGuiado(dados, periodo) {
       ),
     };
   });
+  // formato das células sem o conteúdo: letras viram "a", dígitos "0" (e-mail vira a@a)
+  const forma = (v) =>
+    String(v ?? "")
+      .replace(/[^\s@]+@[^\s@]+/g, "a@a")
+      .replace(/[A-Za-zÀ-ÿ]+/g, "a")
+      .replace(/\d/g, "0")
+      .slice(0, 40);
+  const formas = (linhas) => (linhas || []).map(forma);
+  const amostra = (xs, f) => xs.slice(0, 6).map(f);
   return {
     periodo,
+    formato: {
+      cliente: amostra(clientes, (c) => ({
+        c1: formas(c.c1),
+        coluna: forma(c.coluna),
+        c2: formas(c.c2),
+        c3: (c.c3 || []).length,
+        c4: (c.c4 || []).length,
+        c5: (c.c5 || []).length,
+      })),
+      contato_cliente: amostra(contatos, (c) => formas(c.cliente)),
+      visita_cliente: amostra(Object.values(dados.visitas), (v) => formas(v.c2)),
+      mensagem_cliente: amostra(Object.values(dados.mensagens), (m) => formas(m.c4)),
+      clientes_com_email: clientes.filter((c) => (c.c1 || []).some((x) => /@/.test(x))).length,
+      clientes_com_telefone: clientes.filter((c) =>
+        (c.c1 || []).some((x) => String(x).replace(/\D/g, "").length >= 8),
+      ).length,
+    },
     contatos: {
       linhas: contatos.length,
       com_id_cliente: contatos.filter((c) => c.id_cliente).length,
