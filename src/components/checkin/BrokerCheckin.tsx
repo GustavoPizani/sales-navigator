@@ -174,15 +174,7 @@ export function BrokerCheckin() {
   }, [user]);
 
   const places: MapPlace[] = [];
-  if (cfg?.central_lat != null && cfg.central_lng != null)
-    places.push({
-      key: "central",
-      label: "Central",
-      lat: cfg.central_lat,
-      lng: cfg.central_lng,
-      radius: cfg.central_radius_m,
-      color: LOCATION_COLOR.central,
-    });
+  // há um local só: o Plantão (312 JAM)
   if (cfg?.plantao_lat != null && cfg.plantao_lng != null)
     places.push({
       key: "plantao",
@@ -328,7 +320,7 @@ export function BrokerCheckin() {
         <h3 className="text-sm font-semibold text-[var(--navy)] mb-2">Seus turnos de hoje</h3>
         {rows.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            Você não está escalado hoje. Se estiver na Central ou no Plantão, faça o check-in como
+            Você não está escalado hoje. Se estiver no {labels.plantao}, faça o check-in como
             stand-by.
           </p>
         ) : (

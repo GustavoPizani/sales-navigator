@@ -69,8 +69,9 @@ function ScheduleLinks({ managerId, onClose }: { managerId: string; onClose: () 
       (shifts ?? []).forEach(
         (s) => s.slot_id && used.set(s.slot_id, (used.get(s.slot_id) ?? 0) + 1),
       );
+      // há um plantão só (o do 312 JAM): o link da Central não aparece mais
       return configs
-        .sort((a, b) => (a.modality === "online" ? -1 : 1) - (b.modality === "online" ? -1 : 1))
+        .filter((c) => c.modality === "salao")
         .map((c) => ({
           ...c,
           link: `${window.location.origin}/schedule/claim/${c.link_token}`,

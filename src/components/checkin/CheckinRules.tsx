@@ -80,7 +80,8 @@ export function CheckinRules() {
   const settingsQ = useRouletteSettings();
   const pdvLabels = usePdvLabels();
   const [form, setForm] = useState<Form | null>(null);
-  const [editing, setEditing] = useState<RouletteLocation>("central");
+  // há um local só: o Plantão (312 JAM)
+  const [editing, setEditing] = useState<RouletteLocation>("plantao");
   const [focus, setFocus] = useState<{ lat: number; lng: number } | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -105,8 +106,8 @@ export function CheckinRules() {
     if (settingsQ.data && !form) {
       const { id: _id, updated_at: _u, ...rest } = settingsQ.data;
       setForm(rest);
-      // abre já mostrando o endereço salvo da Central
-      setQuery(rest.central_address ?? "");
+      // abre já mostrando o endereço salvo do Plantão
+      setQuery(rest.plantao_address ?? "");
     }
   }, [settingsQ.data, form]);
 
@@ -165,7 +166,6 @@ export function CheckinRules() {
     errors.push("O check-in fecharia antes de abrir: abra mais cedo ou feche mais tarde.");
   if (!inRange(form.checkin_reminder_min ?? 10, 0, 240))
     errors.push("O lembrete deve ficar entre 0 e 240 min.");
-  if (!(form.central_radius_m >= 10)) errors.push("O raio da Central deve ter pelo menos 10 m.");
   if (!(form.plantao_radius_m >= 10)) errors.push("O raio do Plantão deve ter pelo menos 10 m.");
   if (!(form.max_accuracy_m >= 10)) errors.push("A precisão do GPS deve ser de pelo menos 10 m.");
 
@@ -277,7 +277,7 @@ export function CheckinRules() {
     }
   };
 
-  const places: MapPlace[] = (["central", "plantao"] as const)
+  const places: MapPlace[] = (["plantao"] as const)
     .filter((k) => form[`${k}_lat`] != null && form[`${k}_lng`] != null)
     .map((k) => ({
       key: k,
@@ -335,8 +335,8 @@ export function CheckinRules() {
             hoje e o passado ficam como estavam.
           </li>
           <li>
-            Sem "Exigir localização", o check-in daquele turno pode ser feito de qualquer lugar (o
-            stand-by entra pela Central).
+            Sem "Exigir localização", o check-in daquele turno pode ser feito de qualquer lugar (fica
+            registrado no Plantão).
           </li>
         </ul>
       </section>
@@ -439,7 +439,7 @@ export function CheckinRules() {
 
         {/* um bloco por PDV: endereço, raio e, no Plantão, o produto que dá o nome */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {(["central", "plantao"] as const).map((k) => {
+          {(["plantao"] as const).map((k) => {
             const active = editing === k;
             const hasPoint = form[`${k}_lat`] != null;
             return (

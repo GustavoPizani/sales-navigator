@@ -72,7 +72,7 @@ export function CheckinQr() {
     3. Permita o acesso à localização.<br>
     4. Aguarde a confirmação do check-in.
   </div>
-  <div class="foot">O check-in só é validado dentro do local (${labels.central} ou ${labels.plantao}).</div>
+  <div class="foot">O check-in só é validado dentro do ${labels.plantao}.</div>
   <script>window.onload = () => setTimeout(() => window.print(), 400);</script>
 </body></html>`);
     w.document.close();
@@ -83,8 +83,7 @@ export function CheckinQr() {
       <h3 className="text-sm font-semibold text-[var(--navy)]">QR code do check-in</h3>
       <p className="text-xs text-muted-foreground mt-1">
         O corretor escaneia, o app abre e o check-in começa sozinho. A localização continua sendo
-        conferida pelo GPS, então o código só funciona para quem está no PDV. O mesmo QR vale para{" "}
-        {labels.central} e {labels.plantao}.
+        conferida pelo GPS, então o código só funciona para quem está no {labels.plantao}.
       </p>
 
       <div className="mt-4 flex flex-col sm:flex-row items-center gap-5">

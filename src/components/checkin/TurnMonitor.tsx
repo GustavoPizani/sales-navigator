@@ -157,15 +157,7 @@ export function TurnMonitor({ canDecide }: { canDecide: boolean }) {
     (managerId && managersById.get(managerId)?.color) || "#A8A8A8";
 
   const places: MapPlace[] = [];
-  if (cfg?.central_lat != null && cfg.central_lng != null)
-    places.push({
-      key: "central",
-      label: "Central",
-      lat: cfg.central_lat,
-      lng: cfg.central_lng,
-      radius: cfg.central_radius_m,
-      color: LOCATION_COLOR.central,
-    });
+  // há um local só: o Plantão (312 JAM)
   if (cfg?.plantao_lat != null && cfg.plantao_lng != null)
     places.push({
       key: "plantao",
@@ -514,7 +506,7 @@ export function TurnMonitor({ canDecide }: { canDecide: boolean }) {
               )}
               {places.length === 0 && canDecide && (
                 <p className="text-xs text-muted-foreground">
-                  Defina a Central e o Plantão na aba "Regras" para ver o mapa e liberar os
+                  Defina o local do Plantão na aba "Regras" para ver o mapa e liberar os
                   check-ins.
                 </p>
               )}

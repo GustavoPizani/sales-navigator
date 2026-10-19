@@ -37,8 +37,8 @@ const faltaMigration = (e: { message?: string; code?: string } | null) =>
 
 /**
  * Admin: vagas por turno. Um número por turno (Manhã, Tarde, Noite) vale para
- * todas as equipes, todos os dias e todas as semanas, até ser mudado. O gerente
- * escolhe, ao escalar, quantos ficam na Central e quantos no Plantão.
+ * todas as equipes, todos os dias e todas as semanas, até ser mudado. Todas as
+ * vagas são do Plantão (312 JAM).
  */
 export function TeamQuotaButton({ teams }: { teams: Team[]; defaultManagerId?: string }) {
   const [open, setOpen] = useState(false);
@@ -209,8 +209,7 @@ function VagasPorTurno({ equipes, onClose }: { equipes: number; onClose: () => v
               </ul>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Cada equipe terá <b className="text-[var(--navy)]">{porDia}</b> vaga
-                {porDia === 1 ? "" : "s"} por dia. O gerente decide, ao escalar, quem fica na{" "}
-                {labels.central} e quem no {labels.plantao}. Turno com 0 vagas fica fechado. Quem já
+                {porDia === 1 ? "" : "s"} por dia. Todas as vagas são do {labels.plantao}. Turno com 0 vagas fica fechado. Quem já
                 está escalado nunca é tirado: se um turno já tiver mais gente, ele fica com esse
                 número.
               </p>

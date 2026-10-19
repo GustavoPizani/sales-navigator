@@ -8,8 +8,9 @@ export type CheckinStatus =
   "validated" | "standby" | "allocated" | "waiting_admin" | "not_allocated";
 export type RouletteLocation = "central" | "plantao";
 
+// a Central deixou de existir: registros antigos com "central" aparecem como Plantão
 export const LOCATION_LABEL: Record<RouletteLocation, string> = {
-  central: "Central",
+  central: "Plantão",
   plantao: "Plantão",
 };
 
@@ -129,8 +130,9 @@ export function checkinOpensAt(turnDate: string, startTime: string, openBeforeMi
 }
 
 /**
- * Nomes dos 2 PDVs: "Central" e "Plantão <produto>" (produto escolhido nas
- * regras de check-in).
+ * Nome do PDV: "Plantão <produto>" (produto escolhido nas regras de check-in).
+ * Há um plantão só (o do 312 JAM); "central" mostra o mesmo nome, para registros
+ * antigos e respostas que ainda tragam esse local.
  */
 export function usePdvLabels(): Record<RouletteLocation, string> {
   const settingsQ = useRouletteSettings();
@@ -148,10 +150,8 @@ export function usePdvLabels(): Record<RouletteLocation, string> {
       return data;
     },
   });
-  return {
-    central: "Central",
-    plantao: projectQ.data?.name ? `Plantão ${projectQ.data.name}` : "Plantão",
-  };
+  const plantao = projectQ.data?.name ? `Plantão ${projectQ.data.name}` : "Plantão";
+  return { central: plantao, plantao };
 }
 
 export type ShiftPeriodKey = "manha" | "tarde" | "noite";

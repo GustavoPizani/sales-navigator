@@ -67,7 +67,8 @@ function PublicSchedulePage() {
   }, [slots]);
 
   const modalities = useMemo(
-    () => (["online", "salao"] as const).filter((m) => slots.some((s) => s.modality === m)),
+    // há um plantão só (o do 312 JAM): a Central não aparece mais
+    () => (["salao"] as ("online" | "salao")[]).filter((m) => slots.some((s) => s.modality === m)),
     [slots],
   );
   const activeModality = modality && modalities.includes(modality) ? modality : modalities[0];

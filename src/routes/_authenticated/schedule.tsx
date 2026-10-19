@@ -211,8 +211,8 @@ function SchedulePage() {
   PERIODS = shiftPeriods.map((p) => ({ val: p.key, label: p.label, start: p.start, end: p.end }));
   const thisWeekStr = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  // Central e Plantão aparecem juntos na grade; o filtro só serve para isolar um local.
-  const [loc, setLoc] = useState<LocFilter>("all");
+  // há um local só (o Plantão 312 JAM): a grade mostra tudo
+  const loc: LocFilter = "all";
   const [busy, setBusy] = useState<null | "export" | "fix">(null);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const startStr = format(weekStart, "yyyy-MM-dd");
@@ -397,18 +397,6 @@ function SchedulePage() {
                   ))}
                 </select>
               ))}
-            <div className="inline-flex rounded-lg border border-border bg-white p-0.5" role="group" aria-label="Local">
-              {([["all", "Todos os locais"], ["online", pdvLabels.central], ["salao", pdvLabels.plantao]] as const).map(([m, label]) => (
-                <button
-                  key={m}
-                  onClick={() => setLoc(m)}
-                  aria-pressed={loc === m}
-                  className={`h-9 px-3 rounded-md text-sm font-medium ${loc === m ? "bg-[var(--navy)] text-white" : "text-muted-foreground"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
             {allTeams && (
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {teams.map((t) => (
@@ -431,7 +419,7 @@ function SchedulePage() {
             allSlots={allSlots}
             allShifts={shiftsQ.data ?? []}
             allPending={allPending}
-            defaultModality={loc === "salao" ? "salao" : "online"}
+            defaultModality="salao"
             managerId={managerId}
             teams={isSuperAdmin ? teams.filter((t) => allTeams || t.id === managerId) : undefined}
           />
@@ -448,6 +436,7 @@ const periodLabel = (s: { start_time: string; end_time: string }) =>
 
 /** Minha Escala (corretor): o próximo plantão em destaque e a semana, com hoje marcado. */
 function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
+  const labels = usePdvLabels();
   const now = new Date();
   const todayStr = format(now, "yyyy-MM-dd");
   const tomorrowStr = format(addDays(now, 1), "yyyy-MM-dd");
@@ -464,7 +453,7 @@ function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
           <p className="text-xs uppercase tracking-wide text-white/60">Próximo plantão</p>
           <p className="text-lg font-bold mt-0.5 first-letter:uppercase">{dayName(next.date)}</p>
           <p className="text-sm text-white/85">
-            {periodLabel(next)} · {next.start_time.slice(0, 5)}–{next.end_time.slice(0, 5)} · {next.notes || "Central"}
+            {periodLabel(next)} · {next.start_time.slice(0, 5)}–{next.end_time.slice(0, 5)} · {labels.plantao}
           </p>
           {next.date === todayStr && (
             <Link
@@ -508,7 +497,7 @@ function BrokerWeek({ days, shifts }: { days: Date[]; shifts: Shift[] }) {
                   {periodLabel(s)}
                   <span className="font-normal text-muted-foreground text-xs ml-1.5">({s.start_time.slice(0,5)} – {s.end_time.slice(0,5)})</span>
                 </p>
-                <p className="text-xs text-[var(--gold-dark)] font-semibold mt-0.5">{s.notes || "Central"}</p>
+                <p className="text-xs text-[var(--gold-dark)] font-semibold mt-0.5">{labels.plantao}</p>
               </div>
             ))}
           </div>
@@ -540,9 +529,9 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
   const qc = useQueryClient();
   const slotById = useMemo(() => new Map(allSlots.map((sl) => [sl.id, sl])), [allSlots]);
   const modalityOf = (sh: Shift): Modality => (sh.slot_id && slotById.get(sh.slot_id)?.modality) || "online";
-  // o que aparece no plantão: o local, e no Plantão o nome dele quando houver
-  const shiftLabel = (sh: Shift) => (modalityOf(sh) === "salao" ? "Plantão" : "Central");
-  const shiftTitle = (sh: Shift) => (modalityOf(sh) === "salao" ? labels.plantao : labels.central);
+  // há um plantão só (o do 312 JAM)
+  const shiftLabel = (_sh: Shift) => "Plantão";
+  const shiftTitle = (_sh: Shift) => labels.plantao;
   const removePending = async (p: PendingRow) => {
     if (
       !(await confirmDialog({
@@ -561,7 +550,91 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
     }
   };
   const chipColor = (b: any) => (teams ? teamById.get(b.manager_id)?.color ?? "#A8A8A8" : b.color);
-  const [editing, setEditing] = useState<{ broker: any; date: string; shift?: Shift; initialPeriod?: PeriodVal } | null>(null);
+  // Escalar é direto (com "Desfazer"); tirar alguém pede confirmação.
+  const [gravando, setGravando] = useState<string | null>(null);
+  const managerOf = (b: any) => (managerId === "all" ? b.manager_id : managerId);
+  const escalar = async (b: any, ds: string, perVal: PeriodVal) => {
+    const per = PERIODS.find((x) => x.val === perVal);
+    if (!per) return;
+    const rem = remainingFor(ds, perVal);
+    if (rem === null || rem === 0) {
+      toast.error(rem === null ? "Este turno não tem vagas configuradas." : "Este turno já está lotado.");
+      return;
+    }
+    if (
+      ds < todayStr &&
+      !(await confirmDialog({
+        title: "Escalar num dia que já passou?",
+        description: "A mudança altera o histórico da escala.",
+        confirmLabel: "Escalar",
+      }))
+    )
+      return;
+    const chave = `${b.id}|${ds}|${perVal}`;
+    setGravando(chave);
+    try {
+      const mgr = managerOf(b);
+      const semana = format(startOfWeek(parseISO(ds), { weekStartsOn: 1 }), "yyyy-MM-dd");
+      const { data: config } = await supabase
+        .from("shift_configs")
+        .select("id")
+        .eq("manager_id", mgr)
+        .eq("week_start_date", semana)
+        .eq("modality", "salao")
+        .maybeSingle();
+      const slotRow = config
+        ? (await supabase.from("shift_slots").select("id").eq("config_id", config.id).eq("date", ds).eq("period", per.label).maybeSingle()).data
+        : null;
+      if (!slotRow) throw new Error("Não há vaga do Plantão nesse turno.");
+      const { data: novo, error } = await supabase
+        .from("shifts")
+        .insert({ broker_id: b.id, manager_id: mgr, date: ds, start_time: per.start, end_time: per.end, notes: null, slot_id: slotRow.id })
+        .select("id")
+        .single();
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+      toast(
+        (t) => (
+          <span className="flex items-center gap-3 text-sm">
+            <span>
+              <b>{shortName(b.full_name)}</b> escalado(a) · {per.label}
+            </span>
+            <button
+              type="button"
+              className="font-semibold text-[var(--gold-dark)] underline underline-offset-2"
+              onClick={async () => {
+                toast.dismiss(t.id);
+                const { error: e2 } = await supabase.from("shifts").delete().eq("id", novo.id);
+                if (e2) toast.error(e2.message);
+                qc.invalidateQueries({ queryKey: ["shifts"] });
+              }}
+            >
+              Desfazer
+            </button>
+          </span>
+        ),
+        { duration: 6000 },
+      );
+    } catch (e: any) {
+      toast.error(e.message || "Não foi possível escalar.");
+    } finally {
+      setGravando(null);
+    }
+  };
+  const tirar = async (b: any, sh: Shift) => {
+    const per = PERIODS.find((x) => x.val === derivePeriod(sh.start_time));
+    const ok = await confirmDialog({
+      title: `Tirar ${shortName(b.full_name)} deste turno?`,
+      description: `${format(new Date(sh.date + "T00:00:00"), "EEEE, d 'de' MMMM", { locale: ptBR })}${per ? ` · ${per.label}` : ""}. ${sh.date < todayStr ? "Este dia já passou: a mudança altera o histórico da escala." : "A vaga volta a ficar livre."}`,
+      confirmLabel: "Tirar",
+      danger: true,
+    });
+    if (!ok) return;
+    const { error } = await supabase.from("shifts").delete().eq("id", sh.id);
+    if (error) return toast.error(error.message);
+    qc.invalidateQueries({ queryKey: ["shifts"] });
+    toast.success("Plantão removido");
+  };
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   // Vagas restantes do turno: o total vale para os dois PDVs somados (o gerente
   // escolhe o PDV de cada corretor), então conta Central + Plantão.
@@ -669,7 +742,8 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
                   {scheduled.map(({ broker: b, shift: sh }) => (
                     <li key={sh.id}>
                       <button
-                        onClick={() => setEditing({ broker: b, date: mobileDay, shift: sh })}
+                        onClick={() => tirar(b, sh)}
+                        aria-label={`Tirar ${b.full_name} de ${per.label}`}
                         className="w-full px-4 py-2.5 flex items-center gap-3 text-left"
                       >
                         <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: chipColor(b) }} />
@@ -700,7 +774,7 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
                       value=""
                       onChange={(e) => {
                         const b = brokers.find((x) => x.id === e.target.value);
-                        if (b) setEditing({ broker: b, date: mobileDay, initialPeriod: per.val });
+                        if (b) void escalar(b, mobileDay, per.val);
                       }}
                       aria-label={`Escalar corretor em ${per.label}`}
                       className="w-full h-11 px-3 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)] font-medium"
@@ -809,7 +883,8 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
                                     <td key={ds} className={`p-1 border-b border-l border-border text-center align-middle ${ds === todayStr ? "bg-[var(--gold)]/5" : ""}`}>
                                       {sh ? (
                                         <button
-                                          onClick={() => setEditing({ broker: b, date: ds, shift: sh })}
+                                          onClick={() => tirar(b, sh)}
+                                          aria-label={`Tirar ${b.full_name} de ${per.label}, ${format(d, "EEEE d", { locale: ptBR })}`}
                                           className="w-full h-9 rounded-lg px-1 text-[11px] font-semibold text-white truncate hover:opacity-90"
                                           style={{ background: chipColor(b) }}
                                           title={shiftTitle(sh)}
@@ -831,11 +906,16 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
                                             );
                                           return (
                                             <button
-                                              onClick={() => setEditing({ broker: b, date: ds, initialPeriod: per.val })}
+                                              onClick={() => void escalar(b, ds, per.val)}
+                                              disabled={gravando !== null}
                                               className="w-full h-9 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-[var(--navy)] hover:bg-[var(--surface)] focus-visible:text-[var(--navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]"
                                               aria-label={`Escalar ${b.full_name} em ${per.label}, ${format(d, "EEEE d", { locale: ptBR })}`}
                                             >
-                                              <Plus size={14} />
+                                              {gravando === `${b.id}|${ds}|${per.val}` ? (
+                                                <Loader2 size={14} className="animate-spin text-[var(--navy)]" />
+                                              ) : (
+                                                <Plus size={14} />
+                                              )}
                                             </button>
                                           );
                                         })()
@@ -886,18 +966,6 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
           })}
         </div>
       )}
-      {editing && (
-        <ShiftEditor
-          {...editing}
-          initialModality={editing.shift ? modalityOf(editing.shift) : defaultModality}
-          remaining={(() => {
-            const per = derivePeriod(editing.shift?.start_time) ?? editing.initialPeriod;
-            return per ? remainingFor(editing.date, per) : null;
-          })()}
-          managerId={managerId === "all" ? editing.broker.manager_id : managerId}
-          onClose={() => setEditing(null)}
-        />
-      )}
     </>
   );
 }
@@ -923,209 +991,3 @@ function derivePeriod(startTime?: string): "manha" | "tarde" | "noite" | null {
   return best.val;
 }
 
-function ShiftEditor({ broker, date, shift, initialPeriod, initialModality, managerId, remaining, onClose }: { broker: any; date: string; shift?: Shift; initialPeriod?: "manha" | "tarde" | "noite"; /** local do plantão ao abrir (Central ou Plantão); dá para trocar aqui */ initialModality: Modality; managerId: string; /** vagas livres do turno (Central + Plantão); null = nenhuma vaga configurada */ remaining: number | null; onClose: () => void }) {
-  const qc = useQueryClient();
-  const pdvLabels = usePdvLabels();
-  const [modality, setModality] = useState<Modality>(initialModality);
-  const isPast = date < format(new Date(), "yyyy-MM-dd");
-  // o turno já vem da célula clicada (linha do turno + dia): não se escolhe de novo aqui
-  const period = derivePeriod(shift?.start_time) ?? initialPeriod ?? null;
-  const per = PERIODS.find((x) => x.val === period);
-  const [erro, setErro] = useState<string | null>(null);
-  // escalar alguém novo só cabe se o turno tem vaga; editar um plantão existente sempre pode
-  const semVaga = !shift && (remaining === null || remaining === 0);
-  const nomeLocal = (m: Modality) => (m === "salao" ? pdvLabels.plantao : pdvLabels.central);
-  const dataTexto = format(new Date(date + "T00:00:00"), "EEEE, d 'de' MMMM", { locale: ptBR });
-
-  // Esc fecha
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const save = useMutation({
-    mutationFn: async () => {
-      if (!per) throw new Error("Turno não identificado. Feche e clique na célula do turno.");
-
-      // Só é possível preencher a escala manualmente dentro das vagas já
-      // configuradas (via "Configurar Escala"/link) para essa semana e
-      // modalidade — evita escalar acima da capacidade definida.
-      const weekStartStr = format(startOfWeek(parseISO(date), { weekStartsOn: 1 }), "yyyy-MM-dd");
-      const { data: config } = await supabase
-        .from("shift_configs")
-        .select("id")
-        .eq("manager_id", managerId)
-        .eq("week_start_date", weekStartStr)
-        .eq("modality", modality)
-        .maybeSingle();
-      if (!config) {
-        throw new Error(`Não há vagas de ${nomeLocal(modality)} nessa semana. Tente o outro local.`);
-      }
-
-      const { data: slotRow } = await supabase
-        .from("shift_slots")
-        .select("id")
-        .eq("config_id", config.id)
-        .eq("date", date)
-        .eq("period", per.label)
-        .maybeSingle();
-      if (!slotRow) {
-        throw new Error(`Não há vaga de ${nomeLocal(modality)} nesse turno. Tente o outro local.`);
-      }
-
-      // O limite (total do turno, Central + Plantão) é conferido no banco.
-      const slotId = slotRow.id;
-      // há um plantão só (o do 312 JAM): o local já diz tudo, sem nome à parte
-      const notes = null;
-
-      if (shift) {
-        const { error } = await supabase.from("shifts").update({ start_time: per.start, end_time: per.end, notes, slot_id: slotId }).eq("id", shift.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("shifts").insert({ broker_id: broker.id, manager_id: managerId, date, start_time: per.start, end_time: per.end, notes, slot_id: slotId });
-        if (error) throw error;
-      }
-    },
-    onMutate: () => setErro(null),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["shifts"] });
-      toast.success(shift ? "Plantão atualizado" : `${broker.full_name} escalado(a)`);
-      onClose();
-    },
-    onError: (e: any) => setErro(e.message || "Não foi possível salvar."),
-  });
-  const del = useMutation({
-    mutationFn: async () => {
-      if (shift) {
-        const { error } = await supabase.from("shifts").delete().eq("id", shift.id);
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["shifts"] });
-      toast.success("Plantão removido");
-      onClose();
-    },
-    onError: (e: any) => setErro(e.message || "Não foi possível remover."),
-  });
-  const remover = async () => {
-    const ok = await confirmDialog({
-      title: `Tirar ${broker.full_name} deste turno?`,
-      description: `${dataTexto}${per ? ` · ${per.label}` : ""}. A vaga volta a ficar livre.`,
-      confirmLabel: "Remover",
-      danger: true,
-    });
-    if (ok) del.mutate();
-  };
-
-  const avisoSemVaga =
-    remaining === null
-      ? "Este turno não tem vagas configuradas nesta semana. O administrador define as vagas em Vagas por equipe."
-      : "Este turno já está lotado (Central e Plantão somados). Libere uma vaga antes de escalar outra pessoa.";
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center sm:justify-center sm:p-4" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="shift-editor-title"
-        className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 safe-bottom max-h-[90dvh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start gap-3 mb-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">{dataTexto}</p>
-            <h3 id="shift-editor-title" className="text-lg font-semibold text-[var(--navy)] flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: broker.color }} aria-hidden />
-              <span className="truncate">{broker.full_name}</span>
-            </h3>
-            {per && (
-              <p className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-[var(--surface)] px-2.5 py-1 text-xs font-semibold text-[var(--navy)]">
-                Turno: {per.label} · {per.start}–{per.end}
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar"
-            className="h-10 w-10 -mr-2 -mt-1 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-[var(--surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="space-y-4">
-          {isPast && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              Este dia já passou: a mudança altera o histórico da escala.
-            </p>
-          )}
-          {semVaga ? (
-            <p role="alert" className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-3">
-              {avisoSemVaga}
-            </p>
-          ) : (
-            <>
-              <fieldset>
-                <legend className="text-xs font-semibold text-muted-foreground uppercase mb-2">Local</legend>
-                <div className="grid grid-cols-2 gap-2">
-                  {(["online", "salao"] as const).map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setModality(m)}
-                      aria-pressed={modality === m}
-                      className={`h-12 px-2 rounded-xl font-semibold text-sm transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] ${modality === m ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}
-                    >
-                      {nomeLocal(m)}
-                    </button>
-                  ))}
-                </div>
-                {!shift && remaining !== null && (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    {remaining} vaga{remaining === 1 ? "" : "s"} livre{remaining === 1 ? "" : "s"} neste turno (Central e Plantão somados).
-                  </p>
-                )}
-              </fieldset>
-            </>
-          )}
-          {erro && (
-            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-              {erro}
-            </p>
-          )}
-          <div className="flex gap-2 pt-1">
-            {shift && (
-              <button
-                type="button"
-                onClick={remover}
-                disabled={del.isPending}
-                className="h-12 px-4 rounded-xl bg-red-50 text-red-600 font-medium flex items-center gap-2 disabled:opacity-50"
-              >
-                {del.isPending ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                Remover
-              </button>
-            )}
-            <button type="button" onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">
-              {semVaga ? "Fechar" : "Cancelar"}
-            </button>
-            {!semVaga && (
-              <button
-                type="button"
-                onClick={() => save.mutate()}
-                disabled={save.isPending || !per}
-                className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
-              >
-                {save.isPending && <Loader2 size={16} className="animate-spin" />}
-                {save.isPending ? "Salvando…" : shift ? "Salvar alterações" : "Escalar"}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
