@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Plus, ExternalLink, AlertTriangle, Check, X } from "lucide-react";
+import { Plus, AlertTriangle, Check, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -231,7 +231,6 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
   // Dados do cliente vêm do lead e só o admin os altera, na página do lead.
   const clientLocked = readOnly || !!leadId;
   const [description, setDescription] = useState(appt?.description ?? "");
-  const [savedLink, setSavedLink] = useState<string | null>(appt?.google_calendar_link ?? null);
 
   const projectsQ = useQuery({
     queryKey: ["projects-active"],
@@ -277,11 +276,6 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
   const save = useMutation({
     mutationFn: async () => {
       const finalTitle = title || (selectedProject ? `Visita – ${selectedProject.name}` : "Agendamento");
-      const link = outlookCalendarLink({
-        title: finalTitle, date, startTime: startT, endTime: endT,
-        description: description || undefined, location: location || undefined,
-        emails: [clientEmail, !isManager ? adminQ.data?.email : undefined].filter((x): x is string => !!x),
-      });
       const payload = {
         owner_id: appt?.owner_id ?? user!.id,
         title: finalTitle, date, start_time: startT, end_time: endT,
@@ -292,7 +286,8 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
         lead_id: leadId,
         type,
         include_manager: appt ? appt.include_manager : !isManager,
-        google_calendar_link: link,
+        // o agendamento fica só no sistema (sem convite pelo Outlook Calendar)
+        google_calendar_link: null,
       };
       if (appt) {
         const { data: updated, error } = await supabase.from("appointments").update(payload).eq("id", appt.id).select("id");
@@ -303,20 +298,13 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
         const { error } = await supabase.from("appointments").insert(payload);
         if (error) throw error;
       }
-      return link;
     },
-    onSuccess: (link) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-appts"] });
       qc.invalidateQueries({ queryKey: ["team-appts"] });
       if (leadId) invalidateLead();
-      if (!appt) {
-        window.open(link, "_blank");
-        toast.success("Agendamento criado!");
-        onClose();
-      } else {
-        setSavedLink(link);
-        toast.success("Agendamento salvo");
-      }
+      toast.success(appt ? "Agendamento salvo" : "Agendamento criado!");
+      onClose();
     },
     onError: (e: any) => {
       console.error("[APPT SAVE ERROR]", e);
@@ -414,19 +402,13 @@ export function AppointmentForm({ appt, onClose, preFill }: { appt: Appt | null;
             conflictQ.data ? (
               <div className="rounded-xl bg-red-50 border border-red-200 text-red-800 px-3 py-2 text-sm flex gap-2">
                 <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
-                <span>O gestor possui um conflito: <b>{conflictQ.data.title}</b> ({conflictQ.data.start_time.slice(0,5)}–{conflictQ.data.end_time.slice(0,5)}). O convite será enviado mesmo assim.</span>
+                <span>O gestor possui um conflito: <b>{conflictQ.data.title}</b> ({conflictQ.data.start_time.slice(0,5)}–{conflictQ.data.end_time.slice(0,5)}). O agendamento será salvo mesmo assim.</span>
               </div>
             ) : (
               <div className="rounded-xl bg-green-50 border border-green-200 text-green-800 px-3 py-2 text-sm flex gap-2">
                 <Check size={16} className="flex-shrink-0 mt-0.5" /> O gestor está disponível neste horário
               </div>
             )
-          )}
-
-          {savedLink && (
-            <div className="pt-2 border-t border-border">
-              <a href={savedLink} target="_blank" rel="noreferrer" className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-semibold flex items-center justify-center gap-2"><ExternalLink size={16} />Abrir no Outlook Calendar</a>
-            </div>
           )}
 
           {appt && !readOnly && appt.lead_id && (
