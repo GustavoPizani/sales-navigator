@@ -266,6 +266,13 @@ function SchedulePage() {
     queryKey: ["shift-slots-capacity", startStr, managerId],
     enabled: isAdmin && !!managerId,
     queryFn: async () => {
+      // vagas por turno (regra única do admin): preenche a semana antes de ler.
+      // Sem regra salva, ou sem a migration, não muda nada.
+      if (startStr >= thisWeekStr)
+        await (supabase as any).rpc("crm_aplicar_vagas_padrao", { p_week_start: startStr }).then(
+          () => {},
+          () => {},
+        );
       let cq = supabase.from("shift_configs").select("id, manager_id, modality").eq("week_start_date", startStr);
       if (managerId !== "all") cq = cq.eq("manager_id", managerId);
       const { data: configs } = await cq;
@@ -534,8 +541,8 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
   const slotById = useMemo(() => new Map(allSlots.map((sl) => [sl.id, sl])), [allSlots]);
   const modalityOf = (sh: Shift): Modality => (sh.slot_id && slotById.get(sh.slot_id)?.modality) || "online";
   // o que aparece no plantão: o local, e no Plantão o nome dele quando houver
-  const shiftLabel = (sh: Shift) => (modalityOf(sh) === "salao" ? sh.notes || "Plantão" : "Central");
-  const shiftTitle = (sh: Shift) => `${modalityOf(sh) === "salao" ? labels.plantao : labels.central}${sh.notes ? ` · ${sh.notes}` : ""}`;
+  const shiftLabel = (sh: Shift) => (modalityOf(sh) === "salao" ? "Plantão" : "Central");
+  const shiftTitle = (sh: Shift) => (modalityOf(sh) === "salao" ? labels.plantao : labels.central);
   const removePending = async (p: PendingRow) => {
     if (
       !(await confirmDialog({
@@ -682,7 +689,12 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
                     </li>
                   ))}
                 </ul>
-                {free.length > 0 && (
+                {free.length > 0 && (rem === null || rem === 0) && (
+                  <p className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
+                    {rem === null ? "Sem vagas configuradas neste turno." : "Turno lotado."}
+                  </p>
+                )}
+                {free.length > 0 && rem !== null && rem > 0 && (
                   <div className="p-3 border-t border-border">
                     <select
                       value=""
@@ -805,13 +817,28 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
                                           {shiftLabel(sh)}
                                         </button>
                                       ) : (
-                                        <button
-                                          onClick={() => setEditing({ broker: b, date: ds, initialPeriod: per.val })}
-                                          className="w-full h-9 rounded-lg flex items-center justify-center text-transparent hover:text-[var(--navy)] hover:bg-[var(--surface)] focus-visible:text-[var(--navy)]"
-                                          aria-label={`Escalar ${b.full_name} em ${per.label}`}
-                                        >
-                                          <Plus size={14} />
-                                        </button>
+                                        (() => {
+                                          const rem = remainingFor(ds, per.val);
+                                          // sem vaga configurada ou turno lotado: não há o que escalar
+                                          if (rem === null || rem === 0)
+                                            return (
+                                              <span
+                                                className="w-full h-9 rounded-lg flex items-center justify-center text-[11px] text-muted-foreground/50"
+                                                title={rem === null ? "Sem vagas configuradas neste turno" : "Turno lotado"}
+                                              >
+                                                –
+                                              </span>
+                                            );
+                                          return (
+                                            <button
+                                              onClick={() => setEditing({ broker: b, date: ds, initialPeriod: per.val })}
+                                              className="w-full h-9 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-[var(--navy)] hover:bg-[var(--surface)] focus-visible:text-[var(--navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]"
+                                              aria-label={`Escalar ${b.full_name} em ${per.label}, ${format(d, "EEEE d", { locale: ptBR })}`}
+                                            >
+                                              <Plus size={14} />
+                                            </button>
+                                          );
+                                        })()
                                       )}
                                     </td>
                                   );
@@ -863,6 +890,10 @@ function AdminGrid({ days, brokers, shifts, pending, allSlots, allShifts, allPen
         <ShiftEditor
           {...editing}
           initialModality={editing.shift ? modalityOf(editing.shift) : defaultModality}
+          remaining={(() => {
+            const per = derivePeriod(editing.shift?.start_time) ?? editing.initialPeriod;
+            return per ? remainingFor(editing.date, per) : null;
+          })()}
           managerId={managerId === "all" ? editing.broker.manager_id : managerId}
           onClose={() => setEditing(null)}
         />
@@ -892,26 +923,32 @@ function derivePeriod(startTime?: string): "manha" | "tarde" | "noite" | null {
   return best.val;
 }
 
-function ShiftEditor({ broker, date, shift, initialPeriod, initialModality, managerId, onClose }: { broker: any; date: string; shift?: Shift; initialPeriod?: "manha" | "tarde" | "noite"; /** local do plantão ao abrir (Central ou Plantão); dá para trocar aqui */ initialModality: Modality; managerId: string; onClose: () => void }) {
+function ShiftEditor({ broker, date, shift, initialPeriod, initialModality, managerId, remaining, onClose }: { broker: any; date: string; shift?: Shift; initialPeriod?: "manha" | "tarde" | "noite"; /** local do plantão ao abrir (Central ou Plantão); dá para trocar aqui */ initialModality: Modality; managerId: string; /** vagas livres do turno (Central + Plantão); null = nenhuma vaga configurada */ remaining: number | null; onClose: () => void }) {
   const qc = useQueryClient();
   const pdvLabels = usePdvLabels();
   const [modality, setModality] = useState<Modality>(initialModality);
   const isPast = date < format(new Date(), "yyyy-MM-dd");
-  const [period, setPeriod] = useState<"manha" | "tarde" | "noite" | null>(derivePeriod(shift?.start_time) ?? initialPeriod ?? null);
-  const [plantao, setPlantao] = useState(shift?.notes ?? "");
+  // o turno já vem da célula clicada (linha do turno + dia): não se escolhe de novo aqui
+  const period = derivePeriod(shift?.start_time) ?? initialPeriod ?? null;
+  const per = PERIODS.find((x) => x.val === period);
+  const [erro, setErro] = useState<string | null>(null);
+  // escalar alguém novo só cabe se o turno tem vaga; editar um plantão existente sempre pode
+  const semVaga = !shift && (remaining === null || remaining === 0);
+  const nomeLocal = (m: Modality) => (m === "salao" ? pdvLabels.plantao : pdvLabels.central);
+  const dataTexto = format(new Date(date + "T00:00:00"), "EEEE, d 'de' MMMM", { locale: ptBR });
 
-  const projectsQ = useQuery({
-    queryKey: ["projects-active"],
-    queryFn: async () => {
-      const { data } = await supabase.from("projects").select("id,name").eq("is_active", true).order("name");
-      return (data ?? []) as { id: string; name: string }[];
-    },
-  });
+  // Esc fecha
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const save = useMutation({
     mutationFn: async () => {
-      if (!period) throw new Error("Selecione um período (Manhã ou Tarde)");
-      const p = PERIODS.find((x) => x.val === period)!;
+      if (!per) throw new Error("Turno não identificado. Feche e clique na célula do turno.");
 
       // Só é possível preencher a escala manualmente dentro das vagas já
       // configuradas (via "Configurar Escala"/link) para essa semana e
@@ -925,7 +962,7 @@ function ShiftEditor({ broker, date, shift, initialPeriod, initialModality, mana
         .eq("modality", modality)
         .maybeSingle();
       if (!config) {
-        throw new Error("O administrador ainda não definiu as vagas dessa semana.");
+        throw new Error(`Não há vagas de ${nomeLocal(modality)} nessa semana. Tente o outro local.`);
       }
 
       const { data: slotRow } = await supabase
@@ -933,93 +970,159 @@ function ShiftEditor({ broker, date, shift, initialPeriod, initialModality, mana
         .select("id")
         .eq("config_id", config.id)
         .eq("date", date)
-        .eq("period", p.label)
+        .eq("period", per.label)
         .maybeSingle();
       if (!slotRow) {
-        throw new Error("Não há vaga configurada para esse turno nessa semana.");
+        throw new Error(`Não há vaga de ${nomeLocal(modality)} nesse turno. Tente o outro local.`);
       }
 
       // O limite (total do turno, Central + Plantão) é conferido no banco.
       const slotId = slotRow.id;
+      // há um plantão só (o do 312 JAM): o local já diz tudo, sem nome à parte
+      const notes = null;
 
       if (shift) {
-        const { error } = await supabase.from("shifts").update({ start_time: p.start, end_time: p.end, notes: plantao || null, slot_id: slotId }).eq("id", shift.id);
+        const { error } = await supabase.from("shifts").update({ start_time: per.start, end_time: per.end, notes, slot_id: slotId }).eq("id", shift.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("shifts").insert({ broker_id: broker.id, manager_id: managerId, date, start_time: p.start, end_time: p.end, notes: plantao || null, slot_id: slotId });
+        const { error } = await supabase.from("shifts").insert({ broker_id: broker.id, manager_id: managerId, date, start_time: per.start, end_time: per.end, notes, slot_id: slotId });
         if (error) throw error;
       }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["shifts"] }); toast.success("Salvo"); onClose(); },
-    onError: (e: any) => toast.error(e.message),
+    onMutate: () => setErro(null),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success(shift ? "Plantão atualizado" : `${broker.full_name} escalado(a)`);
+      onClose();
+    },
+    onError: (e: any) => setErro(e.message || "Não foi possível salvar."),
   });
   const del = useMutation({
-    mutationFn: async () => { if (shift) { const { error } = await supabase.from("shifts").delete().eq("id", shift.id); if (error) throw error; } },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["shifts"] }); toast.success("Removido"); onClose(); },
+    mutationFn: async () => {
+      if (shift) {
+        const { error } = await supabase.from("shifts").delete().eq("id", shift.id);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success("Plantão removido");
+      onClose();
+    },
+    onError: (e: any) => setErro(e.message || "Não foi possível remover."),
   });
+  const remover = async () => {
+    const ok = await confirmDialog({
+      title: `Tirar ${broker.full_name} deste turno?`,
+      description: `${dataTexto}${per ? ` · ${per.label}` : ""}. A vaga volta a ficar livre.`,
+      confirmLabel: "Remover",
+      danger: true,
+    });
+    if (ok) del.mutate();
+  };
 
-  const plantaoOptions = ["Online", ...(projectsQ.data ?? []).map((p) => p.name)];
+  const avisoSemVaga =
+    remaining === null
+      ? "Este turno não tem vagas configuradas nesta semana. O administrador define as vagas em Vagas por equipe."
+      : "Este turno já está lotado (Central e Plantão somados). Libere uma vaga antes de escalar outra pessoa.";
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end" onClick={onClose}>
-      <div className="bg-white w-full rounded-t-2xl p-5 safe-bottom" onClick={(e) => e.stopPropagation()}>
-        <p className="text-xs text-muted-foreground uppercase tracking-wide">{format(new Date(date + "T00:00:00"), "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
-        <h3 className="text-lg font-semibold text-[var(--navy)] mb-4 flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full" style={{ background: broker.color }} />{broker.full_name}
-        </h3>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center sm:justify-center sm:p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shift-editor-title"
+        className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 safe-bottom max-h-[90dvh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">{dataTexto}</p>
+            <h3 id="shift-editor-title" className="text-lg font-semibold text-[var(--navy)] flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: broker.color }} aria-hidden />
+              <span className="truncate">{broker.full_name}</span>
+            </h3>
+            {per && (
+              <p className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-[var(--surface)] px-2.5 py-1 text-xs font-semibold text-[var(--navy)]">
+                Turno: {per.label} · {per.start}–{per.end}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="h-10 w-10 -mr-2 -mt-1 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-[var(--surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]"
+          >
+            <X size={18} />
+          </button>
+        </div>
         <div className="space-y-4">
           {isPast && (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               Este dia já passou: a mudança altera o histórico da escala.
             </p>
           )}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Local</p>
-            <div className="grid grid-cols-2 gap-2">
-              {([["online", pdvLabels.central], ["salao", pdvLabels.plantao]] as const).map(([m, label]) => (
-                <button
-                  key={m}
-                  onClick={() => setModality(m)}
-                  aria-pressed={modality === m}
-                  className={`h-12 px-2 rounded-xl font-semibold text-sm transition-colors truncate ${modality === m ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Período</p>
-            <div className="grid grid-cols-3 gap-2">
-              {PERIODS.map((p) => (
-                <button
-                  key={p.val}
-                  onClick={() => setPeriod(p.val)}
-                  className={`h-12 rounded-xl font-semibold text-sm transition-colors ${period === p.val ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}
-                >
-                  {p.label}
-                  <span className="block text-xs font-normal opacity-70">{p.start} – {p.end}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Nome do Plantão</p>
-            <select
-              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-sm text-[var(--navy)]"
-              value={plantao}
-              onChange={(e) => setPlantao(e.target.value)}
-            >
-              <option value="">Selecionar plantão...</option>
-              {plantaoOptions.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </div>
+          {semVaga ? (
+            <p role="alert" className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-3">
+              {avisoSemVaga}
+            </p>
+          ) : (
+            <>
+              <fieldset>
+                <legend className="text-xs font-semibold text-muted-foreground uppercase mb-2">Local</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["online", "salao"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setModality(m)}
+                      aria-pressed={modality === m}
+                      className={`h-12 px-2 rounded-xl font-semibold text-sm transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] ${modality === m ? "bg-[var(--navy)] text-white" : "bg-[var(--surface)] text-[var(--navy)] border border-border"}`}
+                    >
+                      {nomeLocal(m)}
+                    </button>
+                  ))}
+                </div>
+                {!shift && remaining !== null && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {remaining} vaga{remaining === 1 ? "" : "s"} livre{remaining === 1 ? "" : "s"} neste turno (Central e Plantão somados).
+                  </p>
+                )}
+              </fieldset>
+            </>
+          )}
+          {erro && (
+            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              {erro}
+            </p>
+          )}
           <div className="flex gap-2 pt-1">
-            {shift && <button onClick={() => del.mutate()} className="h-12 px-4 rounded-xl bg-red-50 text-red-600 font-medium flex items-center gap-2"><Trash2 size={16} />Remover</button>}
-            <button onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">Cancelar</button>
-            <button onClick={() => save.mutate()} disabled={save.isPending || !period} className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50">Salvar</button>
+            {shift && (
+              <button
+                type="button"
+                onClick={remover}
+                disabled={del.isPending}
+                className="h-12 px-4 rounded-xl bg-red-50 text-red-600 font-medium flex items-center gap-2 disabled:opacity-50"
+              >
+                {del.isPending ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                Remover
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium">
+              {semVaga ? "Fechar" : "Cancelar"}
+            </button>
+            {!semVaga && (
+              <button
+                type="button"
+                onClick={() => save.mutate()}
+                disabled={save.isPending || !per}
+                className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                {save.isPending && <Loader2 size={16} className="animate-spin" />}
+                {save.isPending ? "Salvando…" : shift ? "Salvar alterações" : "Escalar"}
+              </button>
+            )}
           </div>
         </div>
       </div>

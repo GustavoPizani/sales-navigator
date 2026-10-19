@@ -1,9 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { ManagerPublicLink } from "./ManagerPublicLink";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDays, format, startOfWeek } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { Copy, Loader2, SlidersHorizontal, X } from "lucide-react";
+import { Loader2, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { usePdvLabels, useShiftPeriods } from "@/hooks/useRoulette";
@@ -15,26 +12,35 @@ export const QUOTA_PERIODS = [
   { val: "Noite", start: "19:00", end: "23:00" },
 ] as const;
 
-// O admin define só o total do turno; o gerente escolhe o PDV de cada corretor.
-const PDVS = [{ modality: "total", key: "total" }] as const;
-
-type Grid = Record<string, number>; // `${modality}_${dayIndex}_${period}`
-const cellKey = (modality: string, d: number, period: string) => `${modality}_${d}_${period}`;
-
 type Team = { id: string; label: string; color: string };
+type Regra = { period: string; total: number };
+
+// (crm_vagas_padrao ainda não está nos tipos gerados)
+const db = supabase as unknown as {
+  from: (t: string) => {
+    select: (
+      c: string,
+    ) => Promise<{ data: Regra[] | null; error: { message: string; code?: string } | null }>;
+  };
+  rpc: (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message: string; code?: string } | null }>;
+};
+
+const faltaMigration = (e: { message?: string; code?: string } | null) =>
+  !!e &&
+  (e.code === "42P01" ||
+    e.code === "PGRST202" ||
+    e.code === "PGRST205" ||
+    /does not exist|could not find/i.test(e.message ?? ""));
 
 /**
- * Admin: define quantas vagas cada gerente tem por dia e turno na semana.
- * O gerente distribui os corretores e decide quantos ficam na Central e
- * quantos no Plantão.
+ * Admin: vagas por turno. Um número por turno (Manhã, Tarde, Noite) vale para
+ * todas as equipes, todos os dias e todas as semanas, até ser mudado. O gerente
+ * escolhe, ao escalar, quantos ficam na Central e quantos no Plantão.
  */
-export function TeamQuotaButton({
-  teams,
-  defaultManagerId,
-}: {
-  teams: Team[];
-  defaultManagerId?: string;
-}) {
+export function TeamQuotaButton({ teams }: { teams: Team[]; defaultManagerId?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -44,327 +50,200 @@ export function TeamQuotaButton({
         className="flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-[var(--navy)] text-white font-bold text-sm"
       >
         <SlidersHorizontal size={16} />
-        <span>Vagas das equipes</span>
+        <span>Vagas por turno</span>
       </button>
-      {open && (
-        <TeamQuotaEditor
-          teams={teams}
-          defaultManagerId={defaultManagerId}
-          onClose={() => setOpen(false)}
-        />
-      )}
+      {open && <VagasPorTurno equipes={teams.length} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function TeamQuotaEditor({
-  teams,
-  defaultManagerId,
-  onClose,
-}: {
-  teams: Team[];
-  defaultManagerId?: string;
-  onClose: () => void;
-}) {
+function VagasPorTurno({ equipes, onClose }: { equipes: number; onClose: () => void }) {
   // horários dos turnos definidos nas regras de check-in
-  const shiftPeriods = useShiftPeriods();
-  const QUOTA_PERIODS = shiftPeriods.map((p) => ({ val: p.label, start: p.start, end: p.end }));
+  const turnos = useShiftPeriods().map((p) => ({ val: p.label, start: p.start, end: p.end }));
   const qc = useQueryClient();
   const labels = usePdvLabels();
-  const [weekStart, setWeekStart] = useState(() =>
-    startOfWeek(addDays(new Date(), 7), { weekStartsOn: 1 }),
-  );
-  const [managerId, setManagerId] = useState(
-    defaultManagerId && teams.some((t) => t.id === defaultManagerId)
-      ? defaultManagerId
-      : (teams[0]?.id ?? ""),
-  );
-  const [grid, setGrid] = useState<Grid>({});
-  const weekStr = format(weekStart, "yyyy-MM-dd");
-  const days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart],
-  );
+  const [valores, setValores] = useState<Record<string, number>>({});
 
-  // Cota atual (e quantos já estão escalados em cada vaga)
-  const currentQ = useQuery({
-    queryKey: ["team-quota", managerId, weekStr],
-    enabled: !!managerId,
+  const regraQ = useQuery({
+    queryKey: ["vagas-padrao"],
     queryFn: async () => {
-      const weekEnd = format(addDays(weekStart, 6), "yyyy-MM-dd");
-      const dayIndex = (date: string) =>
-        Math.round((new Date(`${date}T00:00:00`).getTime() - weekStart.getTime()) / 86_400_000);
-      // (team_period_quotas e pending_shifts ainda não estão nos tipos gerados)
-      const { data: quotas, error } = await (supabase as any)
-        .from("team_period_quotas")
-        .select("date, period, total")
-        .eq("manager_id", managerId)
-        .gte("date", weekStr)
-        .lte("date", weekEnd);
-      if (error) throw error;
-      const g: Grid = {};
-      const used: Grid = {};
-      for (const q of (quotas ?? []) as { date: string; period: string; total: number }[]) {
-        g[cellKey("total", dayIndex(q.date), q.period)] = q.total;
-      }
-
-      // já escalados no turno: Central + Plantão, cadastrados e pré-cadastrados
-      const { data: configs } = await supabase
-        .from("shift_configs")
-        .select("id")
-        .eq("manager_id", managerId)
-        .eq("week_start_date", weekStr);
-      if (configs?.length) {
-        const { data: slots } = await supabase
-          .from("shift_slots")
-          .select("id, date, period")
-          .in(
-            "config_id",
-            configs.map((c) => c.id),
-          );
-        const ids = (slots ?? []).map((s) => s.id);
-        if (ids.length) {
-          const [{ data: shifts }, { data: pend }] = await Promise.all([
-            supabase.from("shifts").select("slot_id").in("slot_id", ids),
-            (supabase as any).from("pending_shifts").select("slot_id").in("slot_id", ids),
-          ]);
-          const slotKey = new Map(
-            (slots ?? []).map((s) => [s.id, cellKey("total", dayIndex(s.date), s.period ?? "")]),
-          );
-          for (const r of [...(shifts ?? []), ...((pend ?? []) as { slot_id: string }[])]) {
-            const k = r.slot_id ? slotKey.get(r.slot_id) : undefined;
-            if (k) used[k] = (used[k] ?? 0) + 1;
-          }
-        }
-      }
-      return { grid: g, used };
+      const { data, error } = await db.from("crm_vagas_padrao").select("period, total");
+      if (faltaMigration(error)) return { semTabela: true, regra: [] as Regra[] };
+      if (error) throw new Error(error.message);
+      return { semTabela: false, regra: data ?? [] };
     },
   });
   useEffect(() => {
-    if (currentQ.data) setGrid(currentQ.data.grid);
-  }, [currentQ.data]);
+    if (regraQ.data)
+      setValores(Object.fromEntries(regraQ.data.regra.map((r) => [r.period, r.total])));
+  }, [regraQ.data]);
 
-  const used = currentQ.data?.used ?? {};
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const save = useMutation({
     mutationFn: async () => {
-      const quota = PDVS.flatMap((p) =>
-        days.flatMap((day, d) =>
-          QUOTA_PERIODS.map((per) => ({
-            modality: p.modality,
-            date: format(day, "yyyy-MM-dd"),
-            period: per.val,
-            start: per.start,
-            end: per.end,
-            capacity: grid[cellKey(p.modality, d, per.val)] ?? 0,
-          })),
-        ),
-      );
-      const { error } = await supabase.rpc("crm_set_team_quota", {
-        p_manager_id: managerId,
-        p_week_start: weekStr,
-        p_quota: quota,
-      });
-      if (error) throw error;
+      const regra = turnos.map((t) => ({
+        period: t.val,
+        start: t.start,
+        end: t.end,
+        total: valores[t.val] ?? 0,
+      }));
+      const { error } = await db.rpc("crm_set_vagas_padrao", { p_regra: regra });
+      if (faltaMigration(error))
+        throw new Error(
+          "O banco ainda não tem a nova regra de vagas. Rode a migration 20261019000001_vagas_padrao.sql no Supabase.",
+        );
+      if (error) throw new Error(error.message);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team-quota"] });
+      qc.invalidateQueries({ queryKey: ["vagas-padrao"] });
       qc.invalidateQueries({ queryKey: ["shift-slots-capacity"] });
       qc.invalidateQueries({ queryKey: ["shift-links"] });
-      toast.success("Vagas da equipe salvas!");
+      toast.success("Vagas salvas para todas as equipes");
+      onClose();
     },
-    onError: (e: any) => toast.error(e.message),
   });
 
-  const copyFromPreviousWeek = async () => {
-    const prevStart = addDays(weekStart, -7);
-    const { data } = await (supabase as any)
-      .from("team_period_quotas")
-      .select("date, period, total")
-      .eq("manager_id", managerId)
-      .gte("date", format(prevStart, "yyyy-MM-dd"))
-      .lt("date", weekStr);
-    const quotas = (data ?? []) as { date: string; period: string; total: number }[];
-    if (!quotas.length) return toast("A semana anterior não tem vagas definidas.", { icon: "ℹ️" });
-    const g: Grid = {};
-    for (const q of quotas) {
-      const d = Math.round(
-        (new Date(`${q.date}T00:00:00`).getTime() - prevStart.getTime()) / 86_400_000,
-      );
-      g[cellKey("total", d, q.period)] = q.total;
-    }
-    setGrid(g);
-    toast.success("Vagas copiadas da semana anterior. Revise e salve.");
-  };
-
-  const total = (modality: string) =>
-    days.reduce(
-      (sum, _d, d) =>
-        sum + QUOTA_PERIODS.reduce((s2, p) => s2 + (grid[cellKey(modality, d, p.val)] ?? 0), 0),
-      0,
-    );
+  const mudar = (t: string, v: number) =>
+    setValores((x) => ({ ...x, [t]: Math.max(0, Math.min(50, Math.round(v) || 0)) }));
+  const porDia = turnos.reduce((s, t) => s + (valores[t.val] ?? 0), 0);
 
   return (
     <div
-      className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-3"
+      className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center sm:p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vagas-titulo"
+        className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92dvh] overflow-y-auto safe-bottom"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-[var(--surface)]">
-          <h3 className="font-bold text-[var(--navy)] text-lg">Vagas das equipes</h3>
+        <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3">
+          <div>
+            <h3 id="vagas-titulo" className="font-bold text-[var(--navy)] text-lg">
+              Vagas por turno
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Vale para todas as equipes{equipes ? ` (${equipes})` : ""}, todos os dias e toda
+              semana, até você mudar.
+            </p>
+          </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-muted-foreground hover:text-[var(--navy)]"
             aria-label="Fechar"
+            className="h-10 w-10 -mr-2 -mt-1 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-[var(--surface)]"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {teams.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Cadastre os gerentes na tela Time para definir as vagas.
+        <div className="p-5 space-y-4">
+          {regraQ.isLoading ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 size={16} className="animate-spin" /> Carregando…
+            </p>
+          ) : regraQ.data?.semTabela ? (
+            <p
+              role="alert"
+              className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-3"
+            >
+              Falta rodar a migration <b>20261019000001_vagas_padrao.sql</b> no Supabase para usar
+              as vagas por turno.
             </p>
           ) : (
             <>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="block">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase block mb-1">
-                    Equipe
-                  </span>
-                  <select
-                    value={managerId}
-                    onChange={(e) => setManagerId(e.target.value)}
-                    className="h-10 px-3 rounded-lg border border-border bg-white text-sm"
-                  >
-                    {teams.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        Equipe {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase block mb-1">
-                    Semana (segunda)
-                  </span>
-                  <input
-                    type="date"
-                    value={weekStr}
-                    onChange={(e) =>
-                      e.target.value &&
-                      setWeekStart(
-                        startOfWeek(new Date(`${e.target.value}T00:00:00`), { weekStartsOn: 1 }),
-                      )
-                    }
-                    className="h-10 px-3 rounded-lg border border-border bg-white text-sm"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={copyFromPreviousWeek}
-                  className="h-10 px-3 rounded-lg border border-border bg-white text-sm inline-flex items-center gap-1.5"
-                >
-                  <Copy size={14} /> Copiar semana anterior
-                </button>
-              </div>
-
-              {managerId && <ManagerPublicLink managerId={managerId} />}
-
-              <div className="text-xs text-muted-foreground">
-                Total da semana: <b className="text-[var(--navy)]">{total("total")}</b> vagas. O
-                gerente decide, ao escalar, quantas ficam na {labels.central} e quantas no{" "}
-                {labels.plantao}.
-              </div>
-
-              <div className="overflow-x-auto border border-border rounded-xl">
-                <table className="w-full text-sm border-collapse">
-                  <thead className="bg-[var(--surface)] text-[var(--navy)] text-xs">
-                    <tr>
-                      <th className="px-3 py-2 text-left border-b border-border">Dia</th>
-                      {QUOTA_PERIODS.map((p) => (
-                        <th
-                          key={p.val}
-                          className="px-2 py-1.5 text-center border-b border-l border-border"
+              <ul className="divide-y divide-border rounded-xl border border-border">
+                {turnos.map((t) => {
+                  const v = valores[t.val] ?? 0;
+                  return (
+                    <li key={t.val} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-[var(--navy)]">{t.val}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {t.start}–{t.end}
+                        </p>
+                      </div>
+                      <div
+                        className="flex items-center gap-1"
+                        role="group"
+                        aria-label={`Vagas de ${t.val} por equipe`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => mudar(t.val, v - 1)}
+                          disabled={v <= 0}
+                          aria-label={`Menos uma vaga de ${t.val}`}
+                          className="h-11 w-11 rounded-xl border border-border bg-[var(--surface)] text-[var(--navy)] inline-flex items-center justify-center disabled:opacity-40"
                         >
-                          {p.val}{" "}
-                          <span className="font-normal text-muted-foreground">
-                            {p.start}–{p.end}
-                          </span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {days.map((day, d) => (
-                      <tr key={d}>
-                        <td className="px-3 py-1.5 whitespace-nowrap capitalize font-medium text-[var(--navy)]">
-                          {format(day, "EEE dd/MM", { locale: ptBR })}
-                        </td>
-                        {QUOTA_PERIODS.map((p) =>
-                          PDVS.map((pdv) => {
-                            const k = cellKey(pdv.modality, d, p.val);
-                            const u = used[k] ?? 0;
-                            return (
-                              <td
-                                key={k}
-                                className="px-1.5 py-1 text-center border-l border-border"
-                              >
-                                <input
-                                  type="number"
-                                  min={u}
-                                  max={999}
-                                  inputMode="numeric"
-                                  placeholder="0"
-                                  value={grid[k] || ""}
-                                  onChange={(e) => {
-                                    const v = Math.max(0, parseInt(e.target.value) || 0);
-                                    setGrid((g) => ({ ...g, [k]: v }));
-                                  }}
-                                  className="w-14 h-9 text-center rounded-lg border border-border bg-[var(--surface)] text-[var(--navy)] font-semibold focus:outline-none focus:border-[var(--gold)]"
-                                  aria-label={`${format(day, "EEEE", { locale: ptBR })} ${p.val} ${pdv.key}`}
-                                />
-                                {u > 0 && (
-                                  <div className="text-[11px] text-muted-foreground mt-0.5">
-                                    {u} escalado{u > 1 ? "s" : ""}
-                                  </div>
-                                )}
-                              </td>
-                            );
-                          }),
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                As vagas valem para a escala e para o check-in da roleta, somando {labels.central} e{" "}
-                {labels.plantao}. Não é possível reduzir abaixo do número de corretores já escalados
-                no turno.
+                          <Minus size={16} />
+                        </button>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          max={50}
+                          value={v}
+                          onChange={(e) => mudar(t.val, Number(e.target.value))}
+                          aria-label={`Vagas de ${t.val} por equipe`}
+                          className="h-11 w-14 rounded-xl border border-border text-center text-lg font-bold tabular-nums text-[var(--navy)]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => mudar(t.val, v + 1)}
+                          aria-label={`Mais uma vaga de ${t.val}`}
+                          className="h-11 w-11 rounded-xl border border-border bg-[var(--surface)] text-[var(--navy)] inline-flex items-center justify-center"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Cada equipe terá <b className="text-[var(--navy)]">{porDia}</b> vaga
+                {porDia === 1 ? "" : "s"} por dia. O gerente decide, ao escalar, quem fica na{" "}
+                {labels.central} e quem no {labels.plantao}. Turno com 0 vagas fica fechado. Quem já
+                está escalado nunca é tirado: se um turno já tiver mais gente, ele fica com esse
+                número.
               </p>
+              {save.error && (
+                <p
+                  role="alert"
+                  className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2"
+                >
+                  {save.error.message}
+                </p>
+              )}
             </>
           )}
-        </div>
-
-        <div className="px-5 py-4 border-t border-border bg-[var(--surface)] flex gap-2">
-          <button
-            onClick={onClose}
-            className="flex-1 h-11 rounded-xl bg-white border border-border text-[var(--navy)] font-medium"
-          >
-            Fechar
-          </button>
-          <button
-            onClick={() => save.mutate()}
-            disabled={save.isPending || !managerId}
-            className="flex-1 h-11 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
-          >
-            {save.isPending && <Loader2 size={16} className="animate-spin" />} Salvar vagas
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 h-12 rounded-xl bg-[var(--surface)] text-[var(--navy)] font-medium"
+            >
+              Cancelar
+            </button>
+            {!regraQ.data?.semTabela && (
+              <button
+                type="button"
+                onClick={() => save.mutate()}
+                disabled={save.isPending || regraQ.isLoading}
+                className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                {save.isPending && <Loader2 size={16} className="animate-spin" />}
+                {save.isPending ? "Salvando…" : "Salvar para todas"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, MapPin, ShieldAlert } from "lucide-react";
 import toast from "react-hot-toast";
-import { getPosition } from "@/hooks/useRoulette";
+import { ErroLocalizacao, getPosition } from "@/hooks/useRoulette";
 
 type PermState = "granted" | "prompt" | "denied" | "unknown";
 
@@ -36,6 +36,8 @@ const DENIED_STEPS: Record<string, string[]> = {
 export function LocationPermission({ required }: { required: boolean }) {
   const [state, setState] = useState<PermState>("unknown");
   const [asking, setAsking] = useState(false);
+  // falha que não é de permissão (GPS desligado, sem sinal, demorou)
+  const [semSinal, setSemSinal] = useState<string | null>(null);
 
   useEffect(() => {
     let status: PermissionStatus | null = null;
@@ -58,13 +60,15 @@ export function LocationPermission({ required }: { required: boolean }) {
 
   const ask = async () => {
     setAsking(true);
+    setSemSinal(null);
     try {
       await getPosition();
       setState("granted");
       toast.success("Localização liberada!");
-    } catch (e: any) {
-      setState("denied");
-      toast.error(e.message);
+    } catch (e) {
+      // só é "bloqueada" quando o navegador negou a permissão; o resto é GPS sem resposta
+      if (e instanceof ErroLocalizacao && e.code === 1) setState("denied");
+      else setSemSinal(e instanceof Error ? e.message : "Não foi possível obter sua localização.");
     } finally {
       setAsking(false);
     }
@@ -89,6 +93,17 @@ export function LocationPermission({ required }: { required: boolean }) {
             O check-in deste turno confere se você está no local do plantão. Sua localização só é
             usada no momento do check-in.
           </p>
+          {semSinal && !denied && (
+            <div className="mt-2 text-xs text-amber-900" role="alert">
+              <p className="font-semibold">{semSinal}</p>
+              {deviceKind() === "android" && (
+                <p className="mt-1">
+                  No Android: puxe a barra de cima e ligue a Localização. Em Configurações → Localização,
+                  deixe ativada a “Precisão do local do Google”.
+                </p>
+              )}
+            </div>
+          )}
           {denied && (
             <ol className="mt-2 space-y-1 text-xs text-red-700 list-decimal pl-4">
               {DENIED_STEPS[deviceKind()].map((s) => (

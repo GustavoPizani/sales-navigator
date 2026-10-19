@@ -1,6 +1,7 @@
 import { createFileRoute, Navigate, Outlet, useLocation } from "@tanstack/react-router";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthSplash } from "@/components/AuthSplash";
 import { BottomNav } from "@/components/BottomNav";
@@ -112,43 +113,118 @@ function ProfileLoadFailed({ onRetry }: { onRetry: () => Promise<void> }) {
   );
 }
 
+/** Erro do login (Supabase) em português, com o que a pessoa pode fazer. */
+function erroDeSenha(error: { message?: string; code?: string }) {
+  const msg = (error.message ?? "").toLowerCase();
+  const code = error.code ?? "";
+  if (code === "same_password" || msg.includes("different from the old"))
+    return "A nova senha precisa ser diferente da senha provisória que você recebeu.";
+  if (code === "weak_password" || msg.includes("password should"))
+    return "Senha fraca: use pelo menos 6 caracteres, misturando letras e números.";
+  if (code === "reauthentication_needed" || msg.includes("reauthentication"))
+    return "Por segurança, saia e entre de novo com a senha provisória antes de trocar.";
+  if (code === "session_not_found" || msg.includes("session missing") || msg.includes("jwt"))
+    return "Sua sessão expirou. Saia e entre de novo com a senha provisória.";
+  if (msg.includes("failed to fetch") || msg.includes("network"))
+    return "Sem conexão com a internet. Confira o sinal e tente de novo.";
+  return "Não foi possível trocar a senha agora. Tente de novo em instantes.";
+}
+
 function ForcePasswordChange() {
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) return toast.error("A senha deve ter no mínimo 6 caracteres.");
-    
+    setErro(null);
+    if (password.length < 6) return setErro("A senha deve ter no mínimo 6 caracteres.");
+    if (password !== confirm) return setErro("As duas senhas não são iguais.");
+
     setBusy(true);
     const { error } = await supabase.auth.updateUser({
       password,
       data: { force_password_change: false },
     });
-    setBusy(false);
-    
     if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Senha atualizada! Redirecionando...");
-      window.location.reload();
+      setBusy(false);
+      // o código técnico fica no console para o suporte; a pessoa vê a explicação
+      console.error("[troca de senha]", error.code, error.message);
+      return setErro(erroDeSenha(error));
     }
+    // garante que a sessão salva já venha sem a marca de "trocar senha"
+    await supabase.auth.refreshSession().catch(() => {});
+    toast.success("Senha atualizada!");
+    window.location.reload();
+  };
+
+  const sair = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
   };
 
   return (
     <div className="min-h-screen bg-[var(--surface)] grid place-items-center p-4 safe-top safe-bottom">
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-border w-full max-w-sm">
-        <h2 className="text-xl font-bold text-[var(--navy)] mb-2">Trocar Senha</h2>
+        <h2 className="text-xl font-bold text-[var(--navy)] mb-2">Trocar senha</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          Como este é o seu primeiro acesso, por motivos de segurança, você precisa definir uma nova senha.
+          Como este é o seu primeiro acesso, por segurança defina uma senha nova, diferente da provisória.
         </p>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Nova Senha</label>
-            <input type="password" required minLength={6} className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border" placeholder="••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <label htmlFor="nova-senha" className="text-xs font-medium text-muted-foreground mb-1 block">
+              Nova senha
+            </label>
+            <div className="relative">
+              <input
+                id="nova-senha"
+                name="new-password"
+                type={show ? "text" : "password"}
+                autoComplete="new-password"
+                required
+                minLength={6}
+                className="w-full h-12 px-4 pr-12 rounded-xl bg-[var(--surface)] border border-border text-base"
+                placeholder="Mínimo de 6 caracteres"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShow((v) => !v)}
+                aria-label={show ? "Esconder senha" : "Mostrar senha"}
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 inline-flex items-center justify-center text-muted-foreground"
+              >
+                {show ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
+          <div>
+            <label htmlFor="confirma-senha" className="text-xs font-medium text-muted-foreground mb-1 block">
+              Repita a nova senha
+            </label>
+            <input
+              id="confirma-senha"
+              name="confirm-new-password"
+              type={show ? "text" : "password"}
+              autoComplete="new-password"
+              required
+              className="w-full h-12 px-4 rounded-xl bg-[var(--surface)] border border-border text-base"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+          </div>
+          {erro && (
+            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              {erro}
+            </p>
+          )}
           <button type="submit" disabled={busy} className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold disabled:opacity-50">
             {busy ? "Salvando..." : "Salvar nova senha e entrar"}
+          </button>
+          <button type="button" onClick={sair} className="w-full h-10 text-sm text-muted-foreground underline-offset-2 hover:underline">
+            Sair e entrar de novo
           </button>
         </form>
       </div>

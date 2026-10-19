@@ -60,27 +60,50 @@ export function useRouletteSettings() {
   });
 }
 
-/** Lê a posição atual com alta precisão (GPS). */
-export function getPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!("geolocation" in navigator)) {
-      reject(new Error("Este dispositivo não oferece localização."));
-      return;
+/** Erro de localização com o motivo do navegador (1 = permissão negada, 2 = indisponível, 3 = tempo esgotado). */
+export class ErroLocalizacao extends Error {
+  constructor(
+    message: string,
+    public code: number,
+  ) {
+    super(message);
+  }
+}
+
+const lerPosicao = (opts: PositionOptions) =>
+  new Promise<GeolocationPosition>((resolve, reject) =>
+    navigator.geolocation.getCurrentPosition(resolve, reject, opts),
+  );
+
+/**
+ * Lê a posição atual: primeiro o GPS (alta precisão); se ele demorar ou não
+ * responder (comum no Android dentro de prédios ou com o GPS desligado), tenta
+ * a localização pela rede. A precisão aceita no check-in é conferida no servidor.
+ */
+export async function getPosition(): Promise<GeolocationPosition> {
+  if (!("geolocation" in navigator)) {
+    throw new ErroLocalizacao("Este dispositivo não oferece localização.", 2);
+  }
+  try {
+    return await lerPosicao({ enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 });
+  } catch (e) {
+    const err = e as GeolocationPositionError;
+    if (err.code === 1)
+      throw new ErroLocalizacao("Permita o acesso à localização para fazer o check-in.", 1);
+    try {
+      return await lerPosicao({ enableHighAccuracy: false, timeout: 15_000, maximumAge: 60_000 });
+    } catch (e2) {
+      const err2 = e2 as GeolocationPositionError;
+      if (err2.code === 1)
+        throw new ErroLocalizacao("Permita o acesso à localização para fazer o check-in.", 1);
+      throw new ErroLocalizacao(
+        err2.code === 3
+          ? "O GPS não respondeu a tempo. Vá para perto de uma janela ou área aberta e tente de novo."
+          : "Não foi possível obter sua localização. Confira se a Localização do celular está ligada e tente de novo.",
+        err2.code || 2,
+      );
     }
-    navigator.geolocation.getCurrentPosition(
-      resolve,
-      (err) => {
-        const msg =
-          err.code === err.PERMISSION_DENIED
-            ? "Permita o acesso à localização para fazer o check-in."
-            : err.code === err.TIMEOUT
-              ? "Não foi possível obter o GPS a tempo. Tente de novo."
-              : "Não foi possível obter sua localização.";
-        reject(new Error(msg));
-      },
-      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },
-    );
-  });
+  }
 }
 
 /**
