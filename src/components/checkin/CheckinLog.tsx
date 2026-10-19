@@ -7,7 +7,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
-import { useShiftPeriods } from "@/hooks/useRoulette";
+import { usePdvLabels, useShiftPeriods } from "@/hooks/useRoulette";
 
 type LogRow = Database["public"]["Tables"]["checkin_log"]["Row"];
 
@@ -150,6 +150,11 @@ export function CheckinLog({ embedded = false }: { embedded?: boolean }) {
   // RH lê e exporta; só o admin registra ajustes e vê os filtros de ajuste (o banco também bloqueia)
   const { profile, isSuperAdmin: canAdjust } = useAuth();
   const periods = useShiftPeriods();
+  // a Central deixou de existir: registros antigos dela aparecem como o Plantão
+  // (o log em si não muda, é histórico imutável)
+  const pdv = usePdvLabels();
+  const localDe = (r: { location?: string | null; location_label?: string | null }) =>
+    r.location === "central" ? pdv.plantao : r.location_label;
   const [from, setFrom] = useState(ymd(startOfMonth(new Date())));
   const [to, setTo] = useState(ymd(new Date()));
   const [userId, setUserId] = useState("all");
@@ -237,7 +242,7 @@ export function CheckinLog({ embedded = false }: { embedded?: boolean }) {
         Equipe: r.team_name ?? "",
         Evento: eventInfo(r.event).label,
         Ajustado: adj ? overrideLabel(adj.event_override) : "",
-        Local: r.location_label ?? "",
+        Local: localDe(r) ?? "",
         "Distância (m)": r.distance_m ?? "",
         Latitude: r.lat ?? "",
         Longitude: r.lng ?? "",
@@ -566,7 +571,7 @@ export function CheckinLog({ embedded = false }: { embedded?: boolean }) {
                   </div>
                   <p className="text-xs text-muted-foreground mt-1.5">
                     Às {timeOf(r.occurred_at)}
-                    {r.location_label ? ` · ${r.location_label}` : ""}
+                    {localDe(r) ? ` · ${localDe(r)}` : ""}
                     {r.distance_m != null ? ` · ${r.distance_m} m` : ""}
                   </p>
                   {detail && <p className="text-xs text-muted-foreground mt-1">{detail}</p>}
@@ -631,7 +636,7 @@ export function CheckinLog({ embedded = false }: { embedded?: boolean }) {
                         )}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">
-                        {r.location_label ?? "—"}
+                        {localDe(r) ?? "—"}
                         {r.distance_m != null && (
                           <span className="text-xs text-muted-foreground"> · {r.distance_m} m</span>
                         )}

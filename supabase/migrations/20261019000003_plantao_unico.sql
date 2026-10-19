@@ -2,8 +2,9 @@
 --   1. As vagas de cada turno vão inteiras para o Plantão (a Central fica com 0).
 --   2. As semanas novas só criam a vaga do Plantão.
 --   3. Plantões escalados na Central (e pré-cadastrados pelo link) passam para o Plantão.
---   4. Check-ins e o log de check-in registrados na Central passam para o Plantão;
---      check-ins novos sempre ficam no Plantão (inclusive stand-by e turno sem GPS).
+--   4. Check-ins registrados na Central passam para o Plantão; check-ins novos
+--      sempre ficam no Plantão (inclusive stand-by e turno sem GPS). O log de
+--      check-in é imutável: não muda, e a tela mostra a Central como o Plantão.
 -- Pode rodar de novo sem erro. Requer 20261019000002_vagas_padrao_aplicar.sql.
 
 BEGIN;
@@ -139,9 +140,8 @@ UPDATE public.pending_shifts ps SET slot_id = m.plantao_slot
 UPDATE public.roulette_checkins rc SET slot_id = m.plantao_slot
   FROM _mapa_vagas m WHERE rc.slot_id = m.central_slot AND m.plantao_slot IS NOT NULL;
 UPDATE public.roulette_checkins SET location = 'plantao' WHERE location = 'central';
-UPDATE public.checkin_log
-   SET location = 'plantao', location_label = public.crm_location_label('plantao')
- WHERE location = 'central';
+-- o log de check-in é histórico imutável (só aceita ajustes): ele não muda aqui;
+-- a tela e a exportação do log mostram os registros da Central como o Plantão
 
 -- check-in novo sempre no Plantão (stand-by e turno sem GPS também)
 CREATE OR REPLACE FUNCTION public.roulette_checkins_sempre_plantao()
@@ -164,9 +164,9 @@ SELECT count(*) AS turnos_recalculados FROM (
 
 COMMIT;
 
--- Conferência: deve dar 0 em tudo
+-- Conferência: as duas primeiras devem dar 0 (o log guarda o histórico como foi)
 SELECT
   (SELECT count(*) FROM public.shifts sh JOIN public.shift_slots ss ON ss.id = sh.slot_id
      JOIN public.shift_configs sc ON sc.id = ss.config_id WHERE sc.modality = 'online') AS plantoes_na_central,
   (SELECT count(*) FROM public.roulette_checkins WHERE location = 'central') AS checkins_na_central,
-  (SELECT count(*) FROM public.checkin_log WHERE location = 'central') AS log_na_central;
+  (SELECT count(*) FROM public.checkin_log WHERE location = 'central') AS registros_antigos_no_log;
