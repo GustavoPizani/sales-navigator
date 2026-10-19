@@ -84,6 +84,7 @@ function ColetaPage() {
       });
       await qc.invalidateQueries({ queryKey: ["coleta-painel"] });
       await qc.invalidateQueries({ queryKey: ["hypnobox-data"] });
+      await qc.invalidateQueries({ queryKey: ["coleta-base"] });
     } catch (e) {
       setGravacao({ fase: "erro", erro: e instanceof Error ? e.message : String(e) });
     }

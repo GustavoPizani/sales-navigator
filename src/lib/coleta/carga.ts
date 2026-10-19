@@ -77,7 +77,11 @@ function montarLeads(clientes, dataColeta) {
     const submomento = R.semTraco(c.c5[1]) || "(vazio)";
     const canalContato = R.semTraco(c.c4[1]) || "Não preenchido";
     const subcanal = R.semTraco(c.c4[2]) || "Não preenchido";
-    const camp = c._camp || R.campanhaDaMidia(c.midia);
+    // lead já existente cuja mídia não apareceu nesta coleta: canal e campanha
+    // vão vazios e o banco mantém os que já estavam gravados
+    const camp = c._semMidia
+      ? { canal: null, campanha: null, palavra_chave: null }
+      : c._camp || R.campanhaDaMidia(c.midia);
     return {
       id_cliente: c.id,
       cadastro,
@@ -103,6 +107,7 @@ function montarLeads(clientes, dataColeta) {
       // auxiliares (não vão para o banco)
       _midia: c.midia,
       _extra: Boolean(c._camp),
+      _fora: Boolean(c._fora),
       _canalContato: canalContato,
     };
   });
@@ -152,39 +157,36 @@ function montarVisitas(brutas, { idCliente, origem }, leadsPeriodo, todosLen) {
   });
 }
 
-function montarMensagens(mensagens) {
-  const porCorretor = new Map();
-  const porFaixa = FAIXAS.map(([faixa, ordem]) => ({
-    faixa,
-    ordem: FAIXAS.findIndex((f) => f[0] === faixa),
-    mensagens: 0,
-  }));
-  for (const m of mensagens) {
-    const corretor = R.semTraco(m.c2[0]) || "(sem corretor)";
-    const c = porCorretor.get(corretor) || {
-      corretor,
-      mensagens: 0,
-      respondidas: 0,
-      lidas_sem_resposta: 0,
-      direcionadas: 0,
-      nao_lidas: 0,
-    };
-    c.mensagens++;
-    if (m.status === "respondida") c.respondidas++;
-    else if (m.status === "lida") c.lidas_sem_resposta++;
-    else if (m.status === "direcionada") c.direcionadas++;
-    else if (m.status === "nao_lida") c.nao_lidas++;
-    porCorretor.set(corretor, c);
-    const h = /(\d{1,2}):\d{2}/.exec(m.c1.join(" "));
-    if (h) {
-      const hh = Number(h[1]);
-      const i = FAIXAS.findIndex(([, a, b]) => hh >= a && hh < b);
-      if (i >= 0) porFaixa[i].mensagens++;
-    }
+/** Código curto e estável para a chave da mensagem (o contato do cliente não vai para o banco). */
+function codigo(texto) {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0;
   }
+  return h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+}
+
+/**
+ * Mensagens uma a uma (data, hora, corretor, status e mídia). O banco soma com
+ * as já guardadas e recalcula os totais por corretor e por horário.
+ */
+function montarMensagens(mensagens) {
   return {
-    al_mensagens_corretor: [...porCorretor.values()].sort((a, b) => b.mensagens - a.mensagens),
-    al_mensagens_horario: porFaixa,
+    al_mensagens: mensagens.map((m) => {
+      const juntos = m.c1.join(" ");
+      const h = /(\d{1,2}):(\d{2})/.exec(juntos);
+      return {
+        chave: codigo([m.c1.join("|"), m.c2.join("|"), m.c4.join("|")].join("#")),
+        data: R.dataBR(juntos),
+        hora: h ? `${h[1].padStart(2, "0")}:${h[2]}` : null,
+        corretor: R.semTraco(m.c2[0]) || "(sem corretor)",
+        status: m.status || null,
+        midia: m.midia || null,
+      };
+    }),
   };
 }
 
@@ -237,7 +239,7 @@ export function montarCarga(dados, { dataColeta, periodo }) {
       visitas = montarVisitas(
         dados.visitas,
         dados.detalhes,
-        leads.filter((l) => !l._extra),
+        leads.filter((l) => !l._extra && !l._fora),
         dados.clientes.todos,
       );
     const msgs = dados.mensagens ? dados.mensagens.mensagens : [];
@@ -456,6 +458,17 @@ function indiceDeMensagens(mensagens) {
   return doCliente;
 }
 
+/** Canal e campanha de quem não veio da LEN (carteira do corretor ou orgânico). */
+function campDoGrupo(c) {
+  return c._grupo === "carteira"
+    ? { canal: "Carteira do corretor", campanha: "Carteira do corretor", palavra_chave: null }
+    : {
+        canal: "Orgânico",
+        campanha: c.midia ? `Orgânico · ${R.limpa(c.midia)}` : "Orgânico",
+        palavra_chave: null,
+      };
+}
+
 /** Mídia do cliente: filtro de uma mídia só > relatório de contatos (se não veio cortada) > mensagens. */
 function midiaDoCliente(c, o, daMensagem) {
   if (c.midia) return c.midia;
@@ -466,7 +479,13 @@ function midiaDoCliente(c, o, daMensagem) {
   return doRelatorio;
 }
 
-export function montarCargaGuiada(dados, prontos, periodo, len) {
+export function montarCargaGuiada(
+  dados,
+  prontos,
+  periodo,
+  len,
+  existentes: Set<string> | null = null,
+) {
   const contatos = Object.values(dados.contatos);
   const origem = indiceDeContatos(contatos);
   const daMensagem = indiceDeMensagens(Object.values(dados.mensagens));
@@ -497,19 +516,23 @@ export function montarCargaGuiada(dados, prontos, periodo, len) {
         noPeriodo(c) &&
         corretores.has(R.semTraco(c.c3[0])),
     )
-    .map((c) => ({
-      ...c,
-      _camp:
-        c._grupo === "carteira"
-          ? { canal: "Carteira do corretor", campanha: "Carteira do corretor", palavra_chave: null }
-          : {
-              canal: "Orgânico",
-              campanha: c.midia ? `Orgânico · ${R.limpa(c.midia)}` : "Orgânico",
-              palavra_chave: null,
-            },
-    }));
+    .map((c) => ({ ...c, _camp: campDoGrupo(c) }));
+  // quem já está no banco e reapareceu na tela de Clientes é atualizado (momento,
+  // corretor, status...), mesmo com cadastro fora do período desta coleta
+  const incluidos = new Set([...leadsLen, ...extras].map((c) => String(c.id)));
+  const atualizados = existentes
+    ? (todos || [])
+        .filter((c) => existentes.has(String(c.id)) && !incluidos.has(String(c.id)))
+        .map((c) =>
+          c._grupo === "len"
+            ? { ...c, _fora: true }
+            : c._grupo === "organico" || c._grupo === "carteira"
+              ? { ...c, _fora: true, _camp: campDoGrupo(c) }
+              : { ...c, _fora: true, _semMidia: true },
+        )
+    : [];
   const clientes = todos
-    ? { clientes: [...leadsLen, ...extras], todos: [...doLen, ...extras] }
+    ? { clientes: [...leadsLen, ...extras, ...atualizados], todos: [...doLen, ...extras] }
     : null;
   let visitas = null;
   let detalhes = null;
@@ -538,6 +561,24 @@ export function montarCargaGuiada(dados, prontos, periodo, len) {
     { clientes, visitas: visitas && detalhes ? visitas : null, detalhes, mensagens, len },
     { dataColeta: R.hojeISO(), periodo },
   );
+  // "Leads LEN" conta só os do período; os já existentes atualizados vêm numa linha à parte
+  const linhaLen = carga.checagens.find((c) => c.nome === "Leads LEN");
+  if (linhaLen) {
+    linhaLen.valor = leadsLen.length;
+    linhaLen.texto = leadsLen.length.toLocaleString("pt-BR");
+    linhaLen.alerta = linhaLen.referencia
+      ? Math.abs(leadsLen.length - linhaLen.referencia) / linhaLen.referencia > 0.25
+      : false;
+  }
+  if (atualizados.length)
+    carga.checagens.push({
+      nome: "Leads que já estavam no banco, atualizados",
+      valor: atualizados.length,
+      referencia: 0,
+      texto: atualizados.length.toLocaleString("pt-BR"),
+      referenciaTexto: "—",
+      alerta: false,
+    });
   if (todos) {
     const semMidia = todos.filter((c) => !c.midia).length;
     carga.checagens.push({

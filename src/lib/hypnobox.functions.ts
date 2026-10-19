@@ -107,10 +107,20 @@ export const getHypnoboxData = createServerFn({ method: "POST" })
         )
       : null;
 
+    // período de referência do painel: tudo o que já foi coletado (as coletas somam)
+    const { data: todas } = await secondaryAdmin
+      .from("al_coletas")
+      .select("periodo_inicio, periodo_fim");
+    const inicios = (todas ?? [])
+      .map((c) => c.periodo_inicio as string | null)
+      .filter((x): x is string => !!x)
+      .sort();
+    const fins = (todas ?? [])
+      .map((c) => c.periodo_fim as string | null)
+      .filter((x): x is string => !!x)
+      .sort();
     const periodo =
-      coleta?.periodo_inicio && coleta?.periodo_fim
-        ? { de: String(coleta.periodo_inicio), ate: String(coleta.periodo_fim) }
-        : null;
+      inicios.length && fins.length ? { de: inicios[0], ate: fins[fins.length - 1] } : null;
 
     return { datasets, coletadoEm, periodo };
   });

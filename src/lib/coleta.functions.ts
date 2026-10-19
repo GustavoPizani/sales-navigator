@@ -65,6 +65,7 @@ const PREVIA = 100;
 const TABELAS = [
   "al_leads",
   "al_visitas",
+  "al_mensagens",
   "al_mensagens_corretor",
   "al_mensagens_horario",
   "al_funil_produto",
@@ -143,6 +144,42 @@ export const getColetaPainel = createServerFn({ method: "POST" })
     await exigirAdmin(context);
     return montarPainel();
   });
+
+/**
+ * O que já está no banco da análise, para a coleta somar em vez de apagar:
+ * os IDs dos leads (um lead antigo que reaparece é atualizado) e o período
+ * inteiro já coletado (o dash da LEN é sincronizado para ele todo).
+ */
+export const getColetaBase = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(
+    async ({ context }): Promise<{ ids: string[]; de: string | null; ate: string | null }> => {
+      await exigirAdmin(context);
+      const ids: string[] = [];
+      for (let i = 0; ; i += 1000) {
+        const { data, error } = await secondaryAdmin
+          .from("al_leads")
+          .select("id_cliente")
+          .order("id_cliente")
+          .range(i, i + 999);
+        if (error) throw new Error(error.message);
+        ids.push(...(data ?? []).map((r) => String(r.id_cliente)));
+        if (!data || data.length < 1000) break;
+      }
+      const { data: coletas } = await secondaryAdmin
+        .from("al_coletas")
+        .select("periodo_inicio, periodo_fim");
+      const ini = (coletas ?? [])
+        .map((c) => c.periodo_inicio as string | null)
+        .filter((x): x is string => !!x)
+        .sort();
+      const fim = (coletas ?? [])
+        .map((c) => c.periodo_fim as string | null)
+        .filter((x): x is string => !!x)
+        .sort();
+      return { ids, de: ini[0] ?? null, ate: fim[fim.length - 1] ?? null };
+    },
+  );
 
 const revelarSchema = z.object({
   tabela: z.enum(["al_leads", "al_visitas"]),

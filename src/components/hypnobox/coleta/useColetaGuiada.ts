@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { lerParteLen, type ParteLen } from "@/lib/coleta.functions";
+import { useQuery } from "@tanstack/react-query";
+import { getColetaBase, lerParteLen, type ParteLen } from "@/lib/coleta.functions";
 import { diagnosticoGuiado, montarCargaGuiada } from "@/lib/coleta/carga";
 import {
   HYPNOBOX,
@@ -180,8 +181,15 @@ export function useColetaGuiada() {
     return () => window.clearInterval(t);
   }, []);
 
-  const sincronizarLen = useCallback(async (periodo: Periodo) => {
+  const sincronizarLen = useCallback(async (pedido: Periodo) => {
     parar.current = false;
+    // o dash da LEN é trocado inteiro ao gravar: busca o período todo já coletado
+    // (do início da primeira coleta até o fim desta), para não apagar o anterior
+    const base = baseRef.current;
+    const periodo: Periodo = {
+      de: base?.de && base.de < pedido.de ? base.de : pedido.de,
+      ate: base?.ate && base.ate > pedido.ate ? base.ate : pedido.ate,
+    };
     const tabelas: ParteLen["tabelas"] = {};
     let investimentoPeriodo = 0;
     let janelas: ParteLen["janelas"] = [];
@@ -253,6 +261,15 @@ export function useColetaGuiada() {
     janela.current?.focus();
   }, []);
 
+  // o que já está no banco: leads (para atualizar quem reaparece) e o período coletado
+  const baseQ = useQuery({
+    queryKey: ["coleta-base"],
+    queryFn: () => getColetaBase(),
+    staleTime: 60_000,
+  });
+  const baseRef = useRef(baseQ.data);
+  baseRef.current = baseQ.data;
+
   const carga = useCallback((): Carga => {
     const e = guiaRef.current;
     const prontos = Object.fromEntries(
@@ -263,8 +280,9 @@ export function useColetaGuiada() {
       prontos,
       e.periodo,
       len.status === "ok" ? len.resultado : null,
+      baseQ.data ? new Set(baseQ.data.ids) : null,
     ) as Carga;
-  }, [len]);
+  }, [len, baseQ.data]);
 
   /** Favorito "Guia da coleta": o código do painel com o endereço deste site. */
   const favorito = useMemo(() => {
