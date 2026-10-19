@@ -1528,6 +1528,13 @@ function ProjectDocs({
 }
 
 // ─── PDF viewer modal ─────────────────────────────────────────────────────────
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 4;
+const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4];
+// limite de pixels por página: acima disso o iPhone deixa o canvas em branco
+const MAX_CANVAS_PIXELS = 16_000_000;
+const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+
 function PdfViewerModal({
   url,
   name,
@@ -1538,12 +1545,16 @@ function PdfViewerModal({
   onClose: () => void;
 }) {
   const canvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [numPages, setNumPages] = useState(0);
   const [loadingPdf, setLoadingPdf] = useState(true);
   const [zoom, setZoom] = useState(1);
-
-  const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
+  const zoomRef = useRef(1);
+  zoomRef.current = zoom;
+  // onde o scroll deve ficar depois de redesenhar no zoom novo (ponto da pinça parado)
+  const pendingScroll = useRef<{ left: number; top: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1574,31 +1585,123 @@ function PdfViewerModal({
     if (!pdfDoc || numPages === 0) return;
     let cancelled = false;
     (async () => {
+      const dpr = window.devicePixelRatio || 1;
+      const baseDisplayWidth = Math.min(window.innerWidth - 16, 820);
+      const displayWidth = baseDisplayWidth * zoom;
+      // 1º: o tamanho de todas as páginas (o layout fica certo antes de desenhar)
+      const pages: { page: any; viewport: any; canvas: HTMLCanvasElement }[] = [];
       for (let i = 1; i <= numPages; i++) {
-        if (cancelled) break;
+        if (cancelled) return;
         const canvas = canvasRefs.current[i - 1];
         if (!canvas) continue;
         try {
           const pdfPage = await pdfDoc.getPage(i);
-          if (cancelled) break;
-          const dpr = window.devicePixelRatio || 1;
-          const baseDisplayWidth = Math.min(window.innerWidth - 16, 820);
-          const displayWidth = baseDisplayWidth * zoom;
           const baseViewport = pdfPage.getViewport({ scale: 1 });
-          const scale = (displayWidth / baseViewport.width) * dpr;
+          let scale = (displayWidth / baseViewport.width) * dpr;
+          const px = baseViewport.width * baseViewport.height * scale * scale;
+          if (px > MAX_CANVAS_PIXELS) scale *= Math.sqrt(MAX_CANVAS_PIXELS / px);
           const viewport = pdfPage.getViewport({ scale });
+          canvas.style.width = `${displayWidth}px`;
+          canvas.style.height = `${(displayWidth * baseViewport.height) / baseViewport.width}px`;
+          pages.push({ page: pdfPage, viewport, canvas });
+        } catch { /* skip failed page */ }
+      }
+      if (cancelled) return;
+      // a pinça termina com o ponto entre os dedos no mesmo lugar da tela
+      const alvo = pendingScroll.current;
+      pendingScroll.current = null;
+      if (alvo && scrollerRef.current) {
+        scrollerRef.current.scrollLeft = alvo.left;
+        scrollerRef.current.scrollTop = alvo.top;
+      }
+      // 2º: desenha
+      for (const { page, viewport, canvas } of pages) {
+        if (cancelled) return;
+        try {
           canvas.width = viewport.width;
           canvas.height = viewport.height;
-          canvas.style.width = `${displayWidth}px`;
-          canvas.style.height = `${viewport.height / dpr}px`;
           const ctx = canvas.getContext("2d")!;
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+          await page.render({ canvasContext: ctx, viewport }).promise;
         } catch { /* skip failed page */ }
       }
     })();
     return () => { cancelled = true; };
   }, [pdfDoc, numPages, zoom]);
+
+  /** Muda o zoom mantendo parado o ponto (x, y) da tela (coordenadas do visor). */
+  const zoomTo = (next: number, x?: number, y?: number) => {
+    const el = scrollerRef.current;
+    const z0 = zoomRef.current;
+    const z1 = clampZoom(next);
+    if (!el || Math.abs(z1 - z0) < 0.001) return;
+    const px = x ?? el.clientWidth / 2;
+    const py = y ?? el.clientHeight / 2;
+    const k = z1 / z0;
+    pendingScroll.current = {
+      left: (el.scrollLeft + px) * k - px,
+      top: (el.scrollTop + py) * k - py,
+    };
+    setZoom(z1);
+  };
+
+  // pinça com dois dedos e toque duplo (o app bloqueia o zoom do navegador)
+  useEffect(() => {
+    const el = scrollerRef.current;
+    const content = contentRef.current;
+    if (!el || !content) return;
+    let pinch: { d0: number; z0: number; cx: number; cy: number; ox: number; oy: number } | null = null;
+    let live = 1;
+    let lastTap = 0;
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const r = el.getBoundingClientRect();
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+        pinch = { d0: dist(e.touches), z0: zoomRef.current, cx, cy, ox: el.scrollLeft + cx, oy: el.scrollTop + cy };
+        live = zoomRef.current;
+        content.style.transformOrigin = `${pinch.ox}px ${pinch.oy}px`;
+      } else if (e.touches.length === 1) {
+        const now = Date.now();
+        if (now - lastTap < 280) {
+          const r = el.getBoundingClientRect();
+          zoomTo(zoomRef.current < 1.5 ? 2 : 1, e.touches[0].clientX - r.left, e.touches[0].clientY - r.top);
+          lastTap = 0;
+          e.preventDefault();
+        } else lastTap = now;
+      }
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      live = clampZoom(pinch.z0 * (dist(e.touches) / pinch.d0));
+      // durante a pinça só a imagem estica; o redesenho nítido vem no fim
+      content.style.transform = `scale(${live / pinch.z0})`;
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (!pinch || e.touches.length >= 2) return;
+      const p = pinch;
+      pinch = null;
+      content.style.transform = "";
+      content.style.transformOrigin = "";
+      zoomTo(live, p.cx, p.cy);
+    };
+    el.addEventListener("touchstart", onStart, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingPdf]);
+
+  const stepDown = () => zoomTo([...ZOOM_STEPS].reverse().find((s) => s < zoom - 0.01) ?? ZOOM_MIN);
+  const stepUp = () => zoomTo(ZOOM_STEPS.find((s) => s > zoom + 0.01) ?? ZOOM_MAX);
 
   return (
     <div
@@ -1611,29 +1714,37 @@ function PdfViewerModal({
         className="flex items-center gap-2 px-4 py-3 bg-[var(--navy)] flex-shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <button onClick={onClose} className="text-white/70 p-1 flex-shrink-0">
+        <button onClick={onClose} className="text-white/70 p-1 flex-shrink-0" aria-label="Fechar">
           <X size={20} />
         </button>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white truncate">{name}</p>
           {numPages > 0 && (
-            <p className="text-xs text-white/50">{numPages} páginas</p>
+            <p className="text-xs text-white/50">{numPages} páginas · pinça para ampliar</p>
           )}
         </div>
         <button
-          onClick={() => setZoom(z => ZOOM_STEPS[Math.max(0, ZOOM_STEPS.indexOf(z) - 1)])}
-          disabled={zoom <= ZOOM_STEPS[0]}
+          onClick={stepDown}
+          disabled={zoom <= ZOOM_MIN + 0.001}
           className="text-white/70 p-1 flex-shrink-0 disabled:opacity-30"
           title="Diminuir zoom"
+          aria-label="Diminuir zoom"
         >
           <ZoomOut size={20} />
         </button>
-        <span className="text-white/60 text-xs w-9 text-center flex-shrink-0">{Math.round(zoom * 100)}%</span>
         <button
-          onClick={() => setZoom(z => ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(z) + 1)])}
-          disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]}
+          onClick={() => zoomTo(1)}
+          className="text-white/60 text-xs w-10 text-center flex-shrink-0"
+          title="Voltar para 100%"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          onClick={stepUp}
+          disabled={zoom >= ZOOM_MAX - 0.001}
           className="text-white/70 p-1 flex-shrink-0 disabled:opacity-30"
           title="Aumentar zoom"
+          aria-label="Aumentar zoom"
         >
           <ZoomIn size={20} />
         </button>
@@ -1655,9 +1766,11 @@ function PdfViewerModal({
         </button>
       </div>
 
-      {/* Cascade pages */}
+      {/* Cascade pages: rola nos dois sentidos quando a página fica maior que a tela */}
       <div
-        className="flex-1 overflow-y-auto flex flex-col items-center gap-3 py-3 px-2 bg-gray-900"
+        ref={scrollerRef}
+        className="flex-1 overflow-auto bg-gray-900"
+        style={{ touchAction: "pan-x pan-y", overscrollBehavior: "contain" }}
         onClick={(e) => e.stopPropagation()}
       >
         {loadingPdf ? (
@@ -1665,13 +1778,15 @@ function PdfViewerModal({
             <Loader2 size={36} className="animate-spin text-white/60" />
           </div>
         ) : (
-          Array.from({ length: numPages }, (_, i) => (
-            <canvas
-              key={i}
-              ref={(el) => { canvasRefs.current[i] = el; }}
-              className="rounded shadow-2xl flex-shrink-0"
-            />
-          ))
+          <div ref={contentRef} className="flex flex-col items-center gap-3 py-3 px-2 w-max min-w-full mx-auto will-change-transform">
+            {Array.from({ length: numPages }, (_, i) => (
+              <canvas
+                key={i}
+                ref={(el) => { canvasRefs.current[i] = el; }}
+                className="rounded shadow-2xl flex-shrink-0"
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>
