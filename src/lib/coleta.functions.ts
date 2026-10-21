@@ -231,12 +231,26 @@ export type ResultadoSincronizacao = Record<
  * os que existem, insere os novos); as tabelas de resumo são trocadas.
  * Tudo numa transação, pela função al_sincronizar do banco novo.
  */
+// A carga de uma coleta grande passa do limite de 4,5 MB por pedido da Vercel:
+// o navegador manda o JSON compactado (gzip em base64) e ele é aberto aqui.
+const cargaCompactada = z.object({ gz: z.string().min(1).max(4_000_000) });
+
 export const sincronizarCarga = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => cargaSchema.parse(data))
+  .inputValidator((d: unknown) => {
+    const c = cargaCompactada.safeParse(d);
+    return c.success ? c.data : cargaSchema.parse(d);
+  })
   .handler(async ({ data, context }): Promise<ResultadoSincronizacao> => {
     await exigirAdmin(context);
-    const { data: res, error } = await secondaryAdmin.rpc("al_sincronizar", { p: data });
+    let carga: z.infer<typeof cargaSchema>;
+    if ("gz" in data) {
+      const { gunzipSync } = await import("node:zlib");
+      carga = cargaSchema.parse(
+        JSON.parse(gunzipSync(Buffer.from(data.gz, "base64")).toString("utf8")),
+      );
+    } else carga = data;
+    const { data: res, error } = await secondaryAdmin.rpc("al_sincronizar", { p: carga });
     if (error) {
       // a mensagem do banco não traz linhas da carga; só o motivo
       if (

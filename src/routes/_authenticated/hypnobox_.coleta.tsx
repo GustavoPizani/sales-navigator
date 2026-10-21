@@ -58,6 +58,36 @@ const brl = (v: unknown) =>
         maximumFractionDigits: 0,
       });
 
+/** JSON → gzip → base64 (CompressionStream, nativo do navegador). */
+async function compactar(dados: unknown): Promise<{ gz: string }> {
+  const fluxo = new Blob([JSON.stringify(dados)])
+    .stream()
+    .pipeThrough(new CompressionStream("gzip"));
+  const bytes = new Uint8Array(await new Response(fluxo).arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { gz: btoa(bin) };
+}
+
+/** Mensagem legível de qualquer erro (o servidor às vezes devolve um objeto). */
+function textoDoErro(e: unknown): string {
+  if (e instanceof Error && e.message) return e.message;
+  if (e && typeof e === "object") {
+    const o = e as { message?: unknown; status?: unknown; statusText?: unknown };
+    if (typeof o.message === "string" && o.message) return o.message;
+    if (o.status === 413) return "A carga ficou grande demais para enviar de uma vez.";
+    if (typeof o.statusText === "string" && o.statusText)
+      return `Erro do servidor: ${o.statusText}`;
+    try {
+      return `Erro do servidor: ${JSON.stringify(e).slice(0, 300)}`;
+    } catch {
+      /* objeto sem texto */
+    }
+  }
+  return String(e);
+}
+
 function ColetaPage() {
   const qc = useQueryClient();
   const col = useColetaGuiada();
@@ -73,8 +103,9 @@ function ColetaPage() {
       if (!forcar && carga.checagens.some((c) => c.alerta))
         return setGravacao({ fase: "confirmar", carga });
       setGravacao({ fase: "gravando" });
+      // compactada: uma coleta grande passa do limite de tamanho por pedido
       const resultado = await sincronizarCarga({
-        data: { tabelas: carga.tabelas, coleta: carga.coleta },
+        data: await compactar({ tabelas: carga.tabelas, coleta: carga.coleta }),
       });
       setGravacao({
         fase: "ok",
@@ -86,7 +117,7 @@ function ColetaPage() {
       await qc.invalidateQueries({ queryKey: ["hypnobox-data"] });
       await qc.invalidateQueries({ queryKey: ["coleta-base"] });
     } catch (e) {
-      setGravacao({ fase: "erro", erro: e instanceof Error ? e.message : String(e) });
+      setGravacao({ fase: "erro", erro: textoDoErro(e) });
     }
   };
 
