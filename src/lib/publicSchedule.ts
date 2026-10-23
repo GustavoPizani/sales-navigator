@@ -12,13 +12,13 @@ export type PublicSlot = {
   period: string;
   start_time: string;
   end_time: string;
-  /** total de vagas do turno (Central + Plantão), definido pelo admin */
+  /** vagas do turno, definidas pelo admin */
   capacity: number;
-  /** escalados no turno, somando os dois PDVs */
+  /** escalados no turno */
   used_total?: number;
-  /** plantões de corretores já cadastrados nessa vaga */
+  /** plantões de quem não está na lista do link (ex.: escalado pelo admin de outra equipe) */
   registered: number;
-  /** ids dos corretores pré-cadastrados nessa vaga */
+  /** ids dos corretores da lista (pré-cadastrados e com conta) escalados nessa vaga */
   assigned: string[];
 };
 
@@ -27,10 +27,21 @@ export type PublicSchedule = {
   team_name: string;
   central: string;
   plantao: string;
+  /** hoje (AAAA-MM-DD, horário de Brasília): dias antes dele não mudam */
+  today?: string;
   weeks: string[];
   week: string | null;
-  /** invite_token: convite para o corretor finalizar o cadastro */
-  brokers: { id: string; name: string; email?: string | null; invite_token?: string }[];
+  /**
+   * registered: corretor da equipe que já tem conta no app;
+   * invite_token: convite para o pré-cadastrado finalizar o cadastro
+   */
+  brokers: {
+    id: string;
+    name: string;
+    registered?: boolean;
+    email?: string | null;
+    invite_token?: string;
+  }[];
   slots: PublicSlot[];
 };
 

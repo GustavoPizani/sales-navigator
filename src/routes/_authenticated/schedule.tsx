@@ -146,7 +146,7 @@ async function fixShiftLinks(managerId: string, qc: QueryClient) {
   )
     return;
   try {
-    const { data: myConfigs, error: cfgErr } = await supabase.from("shift_configs").select("id").eq("manager_id", managerId);
+    const { data: myConfigs, error: cfgErr } = await supabase.from("shift_configs").select("id").eq("manager_id", managerId).eq("modality", "salao");
     if (cfgErr) throw cfgErr;
     const configIds = (myConfigs ?? []).map((c) => c.id);
     if (configIds.length === 0) {

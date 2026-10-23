@@ -125,9 +125,16 @@ export function TurnMonitor({ canDecide }: { canDecide: boolean }) {
   // "Manhã" para o turno que começa no horário da manhã nas regras; sem nome, só o horário
   const turnName = (t: string) => periods.find((p) => p.start === t.split("-")[0])?.label;
 
-  const tSlots = slots.filter((s) => turnKey(s) === current);
   const tShifts = (shiftsQ.data ?? []).filter((s) => turnKey(s) === current);
   const tCheckins = (checkinsQ.data ?? []).filter((c) => turnKey(c) === current);
+  // vaga sem vagas e sem ninguém (sobra da Central) não aparece
+  const tSlots = slots.filter(
+    (s) =>
+      turnKey(s) === current &&
+      (s.capacity > 0 ||
+        tShifts.some((x) => x.slot_id === s.id) ||
+        tCheckins.some((c) => c.slot_id === s.id)),
+  );
   const tState = (turnsQ.data ?? []).find((t) => turnKey(t) === current);
   const occupied = (slotId: string) =>
     tCheckins.filter((c) => c.slot_id === slotId && isConfirmed(c.status)).length;

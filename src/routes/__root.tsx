@@ -3,6 +3,7 @@ import {
   Outlet,
   createRootRouteWithContext,
   HeadContent,
+  type ErrorComponentProps,
   Scripts,
 } from "@tanstack/react-router";
 import { Toaster } from "react-hot-toast";
@@ -17,6 +18,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
+      // o tradutor do navegador mexe no texto da página e quebra o React
+      // (erro "insertBefore"): a página já é em português
+      { name: "google", content: "notranslate" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" },
       { title: "Gestão Comercial — Paes & Gregori" },
       { name: "description", content: "Gestão comercial da equipe de vendas Paes & Gregori." },
@@ -42,20 +46,43 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   }),
   shellComponent: RootShell,
   component: RootComponent,
+  errorComponent: RootError,
   notFoundComponent: () => (
     <div className="min-h-screen flex items-center justify-center text-center p-6">
       <div>
         <h1 className="text-3xl font-bold text-[var(--navy)]">404</h1>
-        <p className="text-muted-foreground mt-2">Page not found</p>
-        <a href="/" className="inline-block mt-4 px-4 py-2 rounded-lg bg-[var(--navy)] text-white">Go home</a>
+        <p className="text-muted-foreground mt-2">Página não encontrada</p>
+        <a href="/" className="inline-block mt-4 px-4 py-2 rounded-lg bg-[var(--navy)] text-white">Voltar ao início</a>
       </div>
     </div>
   ),
 });
 
+function RootError({ error }: ErrorComponentProps) {
+  return (
+    <div className="min-h-screen flex items-center justify-center text-center p-6 bg-[var(--surface)]">
+      <div className="max-w-sm">
+        <h1 className="text-xl font-bold text-[var(--navy)]">Algo deu errado</h1>
+        <p className="text-sm text-muted-foreground mt-2">
+          Recarregue a página. Se o erro voltar, desligue a tradução automática do navegador para
+          este site.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-4 h-11 px-6 rounded-xl bg-[var(--navy)] text-white font-semibold"
+        >
+          Recarregar
+        </button>
+        <p className="mt-4 text-[11px] text-muted-foreground break-words">{(error as Error)?.message}</p>
+      </div>
+    </div>
+  );
+}
+
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR" translate="no" className="notranslate">
       <head><HeadContent /></head>
       <body>
         {children}

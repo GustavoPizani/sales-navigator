@@ -8,6 +8,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { SIDEBAR_WIDTH, Sidebar } from "@/components/Sidebar";
 import { PushSubscriber } from "@/components/PushSubscriber";
 import { ConfirmarVisitas } from "@/components/ConfirmarVisitas";
+import { CheckinAlerts } from "@/components/CheckinAlerts";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -46,6 +47,7 @@ function AppShell() {
     return (
       <>
         <PushSubscriber />
+        <CheckinAlerts />
         <Outlet />
       </>
     );
@@ -57,6 +59,8 @@ function AppShell() {
         </div>
       )}
       <PushSubscriber />
+      {/* admin: aviso de cada check-in */}
+      <CheckinAlerts />
       <Sidebar />
       <div
         className="min-w-0 lg:pl-[var(--sidebar-offset)]"

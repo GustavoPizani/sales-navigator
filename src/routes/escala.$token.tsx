@@ -22,7 +22,8 @@ import { publicSchedule, type PublicSlot } from "@/lib/publicSchedule";
 import { inviteMessage } from "@/components/team/PendingInvites";
 
 // Página pública (sem login): o gerente abre o link individual gerado pelo
-// admin, digita o nome dos corretores e os distribui nos turnos da equipe.
+// admin e distribui nos turnos, dentro das vagas da regra, os corretores da
+// equipe que já têm conta e os que ele pré-cadastra pelo nome.
 export const Route = createFileRoute("/escala/$token")({
   component: PublicSchedulePage,
 });
@@ -58,6 +59,8 @@ function PublicSchedulePage() {
   const data = q.data;
   const brokers = data?.brokers ?? [];
   const slots = data?.slots ?? [];
+  // dia que já passou não muda (data de Brasília, vinda do servidor)
+  const today = data?.today ?? format(new Date(), "yyyy-MM-dd");
   const selected = brokers.find((b) => b.id === selectedId) ?? null;
   const nameById = useMemo(() => new Map(brokers.map((b) => [b.id, b.name])), [brokers]);
   const countByBroker = useMemo(() => {
@@ -126,6 +129,7 @@ function PublicSchedulePage() {
   };
 
   const toggleSlot = (slot: PublicSlot) => {
+    if (slot.date < today) return;
     if (!selected) {
       toast("Escolha primeiro um corretor na lista acima.", { icon: "☝️" });
       return;
@@ -207,9 +211,10 @@ function PublicSchedulePage() {
         <section className="bg-white p-4 rounded-2xl border border-border shadow-sm">
           <h2 className="font-bold text-[var(--navy)]">1. Corretores da equipe</h2>
           <p className="text-sm text-muted-foreground mb-3">
-            Digite o nome e o e-mail @pgvendas.com.br de cada corretor. Depois toque em um nome para
-            escalar. Pelo ícone de envio, mande o convite para ele finalizar o cadastro e já entrar
-            com os turnos escalados.
+            Os corretores da equipe que já usam o app aparecem abaixo. Toque em um nome para
+            escalar. Para quem ainda não tem conta, digite o nome e o e-mail @pgvendas.com.br; pelo
+            ícone de envio, mande o convite para ele finalizar o cadastro e já entrar com os turnos
+            escalados.
           </p>
           <form onSubmit={addBroker} className="flex flex-col sm:flex-row gap-2">
             <input
@@ -270,7 +275,8 @@ function PublicSchedulePage() {
                     <button
                       type="button"
                       onClick={() => setSelectedId(active ? null : b.id)}
-                      className="h-9 pl-3 pr-1.5 inline-flex items-center gap-1.5"
+                      title={b.registered ? "Já tem conta no app" : "Pré-cadastrado"}
+                      className={`h-9 pl-3 inline-flex items-center gap-1.5 ${b.registered ? "pr-3" : "pr-1.5"}`}
                     >
                       {b.name}
                       <span
@@ -281,27 +287,31 @@ function PublicSchedulePage() {
                         {countByBroker.get(b.id) ?? 0}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setInviteFor(b.id)}
-                      aria-label={
-                        b.email
-                          ? `Convite de cadastro de ${b.name}`
-                          : `Informar o e-mail de ${b.name}`
-                      }
-                      title={b.email ? "Convite de cadastro" : "Falta o e-mail"}
-                      className={`h-9 px-1 inline-flex items-center ${b.email ? "opacity-60 hover:opacity-100" : "text-red-600"}`}
-                    >
-                      {b.email ? <Send size={13} /> : <AtSign size={13} />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeBroker(b.id)}
-                      aria-label={`Remover ${b.name}`}
-                      className="h-9 pr-2.5 pl-1 opacity-60 hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </button>
+                    {!b.registered && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setInviteFor(b.id)}
+                          aria-label={
+                            b.email
+                              ? `Convite de cadastro de ${b.name}`
+                              : `Informar o e-mail de ${b.name}`
+                          }
+                          title={b.email ? "Convite de cadastro" : "Falta o e-mail"}
+                          className={`h-9 px-1 inline-flex items-center ${b.email ? "opacity-60 hover:opacity-100" : "text-red-600"}`}
+                        >
+                          {b.email ? <Send size={13} /> : <AtSign size={13} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeBroker(b.id)}
+                          aria-label={`Remover ${b.name}`}
+                          className="h-9 pr-2.5 pl-1 opacity-60 hover:opacity-100"
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    )}
                   </span>
                 );
               })}
@@ -317,7 +327,7 @@ function PublicSchedulePage() {
               </h2>
               <p className="text-sm text-muted-foreground">
                 {selected
-                  ? "Escolha o PDV e toque no turno para colocar ou tirar o corretor. As vagas do turno valem para os dois PDVs somados. Salva na hora."
+                  ? "Toque no turno para colocar ou tirar o corretor. Cada turno tem as vagas definidas pelo administrador. Salva na hora."
                   : "Toque em um corretor acima e depois nos dias e turnos dele."}
               </p>
               {modalities.length > 1 && (
@@ -361,19 +371,22 @@ function PublicSchedulePage() {
                     const used = slot.used_total ?? slot.registered + slot.assigned.length;
                     const isIn = !!selected && slot.assigned.includes(selected.id);
                     const full = used >= slot.capacity;
+                    const past = slot.date < today;
                     const loading = busy === slot.id;
                     const names = slot.assigned.map((id) => nameById.get(id)).filter(Boolean);
                     return (
                       <button
                         key={slot.id}
                         onClick={() => toggleSlot(slot)}
-                        disabled={!!busy || (full && !isIn)}
+                        disabled={!!busy || past || (full && !isIn)}
                         className={`w-full text-left p-4 rounded-xl border font-semibold transition-colors shadow-sm ${
-                          isIn
-                            ? "border-green-200 bg-green-50 text-green-700"
-                            : full
-                              ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed"
-                              : "border-border bg-white text-[var(--navy)] hover:border-[var(--gold)]"
+                          past
+                            ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+                            : isIn
+                              ? "border-green-200 bg-green-50 text-green-700"
+                              : full
+                                ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed"
+                                : "border-border bg-white text-[var(--navy)] hover:border-[var(--gold)]"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -401,7 +414,7 @@ function PublicSchedulePage() {
                             {[
                               ...names,
                               ...(slot.registered > 0
-                                ? [`${slot.registered} já cadastrado(s) no app`]
+                                ? [`+ ${slot.registered} de fora da lista`]
                                 : []),
                             ].join(" · ")}
                           </p>
