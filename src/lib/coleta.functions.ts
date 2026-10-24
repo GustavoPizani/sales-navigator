@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { secondaryAdmin } from "@/integrations/supabase/secondary.server";
+import { periodoColetado, type ColetaPeriodo } from "@/lib/coleta/periodo";
 
 // Central de coleta (Hypnobox + dash da LEN). O extrator roda no PC do ADM e
 // coleta; aqui o servidor lê o banco novo e grava a carga. Dados de contato são
@@ -77,6 +78,7 @@ const TABELAS = [
   "al_mkt_diario",
   "al_mkt_anuncios",
   "al_mkt_palavras",
+  "al_entradas",
 ] as const;
 
 async function contar(tabela: string) {
@@ -168,16 +170,9 @@ export const getColetaBase = createServerFn({ method: "POST" })
       }
       const { data: coletas } = await secondaryAdmin
         .from("al_coletas")
-        .select("periodo_inicio, periodo_fim");
-      const ini = (coletas ?? [])
-        .map((c) => c.periodo_inicio as string | null)
-        .filter((x): x is string => !!x)
-        .sort();
-      const fim = (coletas ?? [])
-        .map((c) => c.periodo_fim as string | null)
-        .filter((x): x is string => !!x)
-        .sort();
-      return { ids, de: ini[0] ?? null, ate: fim[fim.length - 1] ?? null };
+        .select("periodo_inicio, periodo_fim, fontes");
+      const p = periodoColetado((coletas ?? []) as ColetaPeriodo[]);
+      return { ids, de: p?.de ?? null, ate: p?.ate ?? null };
     },
   );
 
@@ -223,7 +218,7 @@ const cargaSchema = z.object({
 
 export type ResultadoSincronizacao = Record<
   string,
-  { inseridos?: number; atualizados?: number; substituidos?: number }
+  { inseridos?: number; atualizados?: number; substituidos?: number; aviso?: string }
 >;
 
 /**
@@ -250,7 +245,23 @@ export const sincronizarCarga = createServerFn({ method: "POST" })
         JSON.parse(gunzipSync(Buffer.from(data.gz, "base64")).toString("utf8")),
       );
     } else carga = data;
-    const { data: res, error } = await secondaryAdmin.rpc("al_sincronizar", { p: carga });
+    let { data: res, error } = await secondaryAdmin.rpc("al_sincronizar", { p: carga });
+    // banco ainda sem al_entradas (migration 20261023_entradas.sql não rodada): grava o resto
+    if (error && carga.tabelas.al_entradas && /al_entradas/.test(error.message)) {
+      const { al_entradas: _fora, ...resto } = carga.tabelas;
+      if (!Object.keys(resto).length)
+        throw new Error(
+          "O banco ainda não tem a tabela de entradas: rode supabase/analise-leads/20261023_entradas.sql no SQL Editor do projeto novo.",
+        );
+      ({ data: res, error } = await secondaryAdmin.rpc("al_sincronizar", {
+        p: { ...carga, tabelas: resto },
+      }));
+      if (!error)
+        return {
+          ...((res ?? {}) as ResultadoSincronizacao),
+          al_entradas: { aviso: "não gravadas: falta rodar 20261023_entradas.sql" },
+        };
+    }
     if (error) {
       // a mensagem do banco não traz linhas da carga; só o motivo
       if (

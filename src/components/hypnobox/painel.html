@@ -60,6 +60,39 @@
 .sn-bk .ln b { font-weight: 600; }
 .sn-bk .ln b.bad { color: var(--bad); }
 .sn-bk svg { margin-top: 8px; display: block; }
+/* conversa 1:1 com um corretor */
+.sn-um { display: flex; flex-direction: column; gap: 16px; }
+.sn-um[hidden], #bk-todos[hidden], .sn-brokers[hidden], .sn-tablecard[hidden] { display: none; }
+.sn-um .uhd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sn-um .uhd .nm { font-size: 18px; font-weight: 700; color: var(--navy); }
+.sn-um .uhd .rl { font-size: 13px; color: var(--muted); }
+.sn-um .uhd .acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.sn-btn { height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border); background: #fff; font: inherit; font-size: 13px; font-weight: 600; color: var(--navy); cursor: pointer; }
+.sn-btn:hover { border-color: var(--gold); }
+.sn-btn.pri { background: var(--navy); color: #fff; border-color: var(--navy); }
+.sn-um .sn-kpi .h.melhor { color: #86EFAC; }
+.sn-um .sn-kpi .h.pior { color: #FCA5A5; }
+.sn-um .lst { margin: 0; }
+.sn-um .lst td { cursor: pointer; }
+.sn-um .vazio { font-size: 13px; color: var(--muted); padding: 12px 16px; margin: 0; }
+a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 2px; }
+.sn-um .so-pdf { display: none; }
+/* PDF da conversa 1:1: só o relatório, listas inteiras, links do Hypnobox clicáveis */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body.imprimir-um { background: #fff; }
+  body.imprimir-um .sn-side, body.imprimir-um .sn-head, body.imprimir-um .sn-sub, body.imprimir-um .sn-fbar, body.imprimir-um #kpis,
+  body.imprimir-um .sn-bottom, body.imprimir-um .sn-um .acts, body.imprimir-um .sn-modal { display: none !important; }
+  body.imprimir-um .sn, body.imprimir-um .sn-main, body.imprimir-um .sn-content { display: block; padding: 0; min-height: 0; background: #fff; }
+  body.imprimir-um .sn-panel:not(#p-corretores) { display: none !important; }
+  body.imprimir-um .sn-um .so-pdf { display: block; font-size: 11px; color: #555; }
+  body.imprimir-um .sn-tw { max-height: none; overflow: visible; }
+  body.imprimir-um .sn-kpi, body.imprimir-um .sn-card, body.imprimir-um .sn-tablecard { break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body.imprimir-um .sn-tablecard { break-inside: auto; }
+  body.imprimir-um .sn-table tr { break-inside: avoid; }
+  body.imprimir-um .sn-grid2 { display: block; }
+  body.imprimir-um .sn-grid2 > * { margin-bottom: 12px; }
+}
 .sn-tablecard { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; min-width: 0; }
 .sn-tablebar { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .sn-tablebar h3 { margin: 0; font-size: 15px; font-weight: 700; }
@@ -319,7 +352,7 @@
         <ul>
           <li>
             <button class="it" type="button" data-sec="dashboard" id="nav-dashboard" title="Dashboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg><span class="lab">Dashboard</span><span class="badge" id="badge-dashboard" hidden></span></button>
-            <ul class="subs" data-sec="dashboard"><li><button class="sb" type="button" data-tab="graficos" id="side-graficos"><span class="lab">Gráficos</span><span class="badge" id="sbadge-graficos" hidden></span></button></li><li><button class="sb" type="button" data-tab="corretores" id="side-corretores"><span class="lab">Desempenho por Corretor</span><span class="badge" id="sbadge-corretores" hidden></span></button></li><li><button class="sb" type="button" data-tab="atendimentos" id="side-atendimentos"><span class="lab">Atendimentos</span><span class="badge" id="sbadge-atendimentos" hidden></span></button></li></ul>
+            <ul class="subs" data-sec="dashboard"><li><button class="sb" type="button" data-tab="graficos" id="side-graficos"><span class="lab">Gráficos</span><span class="badge" id="sbadge-graficos" hidden></span></button></li><li><button class="sb" type="button" data-tab="corretores" id="side-corretores"><span class="lab">Desempenho por Corretor</span><span class="badge" id="sbadge-corretores" hidden></span></button></li><li><button class="sb" type="button" data-tab="vendas" id="side-vendas"><span class="lab">Vendas</span></button></li><li><button class="sb" type="button" data-tab="atendimentos" id="side-atendimentos"><span class="lab">Atendimentos</span><span class="badge" id="sbadge-atendimentos" hidden></span></button></li></ul>
           </li>
           <li>
             <button class="it" type="button" data-sec="agenda" id="nav-agenda" title="Agendamentos"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span class="lab">Agendamentos</span><span class="badge" id="badge-agenda" hidden></span></button>
@@ -346,6 +379,7 @@
     <div class="sn-sub" role="tablist" aria-label="Seções">
       <button type="button" role="tab" class="sn-tab" data-tab="graficos" data-sec="dashboard" id="tab-graficos">Gráficos</button>
       <button type="button" role="tab" class="sn-tab" data-tab="corretores" data-sec="dashboard" id="tab-corretores">Desempenho por Corretor</button>
+      <button type="button" role="tab" class="sn-tab" data-tab="vendas" data-sec="dashboard" id="tab-vendas">Vendas</button>
       <button type="button" role="tab" class="sn-tab" data-tab="atendimentos" data-sec="dashboard" id="tab-atendimentos">Atendimentos</button>
       <button type="button" role="tab" class="sn-tab" data-tab="agenda" data-sec="agenda" id="tab-agenda">Agendamentos</button>
       <button type="button" role="tab" class="sn-tab" data-tab="visitas" data-sec="agenda" id="tab-visitas">Relatório de visitas</button>
@@ -418,8 +452,65 @@
   </section>
 
   <section class="sn-panel" id="p-corretores" role="tabpanel" aria-labelledby="tab-corretores" hidden>
-    <p class="sn-note">Clique num corretor para ver os atendimentos dele. "Conv." = visitas ÷ atendimentos. A barra mostra a taxa de contato; as barrinhas de baixo, os leads recebidos por semana.</p>
-    <div class="sn-brokers" id="brokers" data-source="leads_hypnobox mensagens_corretor"></div>
+    <div id="bk-um" class="sn-um" hidden data-source="leads_hypnobox visitas_hypnobox entradas mensagens_corretor"></div>
+    <div id="bk-todos">
+      <div class="sn-pbar">
+        <label class="camp">Ordenar por<select class="sn-sel" id="bk-ord">
+          <option value="atend">Mais atendimentos</option>
+          <option value="nome">Nome (A–Z)</option>
+          <option value="conv">Maior conversão em visita</option>
+          <option value="contato">Maior taxa de contato</option>
+          <option value="parados">Mais leads parados (7+ dias)</option>
+          <option value="semresp">Mais mensagens sem resposta</option>
+          <option value="retornos">Mais retornos no período</option>
+        </select></label>
+        <div class="sn-seg" role="group" aria-label="Visualização">
+          <button type="button" data-bkv="cards" aria-pressed="true">Cartões</button>
+          <button type="button" data-bkv="tabela" aria-pressed="false">Tabela</button>
+        </div>
+      </div>
+      <p class="sn-note">Clique num corretor para abrir a conversa 1:1: os números dele ao lado da média da equipe, os leads parados para cobrar, os retornos e as visitas. "Conv." = visitas ÷ atendimentos. A barra mostra a taxa de contato; as barrinhas de baixo, os leads recebidos por semana.</p>
+      <div class="sn-brokers" id="brokers" data-source="leads_hypnobox mensagens_corretor"></div>
+      <div class="sn-tablecard" id="bk-tabela" hidden>
+        <div class="sn-tw">
+          <table class="sn-table" id="tb-bk" data-source="leads_hypnobox mensagens_corretor entradas">
+            <thead><tr>
+              <th data-k="nome">Corretor</th><th data-k="ger">Equipe</th><th class="num" data-k="atend">Atend.</th><th class="num" data-k="em">Em contato</th>
+              <th class="num" data-k="vis">Visitas</th><th class="num" data-k="conv">Conv.</th><th class="num" data-k="contato">Taxa de contato</th>
+              <th class="num" data-k="parados">Parados 7+ dias</th><th class="num" data-k="semresp">Msg. sem resposta</th><th class="num" data-k="retornos">Retornos</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sn-panel" id="p-vendas" role="tabpanel" aria-labelledby="tab-vendas" hidden>
+    <p class="sn-note" id="note-vendas"></p>
+    <div class="sn-kpis" id="vd-kpis" data-source="leads_hypnobox"></div>
+    <div class="sn-card" data-source="leads_hypnobox"><h3 id="g-vd-mes">Vendas por mês</h3><p class="sub" id="vd-mes-sub"></p><div class="sn-chart" id="ch-vd-mes"></div></div>
+    <div class="sn-tablecard">
+      <div class="sn-tablebar"><h3>Por corretor</h3><span class="sn-note">Clique num corretor para abrir a conversa 1:1</span></div>
+      <div class="sn-tw">
+        <table class="sn-table" id="tb-vd-cor" data-source="leads_hypnobox visitas_hypnobox">
+          <thead><tr>
+            <th data-k="nome">Corretor</th><th data-k="ger">Equipe</th><th class="num" data-k="antes">Vendas 12 meses antes</th><th class="num" data-k="mAntes">Média/mês antes</th>
+            <th class="num" data-k="depois">Vendas desde o início</th><th class="num" data-k="mDepois">Média/mês desde</th><th class="num" data-k="prop">Propostas abertas</th><th class="num" data-k="visDepois">Visitas desde o início</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sn-tablecard">
+      <div class="sn-tablebar"><h3 id="vd-lista-t">Vendas desde o início</h3></div>
+      <div class="sn-tw">
+        <table class="sn-table" id="tb-vd-lista" data-source="leads_hypnobox vendas_data">
+          <thead><tr><th>Data usada</th><th>Data</th><th>Cliente</th><th>Corretor</th><th>Produto</th><th>Situação</th><th>Data real da venda</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
   <section class="sn-panel" id="p-visitas" role="tabpanel" aria-labelledby="tab-visitas" hidden>
@@ -430,9 +521,12 @@
       <button class="sn-kpi click" type="button" data-vk="Agendada"><div class="v" id="v-ag">—</div><div class="l">Agendadas</div><div class="h">ver detalhes</div></button>
       <button class="sn-kpi click" type="button" data-vk="Não realizada"><div class="v" id="v-nr">—</div><div class="l">Não realizadas</div><div class="h">ver detalhes</div></button>
       <div class="sn-kpi"><div class="v" id="v-cli">—</div><div class="l">Clientes que visitaram</div></div>
+      <div class="sn-kpi" data-source="visitas_hypnobox leads_hypnobox entradas"><div class="v" id="v-mes">—</div><div class="l">Visitas de leads do período</div><div class="h" id="v-mes-h"></div></div>
+      <div class="sn-kpi" data-source="visitas_hypnobox leads_hypnobox entradas"><div class="v" id="v-cart">—</div><div class="l">Visitas da carteira</div><div class="h">leads que entraram antes</div></div>
       <button class="sn-kpi click" type="button" data-vk="pendente"><div class="v" id="v-pend">—</div><div class="l">Agendadas já vencidas</div><div class="h">ver detalhes</div></button>
     </div>
     <div class="sn-grid2">
+      <div class="sn-card" data-source="visitas_hypnobox leads_hypnobox entradas"><h3 id="g-v-coorte">Visitas realizadas: leads do período x carteira</h3><p class="sub">Lead do período = entrou (cadastro ou retorno) no período, antes da visita; carteira = entrou antes</p><div class="sn-chart" id="ch-v-coorte"></div></div>
       <div class="sn-card" data-source="visitas_hypnobox"><h3 id="g-v-corretor">Visitas por corretor</h3><p class="sub">Realizadas, agendadas e não realizadas</p><div class="sn-chart" id="ch-v-corretor"></div></div>
       <div class="sn-card" data-source="visitas_hypnobox"><h3 id="g-v-origem">De onde vieram os clientes que visitaram</h3><p class="sub">Origem do cliente no Hypnobox (visitas realizadas)</p><div class="sn-chart" id="ch-v-origem"></div></div>
     </div>
@@ -618,7 +712,7 @@
     <p class="sn-note" id="note-cmp"></p>
     <div class="sn-kpis" id="cmp-kpis" data-source="funil_produto leads_hypnobox"></div>
     <div class="sn-grid2">
-      <div class="sn-card"><h3 id="g-cmp-prod">Leads por empreendimento</h3><p class="sub">Leads pagos no dash da LEN x leads no Hypnobox</p><div class="sn-chart" id="ch-cmp-prod" data-source="funil_produto leads_hypnobox"></div></div>
+      <div class="sn-card"><h3 id="g-cmp-prod">Leads por empreendimento</h3><p class="sub">Leads pagos no dash da LEN x entradas no Hypnobox (novos + retornos)</p><div class="sn-chart" id="ch-cmp-prod" data-source="funil_produto entradas"></div></div>
       <div class="sn-card"><h3 id="g-cmp-veic">Leads por veículo</h3><p class="sub">Card "Meta de Lead por Origem" da LEN x canal no Hypnobox</p><div class="sn-chart" id="ch-cmp-veic" data-source="veiculo leads_hypnobox"></div></div>
     </div>
     <div class="sn-tablecard">
@@ -626,10 +720,21 @@
       <div class="sn-tw">
         <table class="sn-table" id="tb-cmp-prod">
           <thead><tr>
-            <th>Empreendimento</th><th class="num">LEN total</th><th class="num">LEN pago</th><th class="num">Hypnobox</th>
+            <th>Empreendimento</th><th class="num">LEN pago</th><th class="num">Hypnobox</th><th class="num">Novos</th><th class="num">Retornos</th>
             <th class="num">Diferença</th><th class="num">Hypnobox ÷ LEN pago</th>
+            <th class="num">Investimento</th><th class="num">CPL real</th><th class="num">Visitas realizadas</th><th class="num">Custo por visita</th>
             <th class="num" data-mes="1" data-pre="LEN ">LEN set</th><th class="num" data-mes="1" data-pre="Hypnobox ">Hypnobox set</th><th class="num" data-mes="2" data-pre="LEN ">LEN out</th><th class="num" data-mes="2" data-pre="Hypnobox ">Hypnobox out</th>
           </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sn-tablecard" data-source="mkt_campanhas entradas">
+      <div class="sn-tablebar"><h3>Investimento sem nenhuma entrada no CRM</h3><span class="sn-note" id="cmp-sem-lead-cnt"></span></div>
+      <p class="sn-note" id="cmp-sem-lead-vazio" style="padding:12px 16px" hidden>Todo empreendimento e canal com investimento no período teve ao menos uma entrada no Hypnobox.</p>
+      <div class="sn-tw">
+        <table class="sn-table" id="tb-cmp-sem">
+          <thead><tr><th>Empreendimento</th><th>Canal</th><th class="num">Campanhas</th><th class="num">Investimento</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -759,7 +864,7 @@
   function textosDoPeriodo() {
     const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
     set('note-midia', 'Visão da agência (dash da LEN, ' + PER_TXT + '). Use as datas no topo para ver outro período. Incluem orgânico e acesso direto, por isso o total é maior que o das campanhas no Hypnobox. Status, fontes e descarte mostram os dois últimos meses do período (' + ROT1 + ' e ' + ROT2 + ').');
-    set('note-cmp', 'Compara o que a agência reporta (dash da LEN, ' + PER_TXT + ') com os leads de campanha LEN cadastrados no Hypnobox no mesmo período; orgânicos e carteira do corretor ficam fora. O total da LEN inclui orgânico e acesso direto; "LEN pago" tira o orgânico para a comparação ficar na mesma base. O status compara só ' + ROT1 + ' e ' + ROT2 + '. Só as datas valem aqui.');
+    set('note-cmp', 'Compara o que a agência reporta (dash da LEN, ' + PER_TXT + ') com as entradas de leads de campanha LEN no Hypnobox no mesmo período, como a LEN conta: novos e retornos, pela data em que o lead entrou (Relatório de contatos). Orgânico, carteira e outras origens ficam fora. O total da LEN inclui orgânico e acesso direto; "LEN pago" tira o orgânico para a comparação ficar na mesma base. CPL real e custo por visita usam o investimento do dash da LEN com as entradas e as visitas realizadas do Hypnobox. O status compara só ' + ROT1 + ' e ' + ROT2 + '. Só as datas valem aqui.');
     set('note-vis', 'Módulo de Visitas do Hypnobox, coleta de ' + COLETA_TXT + ' (inclui as já marcadas para depois), com o ID do cliente e a origem dele. Filtros de período, gerente, corretor e produto valem aqui; o período usa a data da visita.');
     set('note-ag', 'Agendamentos do módulo de Visitas do Hypnobox (coleta de ' + COLETA_TXT + ').');
     document.querySelectorAll('[data-mes]').forEach(th => { th.textContent = (th.dataset.pre || '') + curto(th.dataset.mes === '1' ? ROT1 : ROT2); });
@@ -819,11 +924,23 @@
     { k: 'Em tratativa', label: 'Em contato', color: '#0891B2' },
     { k: 'Visita', label: 'Visita', color: '#4F46E5' },
     { k: 'Proposta', label: 'Proposta', color: '#D97706' },
-    { k: 'Não interessado', label: 'Não interessado', color: '#DC2626' }
+    { k: 'Venda', label: 'Venda', color: '#16A34A' },
+    { k: 'Não interessado', label: 'Descartado', color: '#DC2626' }
   ];
   const ET = Object.fromEntries(ETAPAS.map(e => [e.k, e]));
+  // etapa pelo momento do Hypnobox: proposta e venda em qualquer submomento
+  // (a regra antiga só via "Fez proposta" e deixava as vendas em "Em contato")
+  const etapaPeloMomento = rows => { if (rows.__etapas) return; rows.__etapas = true;
+    // "Não cliente" é cliente descartado (menos venda, que é venda de fato)
+    rows.forEach(r => { if (/^vend/i.test(esc(r.momento))) r.etapa = 'Venda'; else if (r.status_cliente === 'Não cliente') r.etapa = 'Não interessado'; else if (/^propost/i.test(esc(r.momento))) r.etapa = 'Proposta';
+      // dias parados contados até hoje em todo o painel (o banco guarda os do dia da coleta)
+      r.dias_sem_atualizar = String(diasSemAtualizar(r)); }); };
   const isSem = r => r.etapa === 'Tentando contato' || r.etapa === 'Sem submomento';
-  const isVis = r => r.etapa === 'Visita' || r.etapa === 'Proposta';
+  const isVis = r => r.etapa === 'Visita' || r.etapa === 'Proposta' || r.etapa === 'Venda';
+  // dias sem atualizar contados até hoje (o campo do banco é do dia da coleta)
+  const diasSemAtualizar = r => r.atualizacao ? Math.max(0, Math.round((Date.parse(HOJE + 'T00:00:00Z') - Date.parse(r.atualizacao + 'T00:00:00Z')) / 864e5)) : N(r.dias_sem_atualizar);
+  // início na supervisão do online: base das comparações de vendas
+  const INICIO = '2026-09-18';
   // venda = cliente no momento de venda do Hypnobox (ainda não há vendas lançadas nesses leads)
   const isVenda = r => /^vend/i.test(esc(r.momento));
   const COPPER = '#B28069', GREY = '#D4D4D4', NAVY = '#2D2D2D';
@@ -839,7 +956,7 @@
   let filled = false, TAB = 'graficos', page = 1;
   Object.entries(fields).forEach(([k, el]) => el.addEventListener('change', () => { F[k] = el.value; if (k === 'ger') { F.cor = ''; fields.cor.value = ''; } page = 1; render(); }));
   $('f-limpar').addEventListener('click', () => { Object.keys(F).forEach(k => { F[k] = ''; fields[k].value = ''; }); page = 1; render(); });
-  const SEC_OF = { graficos: 'dashboard', corretores: 'dashboard', atendimentos: 'dashboard', agenda: 'agenda', visitas: 'agenda', campanhas: 'campanhas', midia: 'campanhas', pago: 'campanhas', comparacao: 'campanhas' };
+  const SEC_OF = { graficos: 'dashboard', corretores: 'dashboard', vendas: 'dashboard', atendimentos: 'dashboard', agenda: 'agenda', visitas: 'agenda', campanhas: 'campanhas', midia: 'campanhas', pago: 'campanhas', comparacao: 'campanhas' };
   const SEC_TITLE = { dashboard: 'Dashboard', agenda: 'Agendamentos', campanhas: 'Campanhas' };
   const SEC_FIRST = { dashboard: 'graficos', agenda: 'agenda', campanhas: 'campanhas' };
   function setTab(t) {
@@ -855,6 +972,8 @@
     const lenTab = t === 'midia' || t === 'pago' || t === 'comparacao';
     $('fbar').hidden = false;
     ['ger', 'cor', 'prod', 'can'].forEach(k => { const l = fields[k].closest('label'); if (l) l.hidden = lenTab; });
+    // vendas compara janelas fixas (12 meses antes do início x desde o início): as datas não valem
+    ['de', 'ate'].forEach(k => { const l = fields[k].closest('label'); if (l) l.hidden = t === 'vendas'; });
     dash.setLink('tab-' + t);
     render();
   }
@@ -1042,18 +1161,230 @@
       { fmt: v => int(v), empty: 'Nenhum lead sem contato.', tip: r => [[r.color, int(r.v) + ' leads · ' + pct(r.v / Math.max(1, sem.length))]] });
   }
 
-  function drawCorretores(R, msgs) {
-    const box = $('brokers'); box.innerHTML = '';
+  // ===================== Corretores: ordenação, tabela e conversa 1:1 =====================
+  let BK_ORD = 'atend', BK_DIR = -1, BK_VIEW = 'cards', BK_UM = null;
+  // ordem inicial de cada coluna: texto de A a Z, números do maior para o menor
+  const BK_TEXTO = { nome: true, ger: true };
+  const bkOrdem = k => { if (BK_ORD === k) BK_DIR = -BK_DIR; else { BK_ORD = k; BK_DIR = BK_TEXTO[k] ? 1 : -1; } if ([...$('bk-ord').options].some(o => o.value === k)) $('bk-ord').value = k; render(); };
+  $('bk-ord').addEventListener('change', e => { BK_ORD = e.target.value; BK_DIR = BK_TEXTO[BK_ORD] ? 1 : -1; render(); });
+  document.querySelectorAll('#tb-bk th[data-k]').forEach(th => th.addEventListener('click', () => bkOrdem(th.dataset.k)));
+  document.querySelectorAll('[data-bkv]').forEach(b => b.addEventListener('click', () => {
+    BK_VIEW = b.dataset.bkv; document.querySelectorAll('[data-bkv]').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false')); render(); }));
+  const abrirUm = nome => { BK_UM = nome; render(); const u = $('bk-um'); if (u.scrollIntoView) u.scrollIntoView({ block: 'start' }); };
+
+  // entradas de leads (novos e retornos) com os filtros da tela; o período usa a data da entrada
+  function entradasDoPainel(R) {
+    const E = dash.data('entradas'); if (E.status !== 'ok') return [];
+    const daEquipe = F.ger ? new Set(R.map(r => r.corretor)) : null;
+    return E.data.filter(r => (!F.de || r.data >= F.de) && (!F.ate || r.data <= F.ate) && (!daEquipe || daEquipe.has(r.corretor))
+      && (!F.cor || r.corretor === F.cor) && (!F.prod || r.produto === F.prod) && (!F.can || r.canal === F.can));
+  }
+  function statsCorretores(R, msgs, ent) {
     const M = new Map((msgs || []).map(m => [m.corretor, m]));
-    const groups = d3.groups(R, r => r.corretor).sort((a, b) => b[1].length - a[1].length);
-    if (!groups.length) { const p = document.createElement('p'); p.className = 'sn-empty'; p.textContent = 'Nenhum corretor encontrado no período.'; box.appendChild(p); return; }
+    const retornos = d3.rollup(ent.filter(e => e.tipo === 'retorno'), v => v.length, e => e.corretor);
+    return d3.groups(R, r => r.corretor).map(([nome, v]) => {
+      const n = v.length, c = f => v.filter(f).length, cont = n - c(isSem), vis = c(isVis);
+      const ger = d3.greatest(d3.rollups(v, x => x.length, r => r.gerente), x => x[1])[0] || '';
+      const m = M.get(nome);
+      return { nome, ger, v, atend: n, cont, em: c(r => r.etapa === 'Em tratativa'), vis, conv: share(vis, n), contato: share(cont, n),
+        parados: c(r => isSem(r) && N(r.dias_sem_atualizar) >= 7), semresp: m ? N(m.lidas_sem_resposta) + N(m.direcionadas) + N(m.nao_lidas) : 0,
+        retornos: retornos.get(nome) || 0 };
+    });
+  }
+  const ordenarBk = S => S.sort((a, b) => { const x = a[BK_ORD], y = b[BK_ORD];
+    const d = typeof x === 'string' ? x.localeCompare(y, 'pt-BR') : x - y; return d ? d * BK_DIR : a.nome.localeCompare(b.nome, 'pt-BR'); });
+
+  function drawBkTabela(S) {
+    document.querySelectorAll('#tb-bk th[data-k]').forEach(th => th.setAttribute('aria-sort', th.dataset.k === BK_ORD ? (BK_DIR > 0 ? 'ascending' : 'descending') : 'none'));
+    const trs = fillRows(document.querySelector('#tb-bk tbody'), S.map(s => [[s.nome, 'strong'], [s.ger], [int(s.atend), 'num'], [int(s.em), 'num'], [int(s.vis), 'num'],
+      [pct1(s.conv), 'num'], [pct(s.contato), 'num' + (s.contato < 0.4 ? ' bad' : '')], [int(s.parados), 'num' + (s.parados >= 10 ? ' bad' : '')],
+      [int(s.semresp), 'num' + (s.semresp >= 5 ? ' bad' : '')], [int(s.retornos), 'num']]));
+    trs.forEach((tr, i) => { tr.classList.add('clk'); actionable(tr); tr.title = 'Abrir a conversa 1:1 com ' + S[i].nome; tr.addEventListener('click', () => abrirUm(S[i].nome)); });
+  }
+
+  // Conversa 1:1: os números do corretor ao lado da equipe (os mesmos filtros da tela) e as listas para a conversa.
+  function drawUm(nome, R, S, ent) {
+    const box = $('bk-um'); box.innerHTML = '';
+    const s = S.find(x => x.nome === nome);
+    const hd = el('div', 'uhd'); const av = el('div', 'sn-av', initials(nome)); av.style.background = avColor(nome); hd.appendChild(av);
+    const tx = el('div'); tx.appendChild(el('div', 'nm', nome));
+    tx.appendChild(el('div', 'rl', (s && s.ger ? 'Equipe ' + s.ger + ' · ' : '') + 'cadastros de ' + brDate(F.de || fields.de.min) + ' a ' + brDate(F.ate || fields.de.max)));
+    hd.appendChild(tx);
+    const acts = el('div', 'acts');
+    const voltar = el('button', 'sn-btn', '← Todos os corretores'); voltar.type = 'button'; voltar.addEventListener('click', () => { BK_UM = null; render(); });
+    const ver = el('button', 'sn-btn', 'Ver os atendimentos dele'); ver.type = 'button';
+    ver.addEventListener('click', () => { BK_UM = null; F.cor = nome; fields.cor.value = nome; page = 1; setTab('atendimentos'); });
+    // PDF pelo "Salvar como PDF" do navegador: só o relatório, com os links do Hypnobox clicáveis
+    const pdf = el('button', 'sn-btn pri', 'Exportar PDF'); pdf.type = 'button';
+    pdf.addEventListener('click', () => {
+      const titulo = document.title; document.title = '1-1 ' + nome + ' ' + HOJE;
+      document.body.classList.add('imprimir-um');
+      const fim = () => { document.body.classList.remove('imprimir-um'); document.title = titulo; window.removeEventListener('afterprint', fim); };
+      window.addEventListener('afterprint', fim); window.print(); setTimeout(fim, 1000);
+    });
+    acts.appendChild(voltar); acts.appendChild(ver); acts.appendChild(pdf); hd.appendChild(acts); box.appendChild(hd);
+    box.appendChild(el('p', 'so-pdf', 'Conversa 1:1 · gerado em ' + brD(HOJE) + ' · números da equipe com os mesmos filtros. Clique no número do cliente para abrir a ficha no Hypnobox.'));
+    if (!s) { box.appendChild(el('p', 'sn-empty', 'Nenhum atendimento deste corretor com os filtros atuais.')); return; }
+
+    // equipe = todos os corretores na tela, com os mesmos filtros
+    const tot = k => S.reduce((a, x) => a + x[k], 0), nb = S.length;
+    const eq = { atend: tot('atend') / nb, contato: share(tot('cont'), tot('atend')), conv: share(tot('vis'), tot('atend')), parados: tot('parados') / nb, semresp: tot('semresp') / nb, retornos: tot('retornos') / nb };
+    const kp = el('div', 'sn-kpis'); box.appendChild(kp);
+    // melhor/pior também vai escrito (não só na cor)
+    const tile = (valor, rotulo, ref, melhor) => { const d = el('div', 'sn-kpi'); d.appendChild(el('div', 'v', valor)); d.appendChild(el('div', 'l', rotulo));
+      d.appendChild(el('div', 'h' + (melhor == null ? '' : melhor ? ' melhor' : ' pior'), ref + (melhor == null ? '' : melhor ? ' · melhor' : ' · abaixo'))); kp.appendChild(d); };
+    tile(int(s.atend), 'Atendimentos', 'média ' + dec(eq.atend), null);
+    tile(pct(s.contato), 'Taxa de contato', 'equipe ' + pct(eq.contato), s.contato >= eq.contato);
+    tile(int(s.vis), 'Visitas', 'conversão ' + pct1(s.conv), null);
+    tile(pct1(s.conv), 'Conversão em visita', 'equipe ' + pct1(eq.conv), s.conv >= eq.conv);
+    tile(int(s.parados), 'Parados 7+ dias', 'média ' + dec(eq.parados), s.parados <= eq.parados);
+    tile(int(s.semresp), 'Msg. sem resposta', 'média ' + dec(eq.semresp), s.semresp <= eq.semresp);
+    tile(int(s.retornos), 'Retornos', 'média ' + dec(eq.retornos), null);
+    // vendas: toda a carteira do corretor (não só o período da tela)
+    const L = dash.data('leads_hypnobox'), vdc = vendasDe(L.status === 'ok' ? L.data.filter(r => r.corretor === nome) : []);
+    const vmA = vdc.antes.length / 12, vmD = porMes(vdc.depois.length, vdc.diasDepois);
+    tile(int(vdc.depois.length), 'Vendas desde ' + brDate(INICIO), dec(vmD) + '/mês · antes ' + dec(vmA) + '/mês', vdc.depois.length || vdc.antes.length ? vmD >= vmA : null);
+
+    const g1 = el('div', 'sn-grid2'); box.appendChild(g1);
+    const c1 = el('div', 'sn-card'); c1.appendChild(el('h3', null, 'Onde estão os atendimentos')); c1.appendChild(el('p', 'sub', 'Participação de cada etapa: ' + nome + ' x equipe'));
+    const ch = el('div', 'sn-chart'); c1.appendChild(ch); g1.appendChild(c1);
+
+    const lista = (titulo, cab, linhas, vazio, abrir) => {
+      const tc = el('div', 'sn-tablecard'); const bar = el('div', 'sn-tablebar'); bar.appendChild(el('h3', null, titulo + (linhas.length ? ' (' + int(linhas.length) + ')' : ''))); tc.appendChild(bar);
+      if (!linhas.length) { tc.appendChild(el('p', 'vazio', vazio)); return tc; }
+      const tw = el('div', 'sn-tw'); const t = el('table', 'sn-table lst'); const th = el('thead'); const tr = el('tr');
+      cab.forEach(([c, cl]) => tr.appendChild(el('th', cl || null, c))); th.appendChild(tr); t.appendChild(th); const tb = el('tbody'); t.appendChild(tb); tw.appendChild(t); tc.appendChild(tw);
+      fillRows(tb, linhas.map(l => l.cells)).forEach((row, i) => {
+        if (linhas[i].id) linkHypno(row.children[1], linhas[i].id, linhas[i].cells[1][0]);
+        if (!abrir(linhas[i], true)) return; row.classList.add('clk'); actionable(row); row.addEventListener('click', () => abrir(linhas[i])); });
+      return tc;
+    };
+    // leads ativos do período sem nenhuma atualização há 7 dias ou mais (contados até hoje)
+    const desatualizados = s.v.filter(r => r.etapa !== 'Não interessado' && r.etapa !== 'Venda' && diasSemAtualizar(r) >= 7)
+      .sort((a, b) => diasSemAtualizar(b) - diasSemAtualizar(a));
+    g1.appendChild(lista('Sem atualização há 7+ dias', [['Atualizado'], ['Cliente'], ['Etapa'], ['Produto'], ['Parado', 'num']],
+      desatualizados.map(r => ({ r, id: r.id, cells: [[brDate(r.atualizacao)], ['Cliente ' + r.id, 'strong'], [(ET[r.etapa] || { label: r.etapa }).label], [prodName(r.produto)], [int(diasSemAtualizar(r)) + ' dias', 'num bad']] })),
+      'Todos os leads ativos foram atualizados nos últimos 7 dias.', (x, so) => so || openLead(x.r)));
+    // o gráfico só depois que a grade tem as duas colunas (ele mede a largura da caixa)
+    hbar(ch, ETAPAS.map(e => ({ name: e.label, l: share(s.v.filter(r => r.etapa === e.k).length, s.atend), h: share(R.filter(r => r.etapa === e.k).length, R.length) })),
+      { fmt: x => pct(x), series: [{ key: 'l', name: nome, color: COPPER }, { key: 'h', name: 'Equipe', color: NAVY }] });
+
+    const g2 = el('div', 'sn-grid2'); box.appendChild(g2);
+    const V = visData().filter(v => v.corretor === nome && v.status === 'Agendada');
+    const semBaixa = V.filter(v => v.data < HOJE).sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+    const proximas = V.filter(v => v.data >= HOJE).sort((a, b) => (a.data + a.hora).localeCompare(b.data + b.hora));
+    const linhaVis = (v, sit, cl) => ({ v, id: v.id_cliente, cells: [[brDate(v.data) + ' ' + esc(v.hora)], ['Cliente ' + v.id_cliente, 'strong'], [prodName(v.produto)], [sit, cl]] });
+    g2.appendChild(lista('Visitas: sem baixa e próximas', [['Data'], ['Cliente'], ['Produto'], ['Situação']],
+      [...semBaixa.map(v => linhaVis(v, 'Sem baixa', 'bad')), ...proximas.map(v => linhaVis(v, 'Agendada', 'ok'))],
+      'Nenhuma visita agendada.', (x, so) => !x.v.id_cliente ? false : so || openLeadById(x.v.id_cliente)));
+    const rets = ent.filter(e => e.corretor === nome && e.tipo === 'retorno').sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+    g2.appendChild(lista('Clientes que voltaram (retornos)', [['Entrada'], ['Cliente'], ['Produto'], ['Canal']],
+      rets.map(e => ({ e, id: e.id_cliente || null, cells: [[brDate(e.data) + ' ' + esc(e.hora)], [e.id_cliente ? 'Cliente ' + e.id_cliente : 'Fora da lista de Clientes', 'strong'], [prodName(e.produto)], [e.canal]] })),
+      ent.length ? 'Nenhum retorno no período.' : 'Sem as entradas de leads ainda (rode a coleta com o Relatório de contatos).', (x, so) => !x.e.id_cliente ? false : so || openLeadById(x.e.id_cliente)));
+  }
+
+  // número do cliente como link para a ficha no Hypnobox (funciona na tela e no PDF)
+  function linkHypno(td, id, texto) {
+    td.textContent = '';
+    const a = el('a', 'hb', texto || 'Cliente ' + id); a.href = timelineUrl(id); a.target = '_blank'; a.rel = 'noopener noreferrer';
+    a.title = 'Abrir o cliente ' + id + ' no Hypnobox'; a.addEventListener('click', e => e.stopPropagation()); td.appendChild(a);
+  }
+
+  // ===================== Vendas: 12 meses antes do início x desde o início =====================
+  // venda = cliente no momento "Venda" do Hypnobox; sem a data da venda, vale a última atualização
+  let vdSortK = 'antes', vdSortDir = -1;
+  document.querySelectorAll('#tb-vd-cor th[data-k]').forEach(th => th.addEventListener('click', () => {
+    const k = th.dataset.k; if (vdSortK === k) vdSortDir = -vdSortDir; else { vdSortK = k; vdSortDir = k === 'nome' || k === 'ger' ? 1 : -1; } render(); }));
+  const somaDias = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+  // data da venda: a confirmada pelo ADM (vendas_data) ou, sem ela, a última atualização do cliente
+  const datasVenda = () => { const D = dash.data('vendas_data'); return new Map(D.status === 'ok' ? D.data.map(x => [x.id_cliente, x.data_venda]) : []); };
+  const vendasDe = rows => {
+    const antesDe = somaDias(INICIO, -365), antesAte = somaDias(INICIO, -1), dv = datasVenda();
+    const v = rows.filter(r => r.etapa === 'Venda').map(r => ({ r, data: dv.get(r.id) || r.atualizacao, confirmada: dv.has(r.id) })).filter(x => x.data);
+    return { antesDe, antesAte, todas: v, antes: v.filter(x => x.data >= antesDe && x.data <= antesAte), depois: v.filter(x => x.data >= INICIO),
+      diasDepois: Math.max(1, diasEntre(INICIO, HOJE)) };
+  };
+  const porMes = (n, dias) => n / (dias / (365 / 12));
+  const variacao = (d, a) => a ? (d >= a ? '+' : '') + pct((d - a) / a) : '–';
+  function drawVendas(all) {
+    const base = all.filter(r => (!F.ger || r.gerente === F.ger) && (!F.cor || r.corretor === F.cor) && (!F.prod || r.produto === F.prod) && (!F.can || r.canal === F.can));
+    const vd = vendasDe(base), mA = vd.antes.length / 12, mD = porMes(vd.depois.length, vd.diasDepois);
+    const conf = vd.todas.filter(x => x.confirmada).length;
+    $('note-vendas').textContent = 'Vendas = clientes no momento "Venda" do Hypnobox (unidade escriturada ou contrato assinado). O Hypnobox não guarda a data da venda: vale a data que você confirmar na lista "Todas as vendas" (' + int(conf) + ' de ' + int(vd.todas.length) + ' confirmadas); sem ela, a última atualização do cliente, que muda se o cliente for mexido depois. Compara os 12 meses antes do início na supervisão (' + brD(vd.antesDe) + ' a ' + brD(vd.antesAte) + ') com o período desde ' + brD(INICIO) + ' (' + vd.diasDepois + ' dias); a média por mês deixa os dois comparáveis. Gerente, corretor, produto e canal valem aqui; as datas não.';
+    const kp = $('vd-kpis'); kp.innerHTML = '';
+    kpiTile(kp, int(vd.antes.length), '12 meses antes', 'média ' + dec(mA) + ' por mês');
+    kpiTile(kp, int(vd.depois.length), 'Desde ' + brDate(INICIO), 'média ' + dec(mD) + ' por mês');
+    kpiTile(kp, variacao(mD, mA), 'Variação da média mensal', 'desde o início x 12 meses antes');
+    kpiTile(kp, int(base.filter(r => r.etapa === 'Proposta').length), 'Propostas abertas', 'clientes no momento Proposta');
+
+    // por mês, dos 12 meses antes até hoje
+    const meses = []; for (let m = vd.antesDe.slice(0, 7); m <= HOJE.slice(0, 7); ) { meses.push(m); const [y, mm] = m.split('-').map(Number); m = mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0'); }
+    $('vd-mes-sub').textContent = 'Antes e depois de ' + brD(INICIO) + ', pela data da venda (confirmada ou aproximada)';
+    vstack($('ch-vd-mes'), meses.map(m => ({ name: cap(MESES_NOME[+m.slice(5) - 1]).slice(0, 3) + '/' + m.slice(2, 4),
+      sim: vd.depois.filter(x => x.data.slice(0, 7) === m).length, nao: vd.antes.filter(x => x.data.slice(0, 7) === m).length })),
+      'Desde o início', '12 meses antes', 'Nenhuma venda no período.');
+
+    // por corretor
+    const V = visData();
+    const grupos = d3.groups(base, r => r.corretor).map(([nome, v]) => { const x = vendasDe(v);
+      return { nome, ger: d3.greatest(d3.rollups(v, q => q.length, r => r.gerente), q => q[1])[0] || '', antes: x.antes.length, mAntes: x.antes.length / 12,
+        depois: x.depois.length, mDepois: porMes(x.depois.length, x.diasDepois), prop: v.filter(r => r.etapa === 'Proposta').length,
+        visDepois: V.filter(q => q.corretor === nome && q.status === 'Realizada' && q.data >= INICIO).length }; })
+      .filter(g => g.antes || g.depois || g.prop)
+      .sort((a, b) => { const x = a[vdSortK], y = b[vdSortK]; const d = typeof x === 'string' ? x.localeCompare(y, 'pt-BR') : x - y; return d ? d * vdSortDir : a.nome.localeCompare(b.nome, 'pt-BR'); });
+    document.querySelectorAll('#tb-vd-cor th[data-k]').forEach(th => th.setAttribute('aria-sort', th.dataset.k === vdSortK ? (vdSortDir > 0 ? 'ascending' : 'descending') : 'none'));
+    fillRows(document.querySelector('#tb-vd-cor tbody'), grupos.map(g => [[g.nome, 'strong'], [g.ger], [int(g.antes), 'num'], [dec(g.mAntes), 'num'],
+      [int(g.depois), 'num' + (g.mDepois > g.mAntes ? ' ok' : '')], [dec(g.mDepois), 'num' + (g.mDepois > g.mAntes ? ' ok' : g.mAntes && g.mDepois < g.mAntes ? ' bad' : '')],
+      [int(g.prop), 'num'], [int(g.visDepois), 'num']]))
+      .forEach((tr, i) => { tr.classList.add('clk'); actionable(tr); tr.title = 'Abrir a conversa 1:1 com ' + grupos[i].nome; tr.addEventListener('click', () => { BK_UM = grupos[i].nome; setTab('corretores'); }); });
+
+    // todas as vendas, para confirmar a data venda a venda (as sem data confirmada primeiro)
+    const lista = [...vd.todas].sort((a, b) => (a.confirmada - b.confirmada) || b.data.localeCompare(a.data));
+    $('vd-lista-t').textContent = 'Todas as vendas: confirme a data real (' + int(conf) + ' de ' + int(lista.length) + ' confirmadas)';
+    const tb = document.querySelector('#tb-vd-lista tbody'); tb.innerHTML = '';
+    lista.forEach(x => {
+      const r = x.r, tr = el('tr');
+      const td = (txt, cls) => { const c = el('td', cls || null, txt); tr.appendChild(c); return c; };
+      td(brDate(x.data) + '/' + x.data.slice(2, 4), x.data >= INICIO ? 'strong' : null);
+      td(x.confirmada ? 'Confirmada' : 'Aproximada', x.confirmada ? 'ok' : 'bad');
+      linkHypno(td(''), r.id); td(r.corretor); td(prodName(r.produto)); td(r.submomento);
+      const cell = td('');
+      const inp = el('input'); inp.type = 'date'; inp.value = x.confirmada ? x.data : ''; inp.max = HOJE; inp.className = 'sn-search'; inp.style.width = '10.5rem'; inp.setAttribute('aria-label', 'Data real da venda do cliente ' + r.id);
+      const ok = el('button', 'sn-btn', 'Salvar'); ok.type = 'button'; ok.style.marginLeft = '6px';
+      const st = el('span', 'sn-note'); st.style.marginLeft = '6px';
+      ok.addEventListener('click', async () => {
+        if (!inp.value) { st.textContent = 'Escolha a data'; return; }
+        if (!dash.salvarDataVenda) { st.textContent = 'Indisponível aqui'; return; }
+        ok.disabled = true; st.textContent = 'Salvando…';
+        try { await dash.salvarDataVenda(r.id, inp.value); } catch (e) { ok.disabled = false; st.textContent = e && e.message ? e.message : 'Não foi possível gravar'; }
+      });
+      cell.appendChild(inp); cell.appendChild(ok);
+      if (x.confirmada) {
+        const lp = el('button', 'sn-btn', 'Limpar'); lp.type = 'button'; lp.style.marginLeft = '6px'; lp.title = 'Apagar a data confirmada (volta a valer a aproximada)';
+        lp.addEventListener('click', async () => { if (!dash.salvarDataVenda) return; lp.disabled = true; st.textContent = 'Salvando…';
+          try { await dash.salvarDataVenda(r.id, null); } catch (e) { lp.disabled = false; st.textContent = e && e.message ? e.message : 'Não foi possível gravar'; } });
+        cell.appendChild(lp);
+      }
+      cell.appendChild(st);
+      tb.appendChild(tr);
+    });
+  }
+
+  function drawCorretores(R, msgs) {
+    const ent = entradasDoPainel(R);
+    const S = ordenarBk(statsCorretores(R, msgs, ent));
+    $('bk-um').hidden = !BK_UM; $('bk-todos').hidden = !!BK_UM;
+    if (BK_UM) return drawUm(BK_UM, R, S, ent);
+    $('brokers').hidden = BK_VIEW !== 'cards'; $('bk-tabela').hidden = BK_VIEW !== 'tabela';
+    if (BK_VIEW === 'tabela') return drawBkTabela(S);
+    const box = $('brokers'); box.innerHTML = '';
+    if (!S.length) { const p = document.createElement('p'); p.className = 'sn-empty'; p.textContent = 'Nenhum corretor encontrado no período.'; box.appendChild(p); return; }
     const weeksAll = [...new Set(R.map(r => weekKey(r.cadastro)))].sort();
-    groups.forEach(([nome, v]) => {
-      const n = v.length, c = f => v.filter(f).length, cont = n - c(isSem), vis = c(isVis), em = c(r => r.etapa === 'Em tratativa');
-      const ger = d3.greatest(d3.rollups(v, x => x.length, r => r.gerente), x => x[1])[0];
-      const m = M.get(nome), semResp = m ? N(m.lidas_sem_resposta) + N(m.direcionadas) + N(m.nao_lidas) : 0, col = avColor(nome);
+    S.forEach(st => {
+      const { nome, v, ger } = st, n = st.atend, c = f => v.filter(f).length, cont = st.cont, vis = st.vis, em = st.em, semResp = st.semresp, col = avColor(nome);
       const card = document.createElement('button'); card.type = 'button'; card.className = 'sn-bk';
-      card.addEventListener('click', () => { F.cor = nome; page = 1; setTab('atendimentos'); fields.cor.value = nome; });
+      card.title = 'Abrir a conversa 1:1 com ' + nome;
+      card.addEventListener('click', () => abrirUm(nome));
       const hd = document.createElement('div'); hd.className = 'hd';
       const av = document.createElement('div'); av.className = 'sn-av'; av.style.background = col; av.textContent = initials(nome); hd.appendChild(av);
       const nm = document.createElement('div'); const a = document.createElement('div'); a.className = 'nm'; a.textContent = nome; const b = document.createElement('div'); b.className = 'rl'; b.textContent = 'Corretor · equipe ' + ger;
@@ -1197,7 +1528,8 @@
 
   // ===================== Comparação: dash da LEN x Hypnobox =====================
   // Os nomes mudam de uma fonte para a outra; cada expressão junta os dois lados.
-  const PROD_RX = [/312\s*jam/i, /tons/i, /solaz/i, /nhambi/i, /\bori\b/i, /atenas/i, /nato/i, /harmonia/i, /lina/i];
+  // mesmo empreendimento com nomes diferentes na LEN e no Hypnobox ("Ad 330" e "AD 330 - Alto da Boa Vista")
+  const PROD_RX = [/312\s*jam/i, /tons/i, /solaz/i, /nhambi/i, /\bori\b/i, /atenas/i, /nato/i, /harmonia/i, /lina/i, /ad\s*330/i, /ecos/i, /join/i];
   const VEIC_RX = [[/meta|facebook/i, 'Meta Ads'], [/google/i, 'Google Ads'], [/linkedin/i, 'LinkedIn Ads'], [/tiktok/i, 'TikTok Ads'], [/chatgpt/i, 'ChatGPT Ads'], [/org[aâ]nico/i, 'Orgânico']];
   const ST_CMP = [
     { name: 'Sem contato', len: /tentando|sem status/i, hyp: isSem },
@@ -1209,46 +1541,72 @@
   const signed = v => (v > 0 ? '+' : '') + int(v);
   const CMP_SERIES = [{ key: 'l', name: 'Dash da LEN', color: NAVY }, { key: 'h', name: 'Hypnobox', color: COPPER }];
   // orgânicos e carteira do corretor vêm do Hypnobox, não da LEN: ficam fora da comparação
-  const FORA_LEN = new Set(['Orgânico', 'Carteira do corretor']);
+  const FORA_LEN = new Set(['Orgânico', 'Carteira do corretor', 'Carteira P&G / oferta ativa', 'Outras origens']);
   function drawComparacao(todos) {
     // mesmo período do dash da LEN que está na tela, só campanhas LEN
     const leads = todos.filter(r => !FORA_LEN.has(r.canal) && r.cadastro >= META.de && r.cadastro <= META.ate);
+    // a LEN conta cada entrada do lead (novos + retornos) pela data em que entrou: as
+    // entradas do Relatório de contatos são a base; sem elas, os leads pelo cadastro
+    const E = dash.data('entradas');
+    const comEntradas = E.status === 'ok' && E.data.length > 0;
+    const hypRows = comEntradas
+      ? E.data.filter(r => !FORA_LEN.has(r.canal) && r.data >= META.de && r.data <= META.ate).map(r => ({ produto: r.produto, canal: r.canal, dia: r.data, ret: r.tipo === 'retorno' }))
+      : leads.map(r => ({ produto: r.produto, canal: r.canal, dia: r.cadastro, ret: false }));
     const FP = dash.data('funil_produto'), VE = dash.data('veiculo'), SG = dash.data('status_geral');
     const boxes = ['ch-cmp-prod', 'ch-cmp-veic', 'ch-cmp-st'].map($);
     if (FP.status !== 'ok' || VE.status !== 'ok' || SG.status !== 'ok') { if (![FP, VE, SG].some(d => d.status === 'loading')) boxes.forEach(b => fail(b, 'error')); return; }
 
     // por empreendimento
     const prods = new Map();
-    const slot = name => { const i = PROD_RX.findIndex(rx => rx.test(name)), key = i < 0 ? 'x:' + name.toLowerCase() : 'p' + i;
-      if (!prods.has(key)) prods.set(key, { name: prodName(name), len: 0, pago: 0, lenSet: 0, lenOut: 0, hyp: 0, hypSet: 0, hypOut: 0, inLen: false });
+    const slot = name => { const i = PROD_RX.findIndex(rx => rx.test(name)), key = i < 0 ? 'x:' + esc(name).toLowerCase() : 'p' + i;
+      if (!prods.has(key)) prods.set(key, { name: prodName(name) || '(sem produto)', len: 0, pago: 0, lenSet: 0, lenOut: 0, hyp: 0, ret: 0, hypSet: 0, hypOut: 0, inv: 0, vis: 0, inLen: false });
       return prods.get(key); };
-    FP.data.forEach(r => { const p = slot(r.produto); p.name = r.produto; p.inLen = true; p.len += N(r.leads); p.pago += N(r.leads) - N(r.organico_leads); p.lenSet += N(r.leads_set); p.lenOut += N(r.leads_out); });
-    leads.forEach(r => { const p = slot(r.produto); p.hyp++; const m = esc(r.cadastro).slice(0, 7); if (m === M1) p.hypSet++; else if (m === M2) p.hypOut++; });
-    const P = [...prods.values()].sort((a, b) => b.pago - a.pago || b.hyp - a.hyp);
+    FP.data.forEach(r => { const p = slot(r.produto); p.name = r.produto; p.inLen = true; p.len += N(r.leads); p.pago += N(r.leads) - N(r.organico_leads); p.lenSet += N(r.leads_set); p.lenOut += N(r.leads_out); p.inv += N(r.investimento); });
+    hypRows.forEach(r => { const p = slot(r.produto); p.hyp++; if (r.ret) p.ret++; const m = esc(r.dia).slice(0, 7); if (m === M1) p.hypSet++; else if (m === M2) p.hypOut++; });
+    // visitas realizadas no período, de clientes que vieram de campanha LEN
+    const ehLen = new Set(todos.filter(r => !FORA_LEN.has(r.canal)).map(r => r.id));
+    visData().filter(v => v.status === 'Realizada' && v.data >= META.de && v.data <= META.ate && ehLen.has(v.id_cliente)).forEach(v => { slot(v.produto).vis++; });
+    const P = [...prods.values()].filter(p => p.inLen || p.hyp).sort((a, b) => b.pago - a.pago || b.hyp - a.hyp);
     const tot = k => P.reduce((a, p) => a + p[k], 0);
-    const len = tot('len'), pago = tot('pago'), hyp = tot('hyp');
+    const len = tot('len'), pago = tot('pago'), hyp = tot('hyp'), ret = tot('ret'), inv = tot('inv'), vis = tot('vis');
 
     const kp = $('cmp-kpis'); kp.innerHTML = '';
     kpiTile(kp, int(len), 'Leads no dash da LEN', 'com orgânico e direto');
     kpiTile(kp, int(pago), 'LEN pago', 'sem os ' + int(len - pago) + ' orgânicos');
-    kpiTile(kp, int(hyp), 'Leads no Hypnobox', 'com mídia de campanha LEN');
+    kpiTile(kp, int(hyp), comEntradas ? 'Entradas no Hypnobox' : 'Leads no Hypnobox', comEntradas ? int(hyp - ret) + ' novos · ' + int(ret) + ' retornos' : 'pela data de cadastro');
     kpiTile(kp, signed(hyp - pago), 'Diferença', 'Hypnobox − LEN pago');
     kpiTile(kp, pct(share(hyp, pago)), 'Hypnobox ÷ LEN pago', 'quanto do reportado está no CRM');
+    kpiTile(kp, hyp ? brl(inv / hyp) : '–', 'CPL real', 'investimento ÷ entradas no CRM');
+    kpiTile(kp, vis ? brl(inv / vis) : '–', 'Custo por visita real', int(vis) + ' visitas realizadas');
 
     hbar(boxes[0], P.map(p => ({ name: p.name, l: p.pago, h: p.hyp })), { fmt: x => int(x), series: CMP_SERIES });
-    const row = (p, cls) => [[p.name, 'strong' + (cls || '')], [p.inLen ? int(p.len) : '–', 'num'], [p.inLen ? int(p.pago) : '–', 'num'], [int(p.hyp), 'num'],
+    const row = p => [[p.name, 'strong'], [p.inLen ? int(p.pago) : '–', 'num'], [int(p.hyp), 'num'], [comEntradas ? int(p.hyp - p.ret) : '–', 'num'], [comEntradas ? int(p.ret) : '–', 'num'],
       [signed(p.hyp - p.pago), 'num' + (p.hyp < p.pago ? ' bad' : '')], [p.pago > 0 ? pct(p.hyp / p.pago) : '–', 'num'],
+      [p.inv ? brl(p.inv) : '–', 'num'], [p.inv && p.hyp ? brl(p.inv / p.hyp) : '–', 'num'], [int(p.vis), 'num'], [p.inv && p.vis ? brl(p.inv / p.vis) : '–', 'num'],
       [p.inLen ? int(p.lenSet) : '–', 'num'], [int(p.hypSet), 'num'], [p.inLen ? int(p.lenOut) : '–', 'num'], [int(p.hypOut), 'num']];
     const trs = fillRows(document.querySelector('#tb-cmp-prod tbody'), [...P.map(p => row(p)),
-      row({ name: 'TOTAL', inLen: true, len, pago, hyp, lenSet: tot('lenSet'), lenOut: tot('lenOut'), hypSet: tot('hypSet'), hypOut: tot('hypOut') })]);
+      row({ name: 'TOTAL', inLen: true, len, pago, hyp, ret, inv, vis, lenSet: tot('lenSet'), lenOut: tot('lenOut'), hypSet: tot('hypSet'), hypOut: tot('hypOut') })]);
     trs[trs.length - 1].style.fontWeight = '700';
+
+    // investimento sem nenhuma entrada no CRM (por empreendimento e canal), no período do dash da LEN
+    const C = dash.data('mkt_campanhas');
+    const gasto = new Map();
+    if (C.status === 'ok') C.data.filter(r => r.janela === 'periodo' && N(r.investimento) > 0).forEach(r => {
+      const i = PROD_RX.findIndex(rx => rx.test(r.produto)), k = (i < 0 ? 'x:' + esc(r.produto).toLowerCase() : 'p' + i) + '|' + r.canal;
+      if (!gasto.has(k)) gasto.set(k, { produto: prodName(r.produto), canal: r.canal, inv: 0, camps: 0, ent: 0 });
+      const g = gasto.get(k); g.inv += N(r.investimento); g.camps++; });
+    hypRows.forEach(r => { const i = PROD_RX.findIndex(rx => rx.test(r.produto)), k = (i < 0 ? 'x:' + esc(r.produto).toLowerCase() : 'p' + i) + '|' + r.canal; if (gasto.has(k)) gasto.get(k).ent++; });
+    const semLead = [...gasto.values()].filter(g => !g.ent).sort((a, b) => b.inv - a.inv);
+    $('cmp-sem-lead-cnt').textContent = semLead.length ? brl(semLead.reduce((a, g) => a + g.inv, 0)) + ' em ' + int(semLead.length) + ' combinações' : '';
+    $('cmp-sem-lead-vazio').hidden = semLead.length > 0; $('tb-cmp-sem').closest('.sn-tw').hidden = !semLead.length;
+    fillRows(document.querySelector('#tb-cmp-sem tbody'), semLead.map(g => [[g.produto, 'strong'], [g.canal], [int(g.camps), 'num'], [brl(g.inv), 'num bad']]));
 
     // por veículo
     const veics = new Map();
     const vslot = name => { const m = VEIC_RX.find(([rx]) => rx.test(name)), key = m ? m[1] : name;
       if (!veics.has(key)) veics.set(key, { name: key, l: 0, h: 0 }); return veics.get(key); };
     VE.data.forEach(r => { vslot(r.veiculo).l += N(r.leads); });
-    leads.forEach(r => { vslot(r.canal).h++; });
+    hypRows.forEach(r => { vslot(r.canal).h++; });
     hbar(boxes[1], [...veics.values()].filter(v => v.l || v.h).sort((a, b) => b.l - a.l || b.h - a.h), { fmt: x => int(x), series: CMP_SERIES });
 
     // por status
@@ -1301,6 +1659,19 @@
       .map(([k, o]) => ({ name: k, ...o })).sort((a, b) => b.R - a.R || (b.A + b.N) - (a.A + a.N));
     hbar($('ch-v-corretor'), byC, { fmt: v => v ? int(v) : '', series: S3, empty: 'Nenhuma visita no período.', tip: r => S3.map(s => [s.color, s.name + ': ' + int(r[s.key])]) });
     const RV = V.filter(r => r.status === 'Realizada');
+    // visita de lead do período: o cliente entrou (cadastro ou retorno) no período, antes da visita
+    const ini = F.de || '0000-00-00', L0 = dash.data('leads_hypnobox'), E0 = dash.data('entradas');
+    const cad = new Map(L0.status === 'ok' ? L0.data.map(r => [r.id, r.cadastro]) : []);
+    const ents = d3.group(E0.status === 'ok' ? E0.data.filter(e => e.id_cliente && e.data >= ini) : [], e => e.id_cliente);
+    const doPeriodo = v => { const c = cad.get(v.id_cliente); if (c && c >= ini && c <= v.data) return true;
+      return (ents.get(v.id_cliente) || []).some(e => e.data <= v.data); };
+    const RVm = RV.filter(doPeriodo);
+    $('v-mes').textContent = int(RVm.length); $('v-cart').textContent = int(RV.length - RVm.length);
+    $('v-mes-h').textContent = RV.length ? pct(RVm.length / RV.length) + ' das realizadas' : '';
+    const S2 = [{ key: 'm', name: 'Lead do período', color: COPPER }, { key: 'c', name: 'Carteira', color: NAVY }];
+    const byM = d3.rollups(RV, v => ({ m: v.filter(doPeriodo).length, c: v.filter(x => !doPeriodo(x)).length }), r => r.corretor)
+      .map(([k, o]) => ({ name: k, ...o })).sort((a, b) => (b.m + b.c) - (a.m + a.c));
+    hbar($('ch-v-coorte'), byM, { fmt: v => v ? int(v) : '', series: S2, empty: 'Nenhuma visita realizada no período.', tip: r => S2.map(s => [s.color, s.name + ': ' + int(r[s.key])]) });
     const OC = { 'Campanha LEN': COPPER, 'Acesso direto / orgânico': '#0891B2', 'Indicação / carteira': '#4F46E5', 'Meta (antes da LEN)': '#7E5845', 'Passagem no plantão': '#D97706', 'Sem origem': '#A3A3A3' };
     const byO = d3.rollups(RV, v => ({ n: v.length, cli: new Set(v.map(r => r.id_cliente)).size }), r => r.grupo_origem).map(([k, o]) => ({ name: k, v: o.n, cli: o.cli, color: OC[k] || NAVY })).sort((a, b) => b.v - a.v);
     hbar($('ch-v-origem'), byO, { fmt: v => int(v), empty: 'Nenhuma visita realizada no período.', tip: r => [[r.color, int(r.v) + ' visitas · ' + int(r.cli) + ' clientes · ' + pct(r.v / Math.max(1, RV.length))]] });
@@ -1341,7 +1712,7 @@
   const plusHour = h => { const [a, b] = h.split(':').map(Number); return String(Math.min(23, a + 1)).padStart(2, '0') + ':' + String(b).padStart(2, '0'); };
   const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
   const tag = (txt, color) => { const t = el('span', 'sn-tag', txt); t.style.color = color; t.style.borderColor = color + '55'; t.style.background = color + '18'; return t; };
-  const CANAL_C = { 'Meta Ads': '#2563EB', 'Google Pesquisa': '#16A34A', 'Google Display': '#0D9488', 'Google Demand Gen': '#65A30D', 'TikTok Ads': '#DB2777', 'LinkedIn Ads': '#0369A1', 'Orgânico': '#7C3AED', 'Carteira do corretor': '#B45309' };
+  const CANAL_C = { 'Meta Ads': '#2563EB', 'Google Pesquisa': '#16A34A', 'Google Display': '#0D9488', 'Google Demand Gen': '#65A30D', 'TikTok Ads': '#DB2777', 'LinkedIn Ads': '#0369A1', 'Orgânico': '#7C3AED', 'Carteira do corretor': '#B45309', 'Carteira P&G / oferta ativa': '#7E5845', 'Outras origens': '#64748B' };
 
   function nextVisit(id, V) {
     const vs = V.filter(v => v.id_cliente === id).sort((a, b) => (a.data + a.hora) < (b.data + b.hora) ? -1 : 1);
@@ -1670,6 +2041,7 @@
     const L = dash.data('leads_hypnobox');
     if (L.status === 'ok') {
       const all = L.data;
+      etapaPeloMomento(all);
       if (!filled) {
         filled = true;
         const ds = all.map(r => r.cadastro).sort();
@@ -1684,10 +2056,11 @@
       }
       fillFacets(all);
       const R = rowsFiltered(all); lastR = R;
-      $('per-label').textContent = 'Leads no Hypnobox (campanhas LEN, orgânicos e carteira) · cadastro de ' + brDate(F.de || fields.de.min) + ' a ' + brDate(F.ate || fields.de.max) + (F.cor ? ' · ' + F.cor : F.ger ? ' · equipe ' + F.ger : '') + ' · ' + int(R.length) + ' atendimentos';
+      $('per-label').textContent = 'Leads no Hypnobox (todas as origens) · cadastro de ' + brDate(F.de || fields.de.min) + ' a ' + brDate(F.ate || fields.de.max) + (F.cor ? ' · ' + F.cor : F.ger ? ' · equipe ' + F.ger : '') + ' · ' + int(R.length) + ' atendimentos';
       drawKpis(R);
       if (TAB === 'graficos') drawGraficos(R);
       if (TAB === 'corretores') { const m = dash.data('mensagens_corretor'); drawCorretores(R, m.status === 'ok' ? m.data : []); }
+      if (TAB === 'vendas') drawVendas(all);
       if (TAB === 'atendimentos') { $('kanban').hidden = VIEW !== 'kanban'; $('at-table').hidden = VIEW !== 'table'; if (VIEW === 'kanban') drawKanban(R); else { drawAtendimentos(R.filter(statusOk)); $('pipe-cnt').textContent = ''; } }
       if (TAB === 'agenda') { const vv = dash.data('visitas_hypnobox'); if (vv.status === 'ok') drawAgenda(vv.data); else if (vv.status !== 'loading') fail($('agenda'), vv.status); }
       if (TAB === 'campanhas') drawCampanhas(R);

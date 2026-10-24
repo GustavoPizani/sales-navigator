@@ -6,7 +6,7 @@
 (function () {
   var ORIGEM = "__SN_ORIGEM__";
   // sobe a cada mudança no leitor: a Coleta avisa quando o favorito salvo é antigo
-  var VERSAO = 2;
+  var VERSAO = 3;
   var HYPNOBOX = "paesegregori.hypnobox.com.br";
   if (location.hostname !== HYPNOBOX) {
     alert("O Guia da coleta funciona nas páginas do Hypnobox (" + HYPNOBOX + ").");
@@ -36,7 +36,7 @@
   function lerCabecalho() {
     var t = document.body ? document.body.innerText : "";
     var per = /(\d{2}\/\d{2}\/\d{4})\s*(?:à|a|até)\s*(\d{2}\/\d{2}\/\d{4})/i.exec(t);
-    var tot = /total de\s*(\d[\d.]*)/i.exec(t);
+    var tot = /total de\s*(\d[\d.]*)/i.exec(t) || /(\d[\d.]*)\s*visita\(s\)\s*encontrad/i.exec(t);
     var el = document.querySelector("#displaytotalregistros, .displaytotalregistros");
     var num = function (s) {
       return s ? Number(String(s).replace(/\D/g, "")) || null : null;

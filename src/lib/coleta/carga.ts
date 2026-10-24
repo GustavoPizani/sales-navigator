@@ -14,13 +14,19 @@ const inteiro = (s) => {
   return v && !/(\.\.\.|…)$/.test(v) ? v : null;
 };
 
-/** Canais dos clientes que não vieram da LEN (orgânico e carteira do corretor). */
-export const CANAIS_FORA_LEN = ["Orgânico", "Carteira do corretor"];
+/** Canais dos clientes que não vieram da LEN. */
+export const CANAIS_FORA_LEN = [
+  "Orgânico",
+  "Carteira do corretor",
+  "Carteira P&G / oferta ativa",
+  "Outras origens",
+];
 
 /** Origem do cliente pela mídia e pelas linhas de canal (relatório de contatos e ficha). */
 function grupoDoCliente(midia, linhas) {
   const tudo = [midia, ...(linhas || [])].filter(Boolean).join(" | ");
   if (/len/i.test(midia || "")) return "len";
+  if (/carteira\s*p\s*&\s*g|oferta ativa/i.test(tudo)) return "carteira_pg";
   if (/carteira|indica|an[uú]ncio corretor/i.test(tudo)) return "carteira";
   if (/org[aâ]nic|acesso direto/i.test(tudo)) return "organico";
   return null;
@@ -289,7 +295,7 @@ function checar(tabelas, dados) {
     add("Leads LEN", tabelas.al_leads.length - extras, REFERENCIA.leads);
     if (extras)
       itens.push({
-        nome: "Orgânicos e carteira (corretores com leads LEN)",
+        nome: "Fora da LEN (orgânico, carteira e outras origens)",
         valor: extras,
         referencia: 0,
         texto: extras.toLocaleString("pt-BR"),
@@ -458,15 +464,70 @@ function indiceDeMensagens(mensagens) {
   return doCliente;
 }
 
-/** Canal e campanha de quem não veio da LEN (carteira do corretor ou orgânico). */
+/** Canal e campanha de quem não veio da LEN (carteira, orgânico ou outra origem). */
 function campDoGrupo(c) {
-  return c._grupo === "carteira"
-    ? { canal: "Carteira do corretor", campanha: "Carteira do corretor", palavra_chave: null }
-    : {
-        canal: "Orgânico",
-        campanha: c.midia ? `Orgânico · ${R.limpa(c.midia)}` : "Orgânico",
-        palavra_chave: null,
-      };
+  const midia = c.midia ? R.limpa(c.midia) : "";
+  if (c._grupo === "carteira")
+    return { canal: "Carteira do corretor", campanha: "Carteira do corretor", palavra_chave: null };
+  if (c._grupo === "carteira_pg")
+    return {
+      canal: "Carteira P&G / oferta ativa",
+      campanha: "Carteira P&G / oferta ativa",
+      palavra_chave: null,
+    };
+  if (c._grupo === "organico")
+    return { canal: "Orgânico", campanha: midia ? `Orgânico · ${midia}` : "Orgânico", palavra_chave: null };
+  return { canal: "Outras origens", campanha: midia ? `Outras · ${midia}` : "Outras origens", palavra_chave: null };
+}
+const foraDaLen = (g) => g === "organico" || g === "carteira" || g === "carteira_pg";
+
+/**
+ * Entradas de leads do Relatório de contatos (cada linha é uma entrada; o mesmo
+ * cliente pode voltar). Novo ou retorno é decidido no banco (al_entradas_tipo),
+ * pela pessoa (já entrou antes) e pelo cadastro do cliente. O relatório não traz o
+ * id do cliente: ele é achado pelo telefone, e-mail ou nome entre os clientes lidos.
+ * A pessoa é um código do telefone (ou e-mail), sem o número: assim a entrada conta
+ * mesmo quando o cliente não está na lista de Clientes (saiu da equipe, arquivado...).
+ */
+function montarEntradas(contatos, daMensagem, periodo, clientes) {
+  const indice = criarIndice();
+  for (const c of clientes) indice.add(pessoa(c.c1), c.id);
+  const out = new Map();
+  let semId = 0;
+  let semPessoa = 0;
+  for (const c of contatos) {
+    const data = brIso(c.data[0]);
+    if (!data || data < periodo.de || data > periodo.ate) continue;
+    const p = pessoa(c.cliente);
+    const id = c.id_cliente || indice.achar(p);
+    const base = p.tels[0] || (p.email && !p.emailCortado ? p.email : "");
+    if (!base && !id) {
+      semPessoa++;
+      continue;
+    }
+    if (!id) semId++;
+    const codigoPessoa = base ? codigo(base) : `id${id}`;
+    const hora = R.hora(c.data.join(" "));
+    const midia = daMensagem.completar(midiaDaCelula(c.canal)) || "";
+    const grupo = grupoDoCliente(midia, c.canal) || "outros";
+    const camp = grupo === "len" ? R.campanhaDaMidia(midia) : campDoGrupo({ _grupo: grupo, midia });
+    const chave = `${codigoPessoa}|${data} ${hora}`;
+    out.set(chave, {
+      chave,
+      pessoa: codigoPessoa,
+      id_cliente: id ? String(id) : null,
+      data,
+      hora: hora || null,
+      canal: camp.canal,
+      campanha: camp.campanha,
+      palavra_chave: camp.palavra_chave,
+      midia: midia && !cortado(midia) ? midia : null,
+      canal_contato: R.semTraco(c.canal[0]) || null,
+      produto: R.semTraco(c.produto[0]) || null,
+      corretor: R.semTraco(c.corretor[0]) || null,
+    });
+  }
+  return { entradas: [...out.values()], semId, semPessoa };
 }
 
 /** Mídia do cliente: filtro de uma mídia só > relatório de contatos (se não veio cortada) > mensagens. */
@@ -485,6 +546,8 @@ export function montarCargaGuiada(
   periodo,
   len,
   existentes: Set<string> | null = null,
+  // completa: entram todos os clientes do período, de qualquer origem (carga inicial)
+  { completa = false }: { completa?: boolean } = {},
 ) {
   const contatos = Object.values(dados.contatos);
   const origem = indiceDeContatos(contatos);
@@ -506,15 +569,16 @@ export function montarCargaGuiada(
     return cad && cad >= periodo.de && cad <= periodo.ate;
   };
   const doLen = todos ? todos.filter((c) => c._grupo === "len") : [];
-  const leadsLen = doLen.filter(noPeriodo);
+  // na carga completa entra todo cliente lido (a tela de Clientes pode vir filtrada
+  // pela data de atualização, com clientes cadastrados antes do período)
+  const leadsLen = completa ? doLen : doLen.filter(noPeriodo);
   // orgânicos e carteira entram só para os corretores que têm leads LEN nesta coleta
   const corretores = new Set(leadsLen.map((c) => R.semTraco(c.c3[0])).filter(Boolean));
   const extras = (todos || [])
-    .filter(
-      (c) =>
-        (c._grupo === "organico" || c._grupo === "carteira") &&
-        noPeriodo(c) &&
-        corretores.has(R.semTraco(c.c3[0])),
+    .filter((c) =>
+      completa
+        ? c._grupo !== "len"
+        : foraDaLen(c._grupo) && noPeriodo(c) && corretores.has(R.semTraco(c.c3[0])),
     )
     .map((c) => ({ ...c, _camp: campDoGrupo(c) }));
   // quem já está no banco e reapareceu na tela de Clientes é atualizado (momento,
@@ -526,7 +590,7 @@ export function montarCargaGuiada(
         .map((c) =>
           c._grupo === "len"
             ? { ...c, _fora: true }
-            : c._grupo === "organico" || c._grupo === "carteira"
+            : foraDaLen(c._grupo)
               ? { ...c, _fora: true, _camp: campDoGrupo(c) }
               : { ...c, _fora: true, _semMidia: true },
         )
@@ -553,14 +617,49 @@ export function montarCargaGuiada(
         total: msgs.length,
       }
     : null;
-  if (!clientes && !len)
+  const entradas = prontos.contatos
+    ? montarEntradas(contatos, daMensagem, periodo, Object.values(dados.clientes))
+    : null;
+  if (!clientes && !len && !entradas)
     throw new Error(
-      "Nada pronto para gravar: conclua o passo Clientes ou sincronize o dash da LEN.",
+      "Nada pronto para gravar: conclua o passo Clientes ou Contatos, ou sincronize o dash da LEN.",
     );
   const carga = montarCarga(
     { clientes, visitas: visitas && detalhes ? visitas : null, detalhes, mensagens, len },
     { dataColeta: R.hojeISO(), periodo },
   );
+  if (entradas) {
+    carga.tabelas.al_entradas = entradas.entradas;
+    carga.coleta.fontes = carga.coleta.fontes
+      ? carga.coleta.fontes.replace(/^Hypnobox \(/, "Hypnobox (Relatório de contatos, ")
+      : "Hypnobox (Relatório de contatos)";
+    carga.checagens.push({
+      nome: "Entradas de leads (relatório de contatos)",
+      valor: entradas.entradas.length,
+      referencia: 0,
+      texto: entradas.entradas.length.toLocaleString("pt-BR"),
+      referenciaTexto: "—",
+      alerta: false,
+    });
+    if (entradas.semId)
+      carga.checagens.push({
+        nome: "Entradas de quem não está na lista de Clientes (contam pela pessoa)",
+        valor: entradas.semId,
+        referencia: 0,
+        texto: entradas.semId.toLocaleString("pt-BR"),
+        referenciaTexto: "—",
+        alerta: false,
+      });
+    if (entradas.semPessoa)
+      carga.checagens.push({
+        nome: "Contatos sem telefone nem e-mail (fora das entradas)",
+        valor: entradas.semPessoa,
+        referencia: 0,
+        texto: entradas.semPessoa.toLocaleString("pt-BR"),
+        referenciaTexto: "—",
+        alerta: entradas.semPessoa > entradas.entradas.length * 0.1,
+      });
+  }
   // "Leads LEN" conta só os do período; os já existentes atualizados vêm numa linha à parte
   const linhaLen = carga.checagens.find((c) => c.nome === "Leads LEN");
   if (linhaLen) {

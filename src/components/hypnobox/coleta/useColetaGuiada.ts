@@ -51,7 +51,7 @@ export type EstadoLen = {
 };
 
 /** Versão do código do favorito (VERSAO em guia-hypnobox.js). */
-export const VERSAO_FAVORITO = 2;
+export const VERSAO_FAVORITO = 3;
 
 const CHAVE = "sn-coleta-guiada";
 const lenVazio = (): EstadoLen => ({
@@ -281,6 +281,9 @@ export function useColetaGuiada() {
       e.periodo,
       len.status === "ok" ? len.resultado : null,
       baseQ.data ? new Set(baseQ.data.ids) : null,
+      // a base já tem todos os clientes (carga completa de 23/10/2026): cada coleta
+      // atualiza quem foi lido e cadastra quem é novo, de qualquer origem
+      { completa: true },
     ) as Carga;
   }, [len, baseQ.data]);
 

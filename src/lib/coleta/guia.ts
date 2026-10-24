@@ -65,6 +65,8 @@ export type DadosGuia = {
   visitas: Record<string, LinhaVisita>;
   mensagens: Record<string, LinhaMensagem>;
   visitasFim: Record<string, boolean>;
+  /** visitas lidas em cada tipo de data (para saber quando o tipo chegou ao total) */
+  visitasPorTipo?: Record<string, Record<string, true>>;
 };
 export type EstadoPasso = {
   status: StatusPasso;
@@ -93,31 +95,30 @@ export const PASSOS: Passo[] = [
     id: "contatos",
     titulo: "Relatório de contatos",
     url: `${HYPNOBOX}/?controle=Relatorio&acao=contato`,
-    serve: "Mídia, canal, corretor e produto de cada contato.",
+    serve: "Cada entrada de lead (novos e retornos), com mídia, canal, corretor e produto.",
     instrucoes: (p) => [
-      `Em Período, escolha ${isoParaBR(p.de)} a ${isoParaBR(p.ate)} e clique em Gerar.`,
-      "Role até o fim da tabela. Se houver mais de uma página, abra cada uma.",
+      `Em Período, escolha ${isoParaBR(p.de)} a ${isoParaBR(p.ate)}. Nos filtros: Tipo de Período "Data de Cadastro" e Tipo de Acesso "Todos". Clique em Gerar.`,
+      "Em Exibir por página, escolha 100 e passe por todas as páginas.",
     ],
   },
   {
     id: "clientes",
     titulo: "Clientes",
     url: `${HYPNOBOX}/?controle=Cliente`,
-    serve: "Momento, submomento, corretor e status de cada lead.",
+    serve: "Momento, submomento, corretor e status de cada cliente: atualiza quem já existe e cadastra quem é novo.",
     instrucoes: (p) => [
-      `Filtre pelo cadastro de ${isoParaBR(p.de)} a ${isoParaBR(p.ate)} (sem filtrar mídia: assim entram também os orgânicos e a carteira).`,
-      "Em registros por página, escolha o maior número e clique em Consultar.",
-      "Se houver mais de uma página, abra cada uma.",
+      `Nos filtros, Tipo do período "Atualização", de ${isoParaBR(p.de)} a ${isoParaBR(p.ate)}, sem filtrar mídia. Clique em Aplicar.`,
+      "Em Exibir por página, escolha 100 e passe por todas as páginas.",
     ],
   },
   {
     id: "visitas",
     titulo: "Visitas",
     url: `${HYPNOBOX}/?controle=Visita`,
-    serve: "Visitas agendadas e realizadas, com corretor e cliente.",
+    serve: "Visitas agendadas, realizadas e não realizadas, com corretor e cliente.",
     instrucoes: (p) => [
-      `Período pela data da visita, de ${isoParaBR(p.de)} a ${isoParaBR(p.ate)}: consulte e passe por todas as páginas.`,
-      "Depois troque para a data de criação, mesmo período, e passe de novo pelas páginas.",
+      `Tipo do Período "Data da visita", de ${isoParaBR(p.de)} a ${isoParaBR(p.ate)}, 100 por página: passe por todas as páginas.`,
+      'Depois troque para "Data de Criação", mesmo período, e passe de novo pelas páginas.',
     ],
   },
   {
@@ -218,10 +219,15 @@ export function juntar(estado: EstadoGuia, l: Leitura): EstadoGuia {
   } else if (l.passo === "visitas") {
     for (const x of l.linhas as LinhaVisita[]) guarda(d.visitas, x.visita_id, x);
     const tipo = l.cab.campos.tipoPeriodo || "padrao";
-    // a lista vem de 25 em 25: uma página com menos é a última daquele tipo de data
-    if (periodoCerto && l.linhas.length < 25) d.visitasFim[tipo] = true;
+    const porTipo = ((d.visitasPorTipo ??= {})[tipo] ??= {});
+    for (const x of l.linhas as LinhaVisita[]) porTipo[x.visita_id] = true;
+    // fim daquele tipo de data: chegou ao total que a tela informa; sem o total
+    // (favorito antigo), uma página com menos de 25 é a última
+    const fimDoTipo =
+      l.cab.total != null ? Object.keys(porTipo).length >= l.cab.total : l.linhas.length < 25;
+    if (periodoCerto && fimDoTipo) d.visitasFim[tipo] = true;
     const tipos = Object.keys(d.visitasFim).length;
-    if (tipos === 1 && l.linhas.length < 25)
+    if (tipos === 1 && fimDoTipo)
       avisos.push(
         "Fim das visitas por este tipo de data. Agora troque o tipo de período e consulte de novo.",
       );
@@ -262,7 +268,10 @@ export function concluirPasso(estado: EstadoGuia, id: PassoId): EstadoGuia {
 export function limparPasso(estado: EstadoGuia, id: PassoId): EstadoGuia {
   const e = structuredClone(estado);
   e.dados[id] = {};
-  if (id === "visitas") e.dados.visitasFim = {};
+  if (id === "visitas") {
+    e.dados.visitasFim = {};
+    e.dados.visitasPorTipo = {};
+  }
   e.passos[id] = passoVazio();
   if (e.ultimaLeitura?.passo === id) e.ultimaLeitura = null;
   return e;

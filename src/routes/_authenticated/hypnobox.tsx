@@ -1,10 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RequireModule } from "@/components/RequireModule";
 import { ROLE_LABELS, useHomePath } from "@/components/nav/useNavTabs";
 import { useAuth } from "@/hooks/useAuth";
-import { getHypnoboxData, type HypnoboxRow } from "@/lib/hypnobox.functions";
+import {
+  abrirHypnoboxData,
+  getHypnoboxData,
+  salvarDataVenda,
+  type HypnoboxData,
+  type HypnoboxRow,
+} from "@/lib/hypnobox.functions";
 import { lerDashLen, type DashLen } from "@/lib/coleta/len-cliente";
 import type { LenInfo } from "@/components/hypnobox/HypnoboxFrame";
 
@@ -67,9 +73,20 @@ function HypnoboxPage() {
   const [initialLead] = useState(search.lead == null ? undefined : String(search.lead));
   const dataQ = useQuery({
     queryKey: ["hypnobox-data"],
-    queryFn: () => getHypnoboxData(),
+    queryFn: async () => abrirHypnoboxData(await getHypnoboxData()),
     staleTime: Infinity,
   });
+  // data real de uma venda (aba Vendas): grava e troca só as datas no painel
+  const queryClient = useQueryClient();
+  const salvarVenda = useCallback(
+    async (id: string, data: string | null) => {
+      const linhas = await salvarDataVenda({ data: { id_cliente: id, data_venda: data } });
+      queryClient.setQueryData<HypnoboxData>(["hypnobox-data"], (old) =>
+        old ? { ...old, datasets: { ...old.datasets, vendas_data: linhas } } : old,
+      );
+    },
+    [queryClient],
+  );
 
   // dash da LEN de outros períodos (filtro de datas das abas de campanhas), guardado por período
   const cache = useRef(new Map<string, DashLen>());
@@ -150,6 +167,7 @@ function HypnoboxPage() {
         data={dados!}
         lenInfo={lenInfo}
         onPedirLen={pedirLen}
+        onSalvarDataVenda={salvarVenda}
         initialTab={initialTab}
         initialLead={initialLead}
         userName={profile?.full_name ?? ""}

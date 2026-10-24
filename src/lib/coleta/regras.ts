@@ -66,7 +66,8 @@ export const somaDias = (iso: any, n: any) =>
 export function etapa(momento: any, submomento: any) {
   const m = limpa(momento);
   const s = limpa(submomento);
-  if (/^fez proposta$/i.test(s)) return "Proposta";
+  if (/^venda$/i.test(m)) return "Venda";
+  if (/^proposta$/i.test(m) || /^fez proposta$/i.test(s)) return "Proposta";
   if (/^visita$/i.test(m)) return "Visita";
   if (/^não interessado$/i.test(m)) return "Não interessado";
   if (/^tentando contato$/i.test(s)) return "Tentando contato";
@@ -166,6 +167,8 @@ export function campanhaDaMidia(midia: any) {
   const regras: [RegExp, string, string][] = [
     [/^facebook ads/i, "Meta Ads", "Meta"],
     [/^(meta|instagram)/i, "Meta Ads", "Meta"],
+    // campanhas da LEN no Meta também vêm só com o nome: "[LEN] Nato Itaim - ...", "LEN | Jardim Atenas - ..."
+    [/^(\[len\]|len\s*\|)/i, "Meta Ads", "Meta"],
     [/tiktok/i, "TikTok Ads", "TikTok"],
     [/linkedin/i, "LinkedIn Ads", "LinkedIn"],
   ];

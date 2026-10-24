@@ -672,6 +672,7 @@ const NOMES_TABELA: Record<string, string> = {
   al_mkt_diario: "Mídia por dia",
   al_mkt_anuncios: "Anúncios",
   al_mkt_palavras: "Palavras-chave",
+  al_entradas: "Entradas de leads",
 };
 
 function Checagens({ itens }: { itens: Checagem[] }) {
@@ -767,9 +768,11 @@ function Gravar({
               <li key={t} className="flex justify-between gap-2">
                 <span>{NOMES_TABELA[t] ?? t}</span>
                 <span className="tabular-nums">
-                  {r.substituidos != null
-                    ? `${r.substituidos.toLocaleString("pt-BR")} linhas`
-                    : `${(r.inseridos ?? 0).toLocaleString("pt-BR")} novos · ${(r.atualizados ?? 0).toLocaleString("pt-BR")} atualizados`}
+                  {r.aviso
+                    ? r.aviso
+                    : r.substituidos != null
+                      ? `${r.substituidos.toLocaleString("pt-BR")} linhas`
+                      : `${(r.inseridos ?? 0).toLocaleString("pt-BR")} novos · ${(r.atualizados ?? 0).toLocaleString("pt-BR")} atualizados`}
                 </span>
               </li>
             ))}

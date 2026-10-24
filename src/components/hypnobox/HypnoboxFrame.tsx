@@ -56,6 +56,8 @@ type Props = {
   lenInfo: LenInfo;
   /** Pede o dash da LEN de outro período (null = volta para o da coleta). */
   onPedirLen: (de: string | null, ate: string | null) => void;
+  /** Grava a data real de uma venda (null apaga). */
+  onSalvarDataVenda: (id: string, data: string | null) => Promise<void>;
   initialTab?: string;
   /** ID do lead a abrir assim que o painel carrega. */
   initialLead?: string;
@@ -141,6 +143,9 @@ export default function HypnoboxFrame(props: Props) {
       },
       // dash da LEN de outro período (filtro de datas das abas de campanhas)
       pedirLen: (de: string | null, ate: string | null) => latest.current.onPedirLen(de, ate),
+      // data real de uma venda (aba Vendas)
+      salvarDataVenda: (id: string, data: string | null) =>
+        latest.current.onSalvarDataVenda(id, data),
       len: () => latest.current.lenInfo,
       refresh: () => {},
       params: () => ({}),

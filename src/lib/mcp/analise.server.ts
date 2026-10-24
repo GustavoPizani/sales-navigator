@@ -34,9 +34,15 @@ const COLUNAS = {
   al_mkt_diario: "*",
   al_mkt_anuncios: "*",
   al_mkt_palavras: "*",
+  al_vendas_data: "id_cliente,data_venda,observacao,atualizado_em,atualizado_por",
 };
 const TABELAS = Object.keys(COLUNAS);
-const FORA_LEN = new Set(["Orgânico", "Carteira do corretor"]);
+const FORA_LEN = new Set([
+  "Orgânico",
+  "Carteira do corretor",
+  "Carteira P&G / oferta ativa",
+  "Outras origens",
+]);
 
 // ---------------- leitura do banco (com cache de 5 min) ----------------
 const cache = new Map();
@@ -57,8 +63,28 @@ async function tabela(nome) {
     linhas.push(...parte);
     if (parte.length < 1000) break;
   }
+  if (nome === "al_leads") linhas.forEach(normalizarLead);
   cache.set(nome, { em: Date.now(), linhas });
   return linhas;
+}
+
+/**
+ * Mesmas regras do painel: etapa pelo momento (proposta e venda em qualquer
+ * submomento), "Não cliente" conta como descartado (menos venda, que é venda de
+ * fato) e dias sem atualizar contados até hoje.
+ */
+const hojeSP = () =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+function normalizarLead(r) {
+  const momento = String(r.momento ?? "");
+  if (/^vend/i.test(momento)) r.etapa = "Venda";
+  else if (/^n[ãa]o cliente$/i.test(String(r.status_cliente ?? ""))) r.etapa = "Não interessado";
+  else if (/^propost/i.test(momento)) r.etapa = "Proposta";
+  if (r.atualizacao)
+    r.dias_sem_atualizar = Math.max(
+      0,
+      Math.round((Date.parse(hojeSP() + "T00:00:00Z") - Date.parse(r.atualizacao + "T00:00:00Z")) / 864e5),
+    );
 }
 
 // ---------------- regras do painel ----------------
@@ -212,7 +238,7 @@ export function criarServidorAnalise() {
         leads_por_etapa: contar(leads, "etapa"),
         leads_por_corretor: contar(leads, "corretor"),
         observacao:
-          'Canais "Orgânico" e "Carteira do corretor" não são da LEN: entram só para corretores que têm leads LEN. Use canal "LEN" para ver só as campanhas.',
+          'Canais "Orgânico", "Carteira do corretor", "Carteira P&G / oferta ativa" e "Outras origens" não são da LEN. Use canal "LEN" para ver só as campanhas.',
       });
     },
   );
@@ -458,6 +484,104 @@ export function criarServidorAnalise() {
         janela: f.janela ?? null,
         total: linhas.length,
         linhas: linhas.slice(0, f.limite),
+      });
+    },
+  );
+
+  server.registerTool(
+    "vendas",
+    {
+      title: "Vendas por corretor (antes x desde o início)",
+      description:
+        'Vendas = clientes no momento "Venda" do Hypnobox. A data da venda é a confirmada pelo ADM no painel (aba Vendas) ou, sem ela, a última atualização do cliente (aproximada). Compara os 365 dias antes da data de início com o período desde ela, por corretor (total e média por mês), com propostas abertas e visitas realizadas desde o início, e lista venda a venda com a origem da data.',
+      inputSchema: {
+        inicio: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .default("2026-09-18")
+          .describe("Data de início (aaaa-mm-dd); padrão: início na supervisão do online"),
+        gerente: z.string().optional(),
+        corretor: z.string().optional(),
+      },
+      annotations: SO_LEITURA,
+    },
+    async (f) => {
+      const [leads, visitas, datas] = await Promise.all([
+        tabela("al_leads"),
+        tabela("al_visitas"),
+        // a tabela de datas confirmadas pode ainda não existir
+        tabela("al_vendas_data").catch(() => []),
+      ]);
+      const dia = (iso, n) =>
+        new Date(Date.parse(iso + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+      const hoje = hojeSP();
+      const antesDe = dia(f.inicio, -365);
+      const antesAte = dia(f.inicio, -1);
+      const diasDepois = Math.max(1, Math.round((Date.parse(hoje) - Date.parse(f.inicio)) / 864e5) + 1);
+      const porMes = (n, dias) => Math.round((n / (dias / (365 / 12))) * 10) / 10;
+      const conf = new Map(datas.map((d) => [String(d.id_cliente), d]));
+      const base = leads.filter(
+        (r) =>
+          (!f.gerente || norm(r.gerente) === norm(f.gerente)) &&
+          (!f.corretor || norm(r.corretor) === norm(f.corretor)),
+      );
+      const vendas = base
+        .filter((r) => r.etapa === "Venda")
+        .map((r) => {
+          const c = conf.get(String(r.id_cliente));
+          return {
+            id_cliente: r.id_cliente,
+            corretor: r.corretor,
+            gerente: r.gerente,
+            produto: r.produto,
+            canal: r.canal,
+            situacao: r.submomento,
+            data: c ? c.data_venda : r.atualizacao,
+            data_confirmada: !!c,
+            observacao: c?.observacao ?? null,
+          };
+        })
+        .filter((v) => v.data);
+      const antes = (v) => v.data >= antesDe && v.data <= antesAte;
+      const depois = (v) => v.data >= f.inicio;
+      const corretores = [...agrupar(base, (r) => r.corretor)]
+        .map(([corretor, L]) => {
+          const V = vendas.filter((v) => v.corretor === corretor);
+          const a = V.filter(antes).length;
+          const d = V.filter(depois).length;
+          return {
+            corretor,
+            gerente: L[0].gerente,
+            vendas_antes: a,
+            media_mes_antes: Math.round((a / 12) * 10) / 10,
+            vendas_desde_inicio: d,
+            media_mes_desde: porMes(d, diasDepois),
+            propostas_abertas: L.filter((r) => r.etapa === "Proposta").length,
+            visitas_realizadas_desde_inicio: visitas.filter(
+              (v) => norm(v.corretor) === norm(corretor) && v.status === "Realizada" && v.data >= f.inicio,
+            ).length,
+          };
+        })
+        .filter((c) => c.vendas_antes || c.vendas_desde_inicio || c.propostas_abertas)
+        .sort((a, b) => b.vendas_desde_inicio - a.vendas_desde_inicio || b.vendas_antes - a.vendas_antes);
+      const tA = vendas.filter(antes).length;
+      const tD = vendas.filter(depois).length;
+      return resposta({
+        janelas: { antes: { de: antesDe, ate: antesAte, dias: 365 }, desde_inicio: { de: f.inicio, ate: hoje, dias: diasDepois } },
+        equipe: {
+          vendas_antes: tA,
+          media_mes_antes: Math.round((tA / 12) * 10) / 10,
+          vendas_desde_inicio: tD,
+          media_mes_desde: porMes(tD, diasDepois),
+          vendas_com_data_confirmada: vendas.filter((v) => v.data_confirmada).length,
+          vendas_total: vendas.length,
+        },
+        corretores,
+        vendas: vendas.sort((a, b) => b.data.localeCompare(a.data)),
+        notas: [
+          "data_confirmada = false: a data é a última atualização do cliente e pode estar depois da venda real.",
+          'Clientes "Não cliente" contam como descartados, menos os que estão em Venda.',
+        ],
       });
     },
   );

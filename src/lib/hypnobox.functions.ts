@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { secondaryAdmin } from "@/integrations/supabase/secondary.server";
+import { periodoColetado, type ColetaPeriodo } from "@/lib/coleta/periodo";
 
 // O painel "Análise Hypnobox" foi escrito para ler planilhas (CSV): todo valor
 // chega como texto e célula vazia é "". As linhas saem daqui nesse formato para
@@ -13,6 +15,20 @@ export type HypnoboxData = {
   /** Período da última coleta (AAAA-MM-DD), se registrado. */
   periodo: { de: string; ate: string } | null;
 };
+/**
+ * Com a base inteira (14 mil leads e as entradas) a resposta passaria do limite
+ * de 4,5 MB da Vercel: o servidor manda o JSON compactado (gzip em base64).
+ */
+export type HypnoboxPacote = { gz: string };
+
+/** Abre no navegador o pacote compactado de getHypnoboxData. */
+export async function abrirHypnoboxData(p: HypnoboxPacote): Promise<HypnoboxData> {
+  const bytes = Uint8Array.from(atob(p.gz), (c) => c.charCodeAt(0));
+  const texto = await new Response(
+    new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip")),
+  ).text();
+  return JSON.parse(texto) as HypnoboxData;
+}
 
 // Nome do conjunto de dados no painel -> tabela no segundo banco. Sem `order`,
 // vale a ordem em que as linhas foram carregadas (a mesma da planilha).
@@ -30,7 +46,13 @@ const SOURCES: Record<string, { table: string; order?: string }> = {
   mkt_anuncios: { table: "al_mkt_anuncios", order: "id" },
   mkt_palavras: { table: "al_mkt_palavras" },
   mkt_diario: { table: "al_mkt_diario", order: "data" },
+  // cada entrada de lead (novo ou retorno), do Relatório de contatos
+  entradas: { table: "al_entradas_tipo", order: "chave" },
+  // data real de cada venda, confirmada pelo ADM (vazio até rodar 20261024_vendas_data.sql)
+  vendas_data: { table: "al_vendas_data", order: "id_cliente" },
 };
+// tabelas que podem ainda não existir no banco: sem elas o painel abre do mesmo jeito
+const OPCIONAIS = new Set(["al_vendas_data"]);
 
 const PAGE = 1000;
 
@@ -40,6 +62,7 @@ async function readTable(table: string, order?: string) {
     let query = secondaryAdmin.from(table).select("*");
     if (order) query = query.order(order);
     const { data, error } = await query.range(from, from + PAGE - 1);
+    if (error && OPCIONAIS.has(table)) return [];
     if (error) throw new Error(`${table}: ${error.message}`);
     rows.push(...(data ?? []));
     if (!data || data.length < PAGE) break;
@@ -51,6 +74,8 @@ async function readTable(table: string, order?: string) {
 // (que é só do ADM), para a ficha do lead. Os das visitas continuam de fora.
 const OMITIDAS = new Set([
   "carregado_em",
+  "pessoa",
+  "midia",
   "nome",
   "email",
   "telefone",
@@ -72,16 +97,56 @@ function toSheetRow(row: Record<string, unknown>, comContato = false): HypnoboxR
   return out;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function exigirAdmin(context: { supabase: any; userId: string }) {
+  const { data: caller } = await context.supabase
+    .from("profiles")
+    .select("role, full_name")
+    .eq("id", context.userId)
+    .single();
+  if (!caller || (caller.role !== "admin" && caller.role !== "director"))
+    throw new Error("Acesso restrito ao administrador");
+  return caller as { role: string; full_name: string | null };
+}
+
+const dataVendaSchema = z.object({
+  id_cliente: z.string().regex(/^\d{1,12}$/),
+  // null apaga a data confirmada (volta a valer a aproximada)
+  data_venda: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  observacao: z.string().max(500).optional(),
+});
+
+/** Grava (ou apaga) a data real de uma venda e devolve todas as datas confirmadas. */
+export const salvarDataVenda = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => dataVendaSchema.parse(d))
+  .handler(async ({ data, context }): Promise<HypnoboxRow[]> => {
+    const quem = await exigirAdmin(context);
+    const { error } = data.data_venda
+      ? await secondaryAdmin.from("al_vendas_data").upsert({
+          id_cliente: data.id_cliente,
+          data_venda: data.data_venda,
+          observacao: data.observacao ?? null,
+          atualizado_em: new Date().toISOString(),
+          atualizado_por: quem.full_name,
+        })
+      : await secondaryAdmin.from("al_vendas_data").delete().eq("id_cliente", data.id_cliente);
+    if (error)
+      throw new Error(
+        /al_vendas_data/.test(error.message) && /exist|schema cache/i.test(error.message)
+          ? "O banco ainda não tem a tabela de datas de venda: rode supabase/analise-leads/20261024_vendas_data.sql no SQL Editor do projeto novo."
+          : `Não foi possível gravar: ${error.message}`,
+      );
+    return (await readTable("al_vendas_data", "id_cliente")).map((r) => toSheetRow(r));
+  });
+
 export const getHypnoboxData = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<HypnoboxData> => {
-    const { data: caller } = await context.supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", context.userId)
-      .single();
-    if (!caller || (caller.role !== "admin" && caller.role !== "director"))
-      throw new Error("Acesso restrito ao administrador");
+  .handler(async ({ context }): Promise<HypnoboxPacote> => {
+    await exigirAdmin(context);
 
     const entries = await Promise.all(
       Object.entries(SOURCES).map(async ([id, src]) => {
@@ -110,17 +175,10 @@ export const getHypnoboxData = createServerFn({ method: "POST" })
     // período de referência do painel: tudo o que já foi coletado (as coletas somam)
     const { data: todas } = await secondaryAdmin
       .from("al_coletas")
-      .select("periodo_inicio, periodo_fim");
-    const inicios = (todas ?? [])
-      .map((c) => c.periodo_inicio as string | null)
-      .filter((x): x is string => !!x)
-      .sort();
-    const fins = (todas ?? [])
-      .map((c) => c.periodo_fim as string | null)
-      .filter((x): x is string => !!x)
-      .sort();
-    const periodo =
-      inicios.length && fins.length ? { de: inicios[0], ate: fins[fins.length - 1] } : null;
+      .select("periodo_inicio, periodo_fim, fontes");
+    const periodo = periodoColetado((todas ?? []) as ColetaPeriodo[]);
 
-    return { datasets, coletadoEm, periodo };
+    const { gzipSync } = await import("node:zlib");
+    const pacote: HypnoboxData = { datasets, coletadoEm, periodo };
+    return { gz: gzipSync(JSON.stringify(pacote)).toString("base64") };
   });
