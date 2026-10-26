@@ -53,6 +53,8 @@ export function BrokerCheckin() {
   const today = format(new Date(now), "yyyy-MM-dd");
   const [lastPos, setLastPos] = useState<{ lat: number; lng: number } | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
+  // precisão do GPS enquanto ele melhora (mostrada no botão durante o check-in)
+  const [precisao, setPrecisao] = useState<number | null>(null);
 
   const shiftsQ = useQuery({
     queryKey: ["my-shifts-today", user?.id, today],
@@ -137,7 +139,10 @@ export function BrokerCheckin() {
 
   const checkin = useMutation({
     mutationFn: async () => {
-      const pos = gpsRequiredNow() ? await getPosition() : null;
+      setPrecisao(null);
+      // para de esperar o GPS quando chega a 50 m (ou ao limite da regra, se for menor)
+      const alvo = Math.min(cfg?.max_accuracy_m ?? 50, 50);
+      const pos = gpsRequiredNow() ? await getPosition(setPrecisao, alvo) : null;
       if (pos) setLastPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       const { data, error } = await supabase.rpc("crm_roulette_checkin", {
         p_lat: pos?.coords.latitude ?? null,
@@ -293,7 +298,9 @@ export function BrokerCheckin() {
                 <MapPinCheck size={20} />
               )}
               {checkin.isPending
-                ? "Verificando localização…"
+                ? precisao != null
+                  ? `Melhorando o sinal do GPS… ± ${Math.round(precisao)} m`
+                  : "Verificando localização…"
                 : phase === "open"
                   ? "Fazer check-in"
                   : phase === "before" && nextTurn

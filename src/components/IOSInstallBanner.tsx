@@ -18,15 +18,15 @@ export function IOSInstallBanner() {
   return (
     <div className="fixed top-2 inset-x-2 z-50 rounded-xl bg-[var(--navy)] text-white p-3 shadow-lg flex items-start gap-3">
       <div className="flex-1 text-sm">
-        <p className="font-semibold mb-1">Install Gestão Comercial</p>
+        <p className="font-semibold mb-1">Instale o Gestão Comercial</p>
         <p className="text-white/80 text-xs">
-          Tap <Share size={14} className="inline -mt-0.5" /> then "Add to Home Screen" for the full app experience.
+          Toque em <Share size={14} className="inline -mt-0.5" /> e depois em "Adicionar à Tela de Início" para usar como app.
         </p>
       </div>
       <button
         onClick={() => { localStorage.setItem(KEY, "1"); setShow(false); }}
         className="text-white/70 hover:text-white"
-        aria-label="Dismiss"
+        aria-label="Fechar"
       ><X size={18} /></button>
     </div>
   );
