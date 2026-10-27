@@ -100,8 +100,13 @@ export function BottomNav() {
                   // a tela começa a carregar no toque, antes de soltar o dedo
                   preload="intent"
                   onClick={() => setPendingTo(t.to)}
-                  className="flex h-full flex-col items-center justify-center gap-1 select-none [-webkit-tap-highlight-color:transparent] transition-transform duration-100 active:scale-90"
+                  className="relative flex h-full flex-col items-center justify-center gap-1 select-none [-webkit-tap-highlight-color:transparent] transition-transform duration-100 active:scale-90"
                 >
+                  {t.beta && (
+                    <span className="absolute right-0.5 top-1 rounded bg-red-600 px-1 text-[8px] font-bold leading-[12px] text-white">
+                      BETA
+                    </span>
+                  )}
                   <Icon
                     size={21}
                     strokeWidth={active ? 2.4 : 1.9}

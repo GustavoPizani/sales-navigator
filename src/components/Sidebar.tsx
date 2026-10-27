@@ -154,6 +154,14 @@ function SidebarItem({
       >
         <Icon size={18} strokeWidth={active ? 2.4 : 2} className="flex-shrink-0" />
         <span className={labelCls(collapsed)}>{tab.label}</span>
+        {tab.beta &&
+          (collapsed ? (
+            <span className="absolute left-[28px] top-1.5 h-2 w-2 rounded-full bg-red-600" aria-label="Beta" />
+          ) : (
+            <span className="ml-auto rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none tracking-wide text-white">
+              BETA
+            </span>
+          ))}
       </Link>
     </li>
   );

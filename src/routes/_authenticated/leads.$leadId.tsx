@@ -24,6 +24,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
+import { ConversaWhatsapp } from "@/components/extensao/ConversaWhatsapp";
 import { LeadBadges } from "@/components/pipeline/LeadCard";
 import { AppointmentForm, type Appt } from "./appointments";
 import { supabase } from "@/integrations/supabase/client";
@@ -355,6 +356,8 @@ function LeadPage() {
             </div>
             <FormResponses data={lead.form_responses} />
           </div>
+
+          <ConversaWhatsapp leadId={lead.id} clientCode={lead.client_code} />
 
           {/* Agendamentos */}
           <div className={cardCls}>

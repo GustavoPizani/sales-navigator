@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Gestão Comercial WhatsApp",
+  "short_name": "Gestão WhatsApp",
+  "version": "0.1.0",
+  "description": "Faixa do Gestão Comercial (Paes & Gregori) no WhatsApp Web: cliente do Hypnobox, tempo parado, etiquetas, prazos de contato com aviso, sugestões de resposta e transcrição de áudios.",
+  "icons": { "16": "icone.png", "48": "icone.png", "128": "icone.png" },
+  "action": { "default_title": "Abrir o WhatsApp Web", "default_icon": "icone.png" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "alarms", "notifications"],
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["wppconnect-wa.js", "ponte.js"],
+      "world": "MAIN",
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["painel.html", "painel.css", "painel.js", "config.js"],
+      "matches": ["https://web.whatsapp.com/*"]
+    }
+  ]
+}

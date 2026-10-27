@@ -7,9 +7,11 @@ import {
   Users,
   ClipboardList,
   MapPinCheck,
+  MessageCircle,
   ScrollText,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useExtensaoLiberada } from "@/components/extensao/comum";
 
 export type NavTab = {
   to: string;
@@ -17,6 +19,8 @@ export type NavTab = {
   icon: React.ElementType;
   /** Fica fora da barra do celular. */
   sidebarOnly?: boolean;
+  /** Em teste: tarja vermelha BETA no menu. */
+  beta?: boolean;
 };
 
 /**
@@ -26,6 +30,7 @@ export type NavTab = {
  */
 export function useNavTabs(): NavTab[] {
   const { profile, can, isSuperAdmin, isHr } = useAuth();
+  const extensaoLiberada = useExtensaoLiberada();
   if (!profile) return [];
   const isBroker = profile.role === "broker";
   const managesTeam =
@@ -51,6 +56,8 @@ export function useNavTabs(): NavTab[] {
     );
   if (can("projects")) tabs.push({ to: "/projects", label: "Imóveis", icon: Building2 });
   if (can("team") && managesTeam) tabs.push({ to: "/team", label: "Time", icon: Users });
+  // extensão do WhatsApp (substitui o WAHA para os corretores)
+  if (extensaoLiberada) tabs.push({ to: "/extensao", label: "Extensão WhatsApp", icon: MessageCircle, beta: true });
   // RH: o log de check-ins é a tela principal (o ADM acessa pelo menu "Geral")
   if (isHr && !isSuperAdmin)
     tabs.push({ to: "/checkin-log", label: "Log de check-ins", icon: ScrollText });

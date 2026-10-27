@@ -79,6 +79,7 @@ Sales Navigator ("Gestão Comercial — Paes & Gregori"): TanStack Start + React
 - Rodadas: todas até `20261005000004`, `20261006000001` (WhatsApp), `20261007000001` a `00003`, e `20261027000001` (conferência deu 0).
 - **A conferir:** `20261007000004_app_settings`, `20261007000005_checkin_log_adjust_admin_only`, `20261019000001` a `00005` e `20261023000001_escala_link_gerente`. O código publicado depende delas e as telas funcionam, então provavelmente foram rodadas, mas não ficou registrado.
 - `20261027000002_log_escaladas_27_10.sql`: correção pontual do log de 27/10 (duas escaladas registradas como stand-by). Os ajustes de check-in de 27/10 foram resolvidos.
+- `20261027000003_extensao_whatsapp.sql` (tabelas da extensão): rodada em 27/10.
 
 **Banco de análise (`kvwgtyihxcegylcguncj`):** `20261014_central_coleta`, `20261015_al_sincronizar_dono`, `20261019_coleta_acumula`, `20261023_entradas` e `20261024_vendas_data` rodadas.
 
@@ -277,7 +278,7 @@ Uma extensão do Chrome que o corretor baixa dentro do sistema e instala seguind
 
 Tabelas (reaproveitar `wa_conversations` para os dados da conversa, com `provider = 'extensao'`; **não** usar `wa_messages` para a extensão):
 - `wa_vinculos`: `broker_id`, `wa_chat_id`, telefone normalizado, `lead_id` (CRM) e/ou `id_cliente_hypnobox`, quem vinculou e quando; único por corretor + conversa;
-- `wa_conversa_blocos`: `vinculo_id`, `mes` (aaaa-mm), `dados` (bytea gzip do formato compacto), `n_msgs`, `ultima_msg_id`, `ultima_cliente_em`, `ultima_corretor_em`, `ultima_lado`, `ultima_cliente_so_ok`, `exemplo_tom` (o corretor marcou como exemplo do jeito dele); chave `vinculo_id + mes`;
+- `wa_conversa_blocos`: `vinculo_id`, `mes` (aaaa-mm), `dados` (bytea gzip do formato compacto), `n_msgs`, `ultima_msg_id`, `ultima_cliente_em`, `ultima_corretor_em`, `ultima_lado`, `ultima_cliente_so_ok`; chave `vinculo_id + mes` (a marca `exemplo_tom` ficou no vínculo, que é por conversa);
 - `ia_chaves_usuario`: chave do Groq de cada usuário **criptografada** (Supabase Vault ou `pgcrypto` com segredo do servidor), últimos 4 dígitos para exibir, status do último teste. **A chave nunca volta para o navegador**;
 - `wa_inteligencia`: por conversa vinculada, o retrato gerado pela IA (`situacao`, `proximo_passo`, `como_fazer`, `vez_de` corretor/cliente, `temperatura` + citação, `compromissos` jsonb com responsável/prazo/citação, `gerado_em`, `baseado_em_mensagem_em`);
 - `ext_instalacoes`: usuário, versão, última vez visto (para o admin saber quem instalou e quem está desatualizado);
@@ -299,7 +300,7 @@ Tabelas (reaproveitar `wa_conversations` para os dados da conversa, com `provide
 ### 9.5 Disparos (sem disparo pela extensão)
 
 A extensão **não dispara em massa**. Ela ensina e prepara:
-- **Tutorial no painel e no sistema:** como fazer **lista de transmissão** no WhatsApp Business (só chega a quem salvou o número do corretor; limite de contatos por lista) e como usar os **disparos oficiais pagos do próprio app WhatsApp Business** (mensagens de marketing, mais baratas que uma ferramenta). **Conferir preços e disponibilidade no Brasil no momento de escrever o tutorial**; isso muda com frequência.
+- **Disparo = Transmissões comerciais do WhatsApp Business** (não existe mais lista de transmissão grátis): pagas por **créditos** (pacotes de 250 a 10.000 mensagens; em 27/10: 250 = R$ 79, 1.000 = R$ 319, 2.000 = R$ 639, 5.000 = R$ 1.609), comprados **só no app do celular**. Público importado por **CSV** no modelo do app (`business_broadcast_audience_template.csv`: instrução, linha em branco, `Nome completo,Telefone`, até 256 por público). A faixa gera esse CSV (aba Clientes › Baixar público) com a lista filtrada, em partes de 256. **Correção (prints de 27/10):** o WhatsApp Web Business **tem** a Transmissão comercial (Ferramentas comerciais › Transmissão comercial): públicos (criar, **importar CSV**, sugeridos), criar transmissão (público, mensagem com IA, anexo, prévia, resumo com destinatários de 256 e custo estimado, Enviar agora). A leitura do código (48 scripts) não achou essas telas porque são carregadas só quando abertas. A compra de créditos só foi vista no celular. Guia do WhatsApp v5: baixar CSV na faixa → importar público no próprio Web → créditos (celular) → criar transmissão no Web.
 - **Preparação pela extensão:** o corretor escolhe um segmento no painel (ex.: "esquecidos há 15+ dias", "temperatura quente sem visita") e a extensão aplica uma **etiqueta do WhatsApp Business** nesses clientes. O tutorial mostra como criar a transmissão a partir da etiqueta.
 - Modelos de mensagem aprovados pelo admin/gerente ficam no sistema e aparecem no painel.
 
@@ -425,18 +426,22 @@ Cada fase é testada primeiro com a conta de teste e com o meu login (atrás de 
 - **Limite grátis do Groq:** muda sem aviso e é por chave. Transcrição automática de todos os áudios pode esgotar o limite do dia; começar com o botão manual. O medidor de uso e a fila evitam recusas em sequência.
 - **Formato compacto:** é nosso; precisa de versão (`v1`) e de testes de ida e volta (gravar → ler) para não corromper histórico. Mudança de formato = `v2` lido junto com o `v1`.
 
-### 9.13 Decisões que preciso dar
+### 9.13 Decisões
 
-1. A extensão substitui o módulo de WhatsApp com WAHA para os corretores? (O número central do SDR continua precisando de servidor.)
-2. Gerente vê as conversas da equipe ou só os indicadores?
-3. Retenção das mensagens no banco (ex.: 12 meses)?
-4. Publicar na Chrome Web Store como não listada desde o início, ou começar com ZIP?
-5. Quais segmentos e modelos de disparo entram na fase 6?
-6. Corretores piloto da fase 1.
-7. Transcrição automática dos áudios dos clientes vinculados ou só no botão?
+**Dadas em 27/10:**
+1. **A extensão substitui o WAHA para os corretores.** O WAHA fica só no local (eventual número central do SDR).
+2. **Gerente não lê conversas**; vê só indicadores. Já é assim no banco (`wa_conversa_blocos` só para o próprio corretor e o admin).
+3. **Guardar só o que é usado como contexto.** Implementado como janela das **últimas 80 mensagens por conversa vinculada** (`JANELA_MENSAGENS` em `src/lib/extensao/formato.ts`); as mais antigas saem ao chegar novas. Sem mídia; áudio só como transcrição. O histórico antigo lido do celular é usado na hora (perfil de escrita, resumo) e não é guardado.
+6. **Piloto: 3 corretores** (combinados no chat; um deles é o próprio admin). Liberação por `profiles.enabled_features.extensao = true`.
+9. **Histórico do celular: o máximo que der.**
+10. **Chave do Groq no servidor** (cifrada), para valer em qualquer computador.
+- **Termo de uso:** fica como está, sem razão social e CNPJ; o corretor aceita ao instalar e entrar na extensão. Público em `/termo-extensao` (texto em `docs/extensao/termo-de-uso-corretores.md`).
+
+**Ainda em aberto:**
+4. Publicar na Chrome Web Store como não listada desde o início, ou começar com ZIP? (O plano segue com ZIP.)
+5. Quais segmentos e modelos de disparo entram na fase 7?
+7. Transcrição automática dos áudios dos clientes vinculados ou só no botão? (MVP: só no botão.)
 8. Quem aprova os modelos da equipe: só o admin ou também os gerentes?
-9. Até quantos meses de histórico a extensão busca no celular ao vincular (ex.: 6 meses)?
-10. A "extensão de transcrição" de referência: se ela chama o Groq direto do navegador com a chave guardada na própria extensão, quero igual (a chave sai do servidor e fica só no computador do corretor) ou mantenho a chave criptografada no servidor, como está no plano? O plano atual é o do servidor, porque o sistema no celular também precisa da IA.
 
 ### 9.14 Passo a passo para seguir (atualização do sistema + MVP)
 
@@ -448,28 +453,54 @@ Cada fase é testada primeiro com a conta de teste e com o meu login (atrás de 
 3. ~~Commitar migrations de 27/10 e este handoff~~ — feito em 27/10 (commit local).
 4. *Você:* responder as decisões 9.13 (pelo menos 1, 2, 3, 6, 9 e 10).
 
-**Etapa B — preparação (sem código ainda)**
-5. *Claude:* conferir a licença da WPPConnect WA-JS e baixar a versão atual; confirmar os nomes das funções usadas (conversa ativa, LID → número, mensagens, carregar anteriores, baixar áudio, colocar texto na caixa, etiquetas).
-6. *Claude:* conferir no `console.groq.com` (com a sua chave, você mostra a tela) os limites grátis atuais e a lista de modelos; fixar os modelos do MVP.
-7. *Claude:* escrever o termo de uso dos corretores (LGPD) e o aviso de privacidade; *você* revisa.
-8. *Claude:* conferir se `al_leads` tem telefone suficiente para o vínculo automático; se não, ajustar a coleta guiada do Hypnobox para trazer o telefone.
+**Etapa B — preparação** (feita em 27/10)
+5. ~~WA-JS~~ — `@wppconnect/wa-js` **4.7.2, licença Apache-2.0** (pode empacotar na extensão, mantendo o aviso de licença). Funções confirmadas nos tipos do pacote:
+   - conversa ativa: `WPP.chat.getActiveChat()` e o evento `chat.active_chat`;
+   - número real a partir do LID: `WPP.contact.getPnLidEntry(id)`;
+   - mensagens: `WPP.chat.getMessages(chatId, { count, direction: 'before', id })` (com `count: -1` traz todas; por baixo usa a busca de histórico do WhatsApp Web, `msgFindByDirection`); evento `chat.new_message` para as novas;
+   - baixar áudio já decifrado: `WPP.chat.downloadMedia(msgId)` → `Blob`;
+   - colocar texto na caixa sem enviar: `WPP.chat.setInputText(texto, chatId)`;
+   - etiquetas do Business: `WPP.labels.getAllLabels`, `addNewLabel`, `addOrRemoveLabels`.
+   - Falta só confirmar em uso real quanto histórico antigo o celular entrega por pedido.
+6. ~~Groq~~ — modelos ativos na conta (27/10): `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, `qwen/qwen3.8-27b`, `whisper-large-v3`, `whisper-large-v3-turbo` (os Llama saíram). **Modelos do MVP:** sugestão = `openai/gpt-oss-20b`; retrato/perfil = `openai/gpt-oss-120b`; transcrição = `whisper-large-v3-turbo` (idioma `pt`). Limites publicados na documentação (plano base): gpt-oss = 30 pedidos/min, 1.000/dia, 8.000 tokens/min, 200.000 tokens/dia; Whisper = 20 pedidos/min, 2.000/dia, **7.200 s de áudio por hora e 28.800 s (8 h) por dia**. Os números do plano grátis de cada corretor aparecem em `console.groq.com/settings/limits`; a fila usa os cabeçalhos `x-ratelimit-*` e `retry-after`, então se adapta. O `aiExtractJson` do sistema já usa `openai/gpt-oss-120b`, que continua ativo.
+7. ~~Termo de uso~~ — rascunho em `docs/extensao/termo-de-uso-corretores.md`, **para revisão** (faltam razão social, CNPJ, e-mail de privacidade, prazo de retenção e as decisões 2 e 9).
+8. ~~Telefone na análise~~ — `al_leads` tem `telefone` normalizado em **14.216 de 14.491 clientes (98%)**: o vínculo automático por telefone funciona sem mudar a coleta. A busca precisa filtrar pelo corretor do cliente (`al_leads.corretor` é o nome no Hypnobox; ligar ao perfil do corretor no sistema).
 
 **Etapa C — banco**
-9. *Claude:* migration com `wa_vinculos`, `wa_conversa_blocos`, `ia_chaves_usuario`, `ia_uso`, `wa_transcricoes`, `ext_instalacoes`, `ext_guia_progresso` e RLS; testes no PGlite (incluindo ida e volta do formato compacto).
-10. *Você:* rodar a migration no projeto `nuvzzckagxmmucyqvpou` (conferir o projeto antes).
+9. ~~Migration~~ — `supabase/migrations/20261027000003_extensao_whatsapp.sql`: `wa_vinculos`, `wa_conversa_blocos` (bytea gzip, `STORAGE EXTERNAL`, gatilho que resume o bloco mais recente no vínculo), `wa_transcricoes`, `ia_chaves_usuario` (sem políticas, só servidor), `ia_uso` + `ia_uso_somar`, `ext_instalacoes`, `ext_guia_progresso`; RPCs `ia_minha_chave`, `ext_concluir_passo`, `wa_marcar_exemplo`. Leitura pela hierarquia; texto das conversas só do próprio corretor e do admin (decisão 2 em aberto); conta de teste invisível. **34 verificações no PGlite** (rodar duas vezes, ida e volta do gzip pelo banco, resumo, RLS por papel, escrita bloqueada no navegador, RPCs).
+10. ~~Rodar a migration~~ — rodada pelo admin em 27/10.
 
-**Etapa D — sistema**
-11. *Claude:* rotas `/api/ext/*` (login/versão, vínculo, gravar bloco, ler conversa, sugestão, transcrição, uso) com CORS só para a extensão e fila do Groq.
-12. *Claude:* página "Minha chave de IA" (tutorial do Groq, testar e salvar criptografado).
-13. *Claude:* página `/extensao` com download e a **guia de tutorial** (formato da coleta do Hypnobox).
-14. *Claude:* aba "WhatsApp" na página do cliente (lê e descomprime os blocos; transcrições; tempo parado).
-15. Tudo atrás de `isTester` até o piloto.
+**Etapa D — sistema** (feita em 27/10, só no local; migration `20261027000003` rodada pelo admin)
+11. ~~API da extensão~~ — `src/routes/api/ext/$.ts` → `src/lib/extensao/api.server.ts`. Rotas: `GET versao` (pública), `POST sessao`, `POST conversa/abrir`, `POST vinculo`, `POST conversa`, `POST ia/sugestao`, `POST ia/transcrever` (multipart, até 4 MB), `GET ia/uso`. Login pelo token do Supabase (Bearer); acesso só do piloto, admin e conta de teste; CORS só para `chrome-extension://` (fixar `EXT_CHROME_ID` quando a extensão tiver ID fixo), o próprio site (`SITE_URL`) e localhost. Erros de limite do Groq voltam com `esperarSeg` para a fila da extensão (a fila fica na extensão: um pedido por vez; o servidor não repete).
+    - `src/lib/extensao/formato.ts`: formato compacto v1, gzip, bytea, janela de 80 (roda no navegador, na extensão e no servidor);
+    - `src/lib/extensao/dados.server.ts`: busca do cliente (CRM por `wa_find_lead`; Hypnobox por telefone, últimos 8 dígitos, só do corretor pelo nome; por nome se não achar), gravação da conversa (sem repetir, transcrição substitui o texto do áudio), passos da guia;
+    - `src/lib/extensao/groq.server.ts`: cifra AES-256-GCM (`EXT_CHAVES_SEGREDO`), teste da chave, chat JSON e Whisper com a chave do usuário, registro em `ia_uso`.
+12. ~~Minha chave de IA~~ — `/settings/chave-ia` (tutorial do Groq, testar e salvar, status, remover); funções em `src/lib/extensao.functions.ts`.
+13. ~~Página `/extensao`~~ — download (mostra "em preparação" enquanto `public/extensao/gestao-whatsapp.zip` não existe), termo de uso, aviso de versão antiga e a **guia de 9 passos** (`src/lib/extensao/guia.ts`), que se marca sozinha e atualiza a cada 15 s. Atalhos em Minha Conta (`AtalhoExtensao`).
+14. ~~Conversa na página do cliente~~ — `ConversaWhatsapp` em `leads.$leadId.tsx` (antes de Agendamentos): tempo parado e as mensagens guardadas, descomprimidas no navegador; liga pelo `lead_id` ou pelo ID do Hypnobox (`client_code`).
+15. Telas visíveis só para quem está liberado (`useExtensaoLiberada`: piloto, admin, conta de teste).
+- **Testes:** formato (11 verificações, 80 mensagens = 409 bytes no banco); API de ponta a ponta com a conta de teste no servidor local (23 verificações: login, CORS, vínculo, recusa de cliente de outro corretor, gravação sem duplicar, **transcrição real pelo Whisper**, **sugestões reais pelo Groq**, leitura pela RLS, janela de 80, uso, guia, "não é cliente" apaga). Os dados de teste foram apagados no fim.
+- `vite.config.ts`: `server.cors: false`, porque o CORS do servidor de desenvolvimento respondia ao preflight antes das rotas (na Vercel não acontece).
+- **Para publicar:** cadastrar `EXT_CHAVES_SEGREDO` na Vercel (**o mesmo valor do `.env` local**; sem ele, as chaves salvas não abrem) e seguir o roteiro de worktree, porque `leads.$leadId.tsx` também tem mudanças do WAHA (levar só a linha do `ConversaWhatsapp` e o import).
 
-**Etapa E — extensão**
-16. *Claude:* esqueleto MV3 (content script, WA-JS, ponte, painel retrátil empacotado, login, aviso de versão).
-17. *Claude:* vínculo com o Hypnobox no painel e gravação das mensagens novas em blocos compactos.
-18. *Claude:* botões "Sugerir resposta" (texto vai para a caixa) e "Transcrever", com medidor de uso.
-19. *Claude:* empacotar o ZIP e publicar na página `/extensao`.
+**Etapa E — extensão** (escrita em 27/10, em teste local pelo admin com a conta de teste)
+16. Código em `extensao/`:
+    - `manifest.base.json` (MV3, v0.1.0; permissões: `storage` + hosts do WhatsApp Web, Supabase e servidores);
+    - `ponte.js` (mundo da página, junto com a WA-JS): lista fechada de ações — conversa ativa (número real pelo LID), últimas mensagens no formato compacto, baixar áudio, pôr texto na caixa; eventos de conversa trocada e mensagem nova;
+    - `content.js`: faixa de 340 px com lingueta para recolher (estado guardado), encolhe o `#app` do WhatsApp, repassa mensagens painel ↔ ponte;
+    - `painel.html/css/js` (iframe da extensão): login com o Supabase do sistema (escolha Produção ou Local), cliente da conversa (Hypnobox: etapa, produto, origem, dias sem atualizar, "Abrir no Hypnobox"; CRM), tempo parado, vincular / buscar pelo nome (Hypnobox e CRM) / não é cliente / trocar, gravação automática das últimas 80 mensagens (e a cada mensagem nova, com 2,5 s de espera), "Sugerir resposta" (com pedido opcional; clique põe o texto na caixa), áudios recentes com "Transcrever", uso de hoje, aviso de versão nova e de chave faltando; fila da IA (um pedido por vez);
+    - `background.js`: clique no ícone abre/foca o WhatsApp Web.
+17. `scripts/empacotar-extensao.mjs`: monta `extensao/dist/gestao-whatsapp/` (Produção + Local, para "Carregar sem compactação") e `public/extensao/gestao-whatsapp.zip` (só Produção). ID fixo pela chave pública em `extensao/chave-publica.txt`: **`hdemnllipnmcepfcjckidindlclopikg`** (`EXT_CHROME_ID`). WA-JS vem do pacote `@wppconnect/wa-js` 4.7.2 (devDependency), com a licença junto.
+18. API: rota nova `conversa/ler` e opção `buscar` em `conversa/abrir` (trocar o cliente); busca pelo nome **ou e-mail** (com "@") no Hypnobox e no CRM; `conectar` (entrada automática: a extensão lê o login do sistema no mesmo Chrome por `sessao-sistema.js` e troca por uma sessão própria com link mágico de uso único). **A conta de teste vê todos os clientes da base** na busca e no vínculo (como o admin), para testar com conversas reais.
+19. **Etiquetas, prazo e lista** (27/10, migration `20261027000004_extensao_etiquetas_prazo.sql`, 10 verificações no PGlite): etiquetas do corretor (nome + cor; `wa_etiquetas`, `wa_vinculo_etiquetas`), prazo para o próximo contato (`wa_vinculos.retornar_em` + nota; atalhos amanhã / 3 dias / 1 semana / data, às 9h) e `ultimo_contato_em` (coluna calculada). Na faixa: aba **Lista de clientes** com filtros (etiqueta; situação: esperando minha resposta, aguardando o cliente, prazo vencido, com prazo; sem contato há 3/7/15/30+ dias) e ordem (mais tempo sem contato primeiro — padrão —, prazo mais próximo, mais recente); clique abre a conversa (`WPP.chat.openChatBottom`). API: `GET/POST etiquetas`, `etiquetas/apagar`, `vinculo/etiquetas`, `vinculo/prazo`, `lista`. Telefones de fora do Brasil: o Hypnobox grava o DDI errado (não tem correção); a busca compara os últimos 8 dígitos e acha mesmo assim.
+    - A faixa **abre na Lista de clientes** e passa para a aba Conversa quando o corretor abre uma conversa no WhatsApp.
+    - **Aviso de prazo** (`background.js`, permissões `alarms` e `notifications`): a cada 5 minutos confere `lista` com `situacao: vencido`; número de vencidos no ícone da extensão e notificação do Windows uma vez por prazo; clique abre a conversa. O service worker renova a sessão da faixa quando precisa (a faixa relê a sessão guardada antes de renovar, para não haver duas renovações). No celular, o aviso depende das notificações push (pendência 7.2).
+    - **Guia do WhatsApp** (passo 9 da guia, "disparo"): travado até os passos `instalar` e `login`; depois a página mostra o favorito "Guia do WhatsApp" para arrastar à barra (`src/components/extensao/guia-whatsapp.js`, como o "Guia da coleta" do Hypnobox). No WhatsApp Web, abre um painel em shadow DOM com 6 passos do disparo pelo WhatsApp Business (escolher clientes na faixa, etiqueta do Business, lista de transmissão, mensagem, marketing pago, prazo depois); "Concluí" → `postMessage` → `content.js` → faixa → `POST /api/ext/guia/passo {passo:"disparo"}`. A página `/extensao` chama-se **Extensão WhatsApp** (menu e título) e não lista conversas.
+    - **Etiquetas do WhatsApp Business** (migration `20261027000005_extensao_etiquetas_whatsapp.sql`: `wa_etiquetas.wa_label_id`): no Business, a faixa usa as etiquetas do próprio WhatsApp (`WPP.labels.getAllLabels/addNewLabel/addOrRemoveLabels`) e espelha no banco (`POST etiquetas/sincronizar`: liga pelo id do WhatsApp ou pelo nome, atualiza nome/cor, cria as novas, apaga as que sumiram — nunca com a lista vazia). Marcar/desmarcar grava primeiro no WhatsApp e depois no banco; ao abrir uma conversa vinculada, as etiquetas postas no celular são trazidas para o banco. No WhatsApp comum (sem etiquetas) continua só com as do sistema.
+    - Guia do WhatsApp v3 (passos refeitos: escolher na aba Clientes, marcar a etiqueta do WhatsApp Business pela faixa, transmissão grátis no celular, mensagem com a sugestão, disparo pago só no celular com crédito, prazo depois). Guia v2: botões ligados um a um (o WhatsApp interceptava o clique e o guia não fechava), "Fechar" no rodapé, Esc fecha, fecha sozinho 3 s depois do "Concluí". Favorito antigo precisa ser arrastado de novo.
+    - **Mapeamento de tempo** (migration `20261027000006_extensao_metricas.sql`, 7 verificações no PGlite): `ext_metricas` (por dia, usuário, origem `faixa`/`servidor` e ação: vezes, ms total, ms máximo, erros) + `ext_metricas_somar`. Na faixa, `cronometrar` mede cada ação (`acao:*`, inclusive abrir conversa e guardar mensagem nova), cada chamada à API (`api:*`) e cada pedido ao WhatsApp Web (`wa:*`); envia o resumo a cada minuto e ao fechar/esconder a aba (`POST metricas`, `keepalive`). O servidor mede cada rota por dentro (`api:*`, origem `servidor`). Tabela **Tempos da extensão** na página Extensão WhatsApp, só para o admin (hoje / 7 / 30 dias; média com cor; detalhes da API e do WhatsApp Web).
+    - **Público em CSV**: aba Clientes › Baixar público (CSV), no modelo do WhatsApp Business, até 256 por arquivo.
+20. Falta: teste visual no WhatsApp Web real (larguras, seletores, histórico do celular), ajustes que o teste mostrar.
 
 **Etapa F — teste e piloto**
 20. *Você e Claude:* testar com a conta de teste e o seu login (conversa de teste, vínculo, sugestão, áudio).

@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/AppHeader";
+import { AtalhoExtensao } from "@/components/extensao/AtalhoExtensao";
 import { Avatar } from "@/components/Avatar";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
@@ -567,6 +568,8 @@ function ProfileSettingsPage() {
 
         {/* ── Notificações ── */}
         <NotificationsSection />
+
+        <AtalhoExtensao />
 
         {/* ── Dados pessoais ── */}
         <SectionCard title="Dados pessoais">

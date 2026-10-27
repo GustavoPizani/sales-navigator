@@ -29,6 +29,9 @@ export default defineConfig({
   },
   vite: {
     resolve: { alias: canvasStubAlias },
+    // o CORS do servidor de desenvolvimento respondia ao preflight antes das rotas
+    // (/api/ext e /api/mcp têm CORS próprio): desligado, o local se comporta como a Vercel
+    server: { cors: false },
     ...(isBuild ? { ssr: { noExternal: true } } : {}),
   },
 });
