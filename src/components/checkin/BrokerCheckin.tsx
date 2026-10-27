@@ -130,11 +130,13 @@ export function BrokerCheckin() {
           : "closed";
 
   // O admin escolhe quais turnos exigem localização: se o turno com check-in
-  // aberto agora não exige, o GPS nem é pedido.
-  const gpsRequiredNow = () => {
-    if (!cfg || !openTurn) return true;
+  // aberto agora não exige, o GPS nem é pedido. "talvez" = a tela ainda não sabe
+  // qual é o turno (regras carregando, turno fora dos três): quem decide é o banco.
+  const gpsRequiredNow = (): "sim" | "nao" | "talvez" => {
+    if (!cfg || !openTurn) return "talvez";
     const period = periods.find((p) => p.start === openTurn.start);
-    return period ? (cfg[`${period.key}_require_gps`] ?? true) : true;
+    if (!period) return "talvez";
+    return (cfg[`${period.key}_require_gps`] ?? true) ? "sim" : "nao";
   };
 
   const checkin = useMutation({
@@ -142,7 +144,14 @@ export function BrokerCheckin() {
       setPrecisao(null);
       // para de esperar o GPS quando chega a 50 m (ou ao limite da regra, se for menor)
       const alvo = Math.min(cfg?.max_accuracy_m ?? 50, 50);
-      const pos = gpsRequiredNow() ? await getPosition(setPrecisao, alvo) : null;
+      const exige = gpsRequiredNow();
+      let pos: GeolocationPosition | null = null;
+      if (exige === "sim") pos = await getPosition(setPrecisao, alvo);
+      else if (exige === "talvez") {
+        // sem saber a regra, tenta o GPS; se falhar, segue sem ele: o banco recusa
+        // ("Localização não recebida") só se o turno exigir
+        pos = await getPosition(setPrecisao, alvo).catch(() => null);
+      }
       if (pos) setLastPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       const { data, error } = await supabase.rpc("crm_roulette_checkin", {
         p_lat: pos?.coords.latitude ?? null,
@@ -164,10 +173,13 @@ export function BrokerCheckin() {
   });
 
   // Chegou pelo QR code (/checkin?auto=1): inicia o check-in sozinho, uma vez.
-  // O GPS continua validando o local — o QR é só o atalho.
+  // O GPS continua validando o local — o QR é só o atalho. Espera as regras e os
+  // plantões carregarem: antes disso não dá para saber se o turno exige
+  // localização, e o GPS era pedido até na Noite (que não exige).
   const autoStarted = useRef(false);
+  const dadosProntos = !!cfg && shiftsQ.isSuccess && checkinsQ.isSuccess;
   useEffect(() => {
-    if (autoStarted.current || !user) return;
+    if (autoStarted.current || !user || !dadosProntos) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("auto") !== "1") return;
     autoStarted.current = true;
@@ -176,7 +188,7 @@ export function BrokerCheckin() {
     window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
     checkin.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, dadosProntos]);
 
   const places: MapPlace[] = [];
   // há um local só: o Plantão (312 JAM)
@@ -218,7 +230,7 @@ export function BrokerCheckin() {
 
   return (
     <div className="space-y-3">
-      <LocationPermission required={gpsRequiredNow()} />
+      <LocationPermission required={gpsRequiredNow() !== "nao"} />
 
       {/* Cartão principal: responde "posso fazer check-in agora?" */}
       <div className="bg-white rounded-2xl border border-border p-4">
