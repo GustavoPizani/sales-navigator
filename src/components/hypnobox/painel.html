@@ -1170,6 +1170,21 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
     linkLead(null); showModal();
   }
   document.querySelectorAll('[data-kpi]').forEach(b => b.addEventListener('click', () => openModal(b.dataset.kpi)));
+  // clientes por trás de um número do 1:1: itens { id, t, m: [[rótulo, valor]] }; o clique abre a ficha
+  function modalClientes(titulo, itens) {
+    $('modal-t').textContent = titulo + ' (' + int(itens.length) + ')';
+    const mb = $('modal-b'); mb.innerHTML = '';
+    if (!itens.length) { const p = el('p', 'sn-empty', 'Nenhum cliente neste número.'); mb.appendChild(p); }
+    itens.forEach(x => {
+      const it = el('div', 'it'); it.appendChild(el('div', 't', x.t));
+      const m = el('div', 'm');
+      x.m.forEach(([k, v]) => { const sp = el('span'); sp.appendChild(document.createTextNode(k + ': ')); sp.appendChild(el('b', null, v || '—')); m.appendChild(sp); });
+      it.appendChild(m);
+      if (x.id) { it.style.cursor = 'pointer'; it.title = 'Abrir a ficha do cliente ' + x.id; actionable(it); it.addEventListener('click', () => openLeadById(x.id)); }
+      mb.appendChild(it);
+    });
+    linkLead(null); showModal();
+  }
   $('modal-x').addEventListener('click', () => { closeModal(); });
   $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 
@@ -1317,21 +1332,33 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
 
     const kp = el('div', 'sn-kpis'); box.appendChild(kp);
     // o que o número conta vai escrito no próprio quadro; melhor/pior também vai escrito (não só na cor)
-    const tile = (valor, rotulo, oque, ref, melhor) => { const d = el('div', 'sn-kpi'); d.appendChild(el('div', 'v', valor)); d.appendChild(el('div', 'l', rotulo));
+    // com "abrir", o quadro vira botão e mostra os clientes que formam o número
+    const tile = (valor, rotulo, oque, ref, melhor, abrir) => { const d = el(abrir ? 'button' : 'div', 'sn-kpi' + (abrir ? ' click' : '')); d.appendChild(el('div', 'v', valor)); d.appendChild(el('div', 'l', rotulo));
       d.appendChild(el('div', 'o', oque));
-      d.appendChild(el('div', 'h' + (melhor == null ? '' : melhor ? ' melhor' : ' pior'), ref + (melhor == null ? '' : melhor ? ' · melhor' : ' · abaixo'))); kp.appendChild(d); };
+      d.appendChild(el('div', 'h' + (melhor == null ? '' : melhor ? ' melhor' : ' pior'), ref + (melhor == null ? '' : melhor ? ' · melhor' : ' · abaixo')));
+      if (abrir) { d.type = 'button'; d.title = 'Ver os clientes'; d.addEventListener('click', abrir); }
+      kp.appendChild(d); };
+    const doLead = r => ({ id: r.id, t: 'Cliente ' + r.id + ' · ' + prodName(r.produto), m: [['Etapa', (ET[r.etapa] || { label: r.etapa }).label], ['Status', r.submomento], ['Cadastro', brDate(r.cadastro)], ['Sem atualizar', int(diasSemAtualizar(r)) + ' dias']] });
+    const porParado = rows => rows.slice().sort((a, b) => diasSemAtualizar(b) - diasSemAtualizar(a)).map(doLead);
+    const visReal = visitasDoPeriodo().filter(v => v.corretor === nome && v.status === 'Realizada').sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+    const retsT = ent.filter(e => e.corretor === nome && e.tipo === 'retorno').sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
     const refMedia = k => 'equipe ' + dec(media(eqS, k)) + ' · online ' + dec(media(S, k));
     const refTaxa = (a, b, f) => 'equipe ' + f(taxa(eqS, a, b)) + ' · online ' + f(taxa(S, a, b));
-    tile(int(s.atend), 'Atendimentos', 'clientes de ' + nome + ' cadastrados de ' + per, refMedia('atend'), null);
-    tile(s.atend ? pct(s.contato) : '–', 'Taxa de contato', int(s.cont) + ' de ' + int(s.atend) + ' já saíram de Sem contato e Sem registro', refTaxa('cont', 'atend', pct), s.atend ? s.contato >= taxa(eqS, 'cont', 'atend') : null);
-    tile(int(s.realizadas), 'Visitas realizadas', 'com baixa de realizada de ' + per + ', pela data da visita (qualquer cliente de ' + nome + ')', refMedia('realizadas'), s.realizadas >= media(eqS, 'realizadas'));
-    tile(int(s.parados), 'Sem contato há 7+ dias', 'clientes do período ainda sem contato e sem atualização há 7 dias ou mais', refMedia('parados'), s.parados <= media(eqS, 'parados'));
-    tile(int(s.retornos), 'Retornos', 'clientes que já existiam e voltaram a chamar de ' + per, refMedia('retornos'), null);
+    tile(int(s.atend), 'Atendimentos', 'clientes de ' + nome + ' cadastrados de ' + per, refMedia('atend'), null, () => modalClientes('Atendimentos de ' + nome, porParado(s.v)));
+    tile(s.atend ? pct(s.contato) : '–', 'Taxa de contato', int(s.cont) + ' de ' + int(s.atend) + ' já saíram de Sem contato e Sem registro', refTaxa('cont', 'atend', pct), s.atend ? s.contato >= taxa(eqS, 'cont', 'atend') : null,
+      () => modalClientes('Clientes de ' + nome + ' com contato', porParado(s.v.filter(r => !isSem(r)))));
+    tile(int(s.realizadas), 'Visitas realizadas', 'com baixa de realizada de ' + per + ', pela data da visita (qualquer cliente de ' + nome + ')', refMedia('realizadas'), s.realizadas >= media(eqS, 'realizadas'),
+      () => modalClientes('Visitas realizadas de ' + nome, visReal.map(v => ({ id: v.id_cliente, t: 'Cliente ' + v.id_cliente + ' · ' + prodName(v.produto), m: [['Visita', brDate(v.data) + ' ' + esc(v.hora)]].concat(v.registros > 1 ? [['Registros no Hypnobox', String(v.registros)]] : []) }))));
+    tile(int(s.parados), 'Sem contato há 7+ dias', 'clientes do período ainda sem contato e sem atualização há 7 dias ou mais', refMedia('parados'), s.parados <= media(eqS, 'parados'),
+      () => modalClientes('Sem contato há 7+ dias · ' + nome, porParado(s.v.filter(r => isSem(r) && N(r.dias_sem_atualizar) >= 7))));
+    tile(int(s.retornos), 'Retornos', 'clientes que já existiam e voltaram a chamar de ' + per, refMedia('retornos'), null,
+      () => modalClientes('Retornos de ' + nome, retsT.map(e => ({ id: e.id_cliente || null, t: e.id_cliente ? 'Cliente ' + e.id_cliente + ' · ' + prodName(e.produto) : 'Fora da lista de Clientes · ' + prodName(e.produto), m: [['Entrada', brDate(e.data) + ' ' + esc(e.hora)], ['Canal', e.canal]] }))));
     tile(int(s.semresp), 'Msg. sem resposta', 'relatório de Mensagens da coleta de ' + brD(HOJE) + ': não segue o período', refMedia('semresp'), s.semresp <= media(eqS, 'semresp'));
     // vendas: toda a carteira do corretor (não só o período da tela)
     const L = dash.data('leads_hypnobox'), vdc = vendasDe(L.status === 'ok' ? L.data.filter(r => r.corretor === nome) : []);
     const vmA = vdc.antes.length / 12, vmD = porMes(vdc.depois.length, vdc.diasDepois);
-    tile(int(vdc.depois.length), 'Vendas desde ' + brDate(INICIO), 'carteira inteira, não só o período: média por mês desde ' + brD(INICIO) + ' x 12 meses antes', dec(vmD) + '/mês · antes ' + dec(vmA) + '/mês', vdc.depois.length || vdc.antes.length ? vmD >= vmA : null);
+    tile(int(vdc.depois.length), 'Vendas desde ' + brDate(INICIO), 'carteira inteira, não só o período: média por mês desde ' + brD(INICIO) + ' x 12 meses antes', dec(vmD) + '/mês · antes ' + dec(vmA) + '/mês', vdc.depois.length || vdc.antes.length ? vmD >= vmA : null,
+      () => modalClientes('Vendas de ' + nome + ' desde ' + brD(INICIO), vdc.depois.slice().sort((a, b) => b.data.localeCompare(a.data)).map(x => ({ id: x.r.id, t: 'Cliente ' + x.r.id + ' · ' + prodName(x.r.produto), m: [['Venda', brDate(x.data) + (x.confirmada ? ' (confirmada)' : ' (aproximada)')], ['Status', x.r.submomento]] }))));
 
     const lista = (titulo, sub, cab, linhas, vazio, abrir) => {
       const tc = el('div', 'sn-tablecard'); const bar = el('div', 'sn-tablebar'); const tt = el('div');
