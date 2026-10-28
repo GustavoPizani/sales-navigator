@@ -6,6 +6,7 @@ import { ROLE_LABELS, useHomePath } from "@/components/nav/useNavTabs";
 import { useAuth } from "@/hooks/useAuth";
 import {
   abrirHypnoboxData,
+  criarLinkConferencia,
   getHypnoboxData,
   salvarDataVenda,
   type HypnoboxData,
@@ -87,6 +88,11 @@ function HypnoboxPage() {
     },
     [queryClient],
   );
+  // link único para o corretor conferir as visitas do período (página /conferir, sem login)
+  const criarLink = useCallback(async (corretor: string, nome: string, de: string, ate: string) => {
+    const token = await criarLinkConferencia({ data: { corretor, nome, de, ate } });
+    return `${window.location.origin}/conferir/${token}`;
+  }, []);
 
   // dash da LEN de outros períodos (filtro de datas das abas de campanhas), guardado por período
   const cache = useRef(new Map<string, DashLen>());
@@ -168,6 +174,7 @@ function HypnoboxPage() {
         lenInfo={lenInfo}
         onPedirLen={pedirLen}
         onSalvarDataVenda={salvarVenda}
+        onCriarLinkConferencia={criarLink}
         initialTab={initialTab}
         initialLead={initialLead}
         userName={profile?.full_name ?? ""}

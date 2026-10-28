@@ -58,6 +58,8 @@ type Props = {
   onPedirLen: (de: string | null, ate: string | null) => void;
   /** Grava a data real de uma venda (null apaga). */
   onSalvarDataVenda: (id: string, data: string | null) => Promise<void>;
+  /** Cria o link único para o corretor conferir as visitas do período; devolve o endereço. */
+  onCriarLinkConferencia: (corretor: string, nome: string, de: string, ate: string) => Promise<string>;
   initialTab?: string;
   /** ID do lead a abrir assim que o painel carrega. */
   initialLead?: string;
@@ -146,6 +148,9 @@ export default function HypnoboxFrame(props: Props) {
       // data real de uma venda (aba Vendas)
       salvarDataVenda: (id: string, data: string | null) =>
         latest.current.onSalvarDataVenda(id, data),
+      // link de conferência da agenda (1:1)
+      criarLinkConferencia: (corretor: string, nome: string, de: string, ate: string) =>
+        latest.current.onCriarLinkConferencia(corretor, nome, de, ate),
       len: () => latest.current.lenInfo,
       refresh: () => {},
       params: () => ({}),

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { secondaryAdmin } from "@/integrations/supabase/secondary.server";
 import { periodoColetado, type ColetaPeriodo } from "@/lib/coleta/periodo";
+import { corretoresDoSistema } from "@/lib/corretores-sistema.server";
 
 // O painel "Análise Hypnobox" foi escrito para ler planilhas (CSV): todo valor
 // chega como texto e célula vazia é "". As linhas saem daqui nesse formato para
@@ -50,9 +51,13 @@ const SOURCES: Record<string, { table: string; order?: string }> = {
   entradas: { table: "al_entradas_tipo", order: "chave" },
   // data real de cada venda, confirmada pelo ADM (vazio até rodar 20261024_vendas_data.sql)
   vendas_data: { table: "al_vendas_data", order: "id_cliente" },
+  // resposta do corretor pelo link de conferência: a visita aconteceu ou não
+  visitas_confirmadas: { table: "al_visitas_confirmadas", order: "chave" },
+  // visitas que o corretor informou pelo link e não estavam na agenda do Hypnobox
+  visitas_informadas: { table: "al_visitas_informadas", order: "data" },
 };
 // tabelas que podem ainda não existir no banco: sem elas o painel abre do mesmo jeito
-const OPCIONAIS = new Set(["al_vendas_data"]);
+const OPCIONAIS = new Set(["al_vendas_data", "al_visitas_confirmadas", "al_visitas_informadas"]);
 
 const PAGE = 1000;
 
@@ -143,6 +148,41 @@ export const salvarDataVenda = createServerFn({ method: "POST" })
     return (await readTable("al_vendas_data", "id_cliente")).map((r) => toSheetRow(r));
   });
 
+const linkConferenciaSchema = z.object({
+  corretor: z.string().min(1).max(120),
+  nome: z.string().max(120).optional(),
+  de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+/** Link único para o corretor conferir as visitas do período (página /conferir/<token>, sem login). */
+export const criarLinkConferencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => linkConferenciaSchema.parse(d))
+  .handler(async ({ data, context }): Promise<string> => {
+    const quem = await exigirAdmin(context);
+    if (data.de > data.ate) throw new Error("Período inválido");
+    const { randomBytes } = await import("node:crypto");
+    const token = randomBytes(18).toString("base64url");
+    const { error } = await secondaryAdmin.from("al_conferencia_links").insert({
+      token,
+      corretor: data.corretor,
+      nome: data.nome ?? null,
+      de: data.de,
+      ate: data.ate,
+      criado_por: quem.full_name,
+      // o link vale 45 dias
+      expira_em: new Date(Date.now() + 45 * 864e5).toISOString(),
+    });
+    if (error)
+      throw new Error(
+        /al_conferencia_links/.test(error.message) && /exist|schema cache/i.test(error.message)
+          ? "O banco ainda não tem a conferência de visitas: rode supabase/analise-leads/20261028_conferencia_visitas.sql no SQL Editor do projeto novo."
+          : `Não foi possível criar o link: ${error.message}`,
+      );
+    return token;
+  });
+
 export const getHypnoboxData = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<HypnoboxPacote> => {
@@ -159,6 +199,14 @@ export const getHypnoboxData = createServerFn({ method: "POST" })
     const datasets = Object.fromEntries(entries);
     // no painel o lead é identificado por "id"
     datasets.leads_hypnobox = datasets.leads_hypnobox.map((r) => ({ ...r, id: r.id_cliente }));
+
+    // corretores, equipes e escala do sistema principal (a equipe do painel vem daqui)
+    const nomesHyp = new Set<string>();
+    for (const id of ["leads_hypnobox", "visitas_hypnobox", "entradas"])
+      for (const r of datasets[id] ?? []) if (r.corretor) nomesHyp.add(r.corretor);
+    const sistema = await corretoresDoSistema([...nomesHyp]);
+    datasets.corretores_sistema = sistema.corretores;
+    datasets.turnos_sistema = sistema.turnos;
 
     const { data: coleta } = await secondaryAdmin
       .from("al_coletas")

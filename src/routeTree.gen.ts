@@ -28,6 +28,7 @@ import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedRelatorioVisitasRouteImport } from './routes/_authenticated/relatorio-visitas'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
+import { Route as ConferirTokenRouteImport } from './routes/conferir.$token'
 import { Route as EscalaTokenRouteImport } from './routes/escala.$token'
 import { Route as DotwellKnownOauthProtectedResourceSplatRouteImport } from './routes/[.]well-known/oauth-protected-resource.$'
 import { Route as AuthenticatedHypnoboxColetaRouteImport } from './routes/_authenticated/hypnobox_.coleta'
@@ -142,6 +143,11 @@ const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const ConferirTokenRoute = ConferirTokenRouteImport.update({
+  id: '/conferir/$token',
+  path: '/conferir/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EscalaTokenRoute = EscalaTokenRouteImport.update({
   id: '/escala/$token',
   path: '/escala/$token',
@@ -245,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/conferir/$token': typeof ConferirTokenRoute
   '/escala/$token': typeof EscalaTokenRoute
   '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/hypnobox/coleta': typeof AuthenticatedHypnoboxColetaRoute
@@ -280,6 +287,7 @@ export interface FileRoutesByTo {
   '/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/conferir/$token': typeof ConferirTokenRoute
   '/escala/$token': typeof EscalaTokenRoute
   '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/hypnobox/coleta': typeof AuthenticatedHypnoboxColetaRoute
@@ -317,6 +325,7 @@ export interface FileRoutesById {
   '/_authenticated/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
+  '/conferir/$token': typeof ConferirTokenRoute
   '/escala/$token': typeof EscalaTokenRoute
   '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/_authenticated/hypnobox_/coleta': typeof AuthenticatedHypnoboxColetaRoute
@@ -354,6 +363,7 @@ export interface FileRouteTypes {
     | '/relatorio-visitas'
     | '/schedule'
     | '/team'
+    | '/conferir/$token'
     | '/escala/$token'
     | '/.well-known/oauth-protected-resource/$'
     | '/hypnobox/coleta'
@@ -389,6 +399,7 @@ export interface FileRouteTypes {
     | '/relatorio-visitas'
     | '/schedule'
     | '/team'
+    | '/conferir/$token'
     | '/escala/$token'
     | '/.well-known/oauth-protected-resource/$'
     | '/hypnobox/coleta'
@@ -425,6 +436,7 @@ export interface FileRouteTypes {
     | '/_authenticated/relatorio-visitas'
     | '/_authenticated/schedule'
     | '/_authenticated/team'
+    | '/conferir/$token'
     | '/escala/$token'
     | '/.well-known/oauth-protected-resource/$'
     | '/_authenticated/hypnobox_/coleta'
@@ -450,6 +462,7 @@ export interface RootRouteChildren {
   TermoExtensaoRoute: typeof TermoExtensaoRoute
   DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute
   DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
+  ConferirTokenRoute: typeof ConferirTokenRoute
   EscalaTokenRoute: typeof EscalaTokenRoute
   ApiExtSplatRoute: typeof ApiExtSplatRoute
   ApiMcpTokenRoute: typeof ApiMcpTokenRoute
@@ -593,6 +606,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/team'
       preLoaderRoute: typeof AuthenticatedTeamRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/conferir/$token': {
+      id: '/conferir/$token'
+      path: '/conferir/$token'
+      fullPath: '/conferir/$token'
+      preLoaderRoute: typeof ConferirTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/escala/$token': {
       id: '/escala/$token'
@@ -788,6 +808,7 @@ const rootRouteChildren: RootRouteChildren = {
     DotwellKnownOauthAuthorizationServerRoute,
   DotwellKnownOauthProtectedResourceRoute:
     DotwellKnownOauthProtectedResourceRouteWithChildren,
+  ConferirTokenRoute: ConferirTokenRoute,
   EscalaTokenRoute: EscalaTokenRoute,
   ApiExtSplatRoute: ApiExtSplatRoute,
   ApiMcpTokenRoute: ApiMcpTokenRoute,

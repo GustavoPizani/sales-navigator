@@ -77,12 +77,19 @@
 .sn-um .vazio { font-size: 13px; color: var(--muted); padding: 12px 16px; margin: 0; }
 a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 2px; }
 .sn-um .so-pdf { display: none; }
+.sn-um .conf-link { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--gold); border-radius: 12px; padding: 12px 16px; font-size: 13px; color: var(--navy); }
+.sn-um .conf-link[hidden] { display: none; }
+.sn-um .conf-link input { flex: 1 1 280px; min-width: 0; }
+.sn-um .sn-kpi .o { font-size: 11px; line-height: 1.3; color: rgba(255,255,255,.78); margin-top: 6px; max-width: 26ch; }
+.sn-um .escopo { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; font-size: 13px; color: var(--navy); }
+.sn-um .escopo ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; color: var(--muted); }
+.sn-um .lsub { margin: 2px 0 0; font-size: 12px; color: var(--muted); font-weight: 400; max-width: 72ch; }
 /* PDF da conversa 1:1: só o relatório, listas inteiras, links do Hypnobox clicáveis */
 @media print {
   @page { size: A4; margin: 12mm; }
   body.imprimir-um { background: #fff; }
   body.imprimir-um .sn-side, body.imprimir-um .sn-head, body.imprimir-um .sn-sub, body.imprimir-um .sn-fbar, body.imprimir-um #kpis,
-  body.imprimir-um .sn-bottom, body.imprimir-um .sn-um .acts, body.imprimir-um .sn-modal { display: none !important; }
+  body.imprimir-um .sn-bottom, body.imprimir-um .sn-um .acts, body.imprimir-um .sn-um .conf-link, body.imprimir-um .sn-modal { display: none !important; }
   body.imprimir-um .sn, body.imprimir-um .sn-main, body.imprimir-um .sn-content { display: block; padding: 0; min-height: 0; background: #fff; }
   body.imprimir-um .sn-panel:not(#p-corretores) { display: none !important; }
   body.imprimir-um .sn-um .so-pdf { display: block; font-size: 11px; color: #555; }
@@ -405,7 +412,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   <section class="sn-kpis" id="kpis" data-source="leads_hypnobox">
     <div class="sn-kpi"><div class="v" id="k-total">—</div><div class="l">Total de atendimentos</div></div>
     <button class="sn-kpi click" type="button" data-kpi="contato"><div class="v" id="k-contato">—</div><div class="l">Em contato</div><div class="h">ver detalhes</div></button>
-    <button class="sn-kpi click" type="button" data-kpi="visitas"><div class="v" id="k-visitas">—</div><div class="l">Total de visitas</div><div class="h">ver detalhes</div></button>
+    <button class="sn-kpi click" type="button" data-kpi="visitas"><div class="v" id="k-visitas">—</div><div class="l">Em visita ou além</div><div class="h">clientes em Visita, Proposta ou Venda</div></button>
     <button class="sn-kpi click" type="button" data-kpi="propostas"><div class="v" id="k-prop">—</div><div class="l">Propostas</div><div class="h">ver detalhes</div></button>
     <button class="sn-kpi click" type="button" data-kpi="vendas"><div class="v" id="k-venda">—</div><div class="l">Vendas</div><div class="h">ver detalhes</div></button>
     <button class="sn-kpi click" type="button" data-kpi="semcontato"><div class="v" id="k-sem">—</div><div class="l">Sem contato</div><div class="h">ver detalhes</div></button>
@@ -463,21 +470,25 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
           <option value="parados">Mais leads parados (7+ dias)</option>
           <option value="semresp">Mais mensagens sem resposta</option>
           <option value="retornos">Mais retornos no período</option>
+          <option value="realizadas">Mais visitas realizadas no período</option>
+          <option value="falta">Mais faltas na escala</option>
         </select></label>
         <div class="sn-seg" role="group" aria-label="Visualização">
           <button type="button" data-bkv="cards" aria-pressed="true">Cartões</button>
           <button type="button" data-bkv="tabela" aria-pressed="false">Tabela</button>
         </div>
       </div>
-      <p class="sn-note">Clique num corretor para abrir a conversa 1:1: os números dele ao lado da média da equipe, os leads parados para cobrar, os retornos e as visitas. "Conv." = visitas ÷ atendimentos. A barra mostra a taxa de contato; as barrinhas de baixo, os leads recebidos por semana.</p>
+      <p class="sn-note">Clique num corretor para abrir a conversa 1:1: os números dele ao lado da média da equipe e do online, os leads parados para cobrar, os retornos e as visitas. Visitas = visitas realizadas no período (agenda do Hypnobox, pela data da visita); "Conv." = visitas realizadas ÷ atendimentos. A barra mostra a taxa de contato; as barrinhas de baixo, os leads recebidos por semana.</p>
+      <p class="sn-note" id="bk-escopo"></p>
       <div class="sn-brokers" id="brokers" data-source="leads_hypnobox mensagens_corretor"></div>
       <div class="sn-tablecard" id="bk-tabela" hidden>
         <div class="sn-tw">
           <table class="sn-table" id="tb-bk" data-source="leads_hypnobox mensagens_corretor entradas">
             <thead><tr>
               <th data-k="nome">Corretor</th><th data-k="ger">Equipe</th><th class="num" data-k="atend">Atend.</th><th class="num" data-k="em">Em contato</th>
-              <th class="num" data-k="vis">Visitas</th><th class="num" data-k="conv">Conv.</th><th class="num" data-k="contato">Taxa de contato</th>
+              <th class="num" data-k="realizadas" title="Visitas com baixa de realizada no período, pela data da visita">Visitas realizadas</th><th class="num" data-k="conv" title="Visitas realizadas ÷ atendimentos">Conv.</th><th class="num" data-k="contato">Taxa de contato</th>
               <th class="num" data-k="parados">Parados 7+ dias</th><th class="num" data-k="semresp">Msg. sem resposta</th><th class="num" data-k="retornos">Retornos</th>
+              <th class="num" data-k="checkin" title="Dias com check-in ÷ turnos escalados no sistema, no período">Check-in</th><th class="num" data-k="falta">Faltas</th>
             </tr></thead>
             <tbody></tbody>
           </table>
@@ -943,6 +954,23 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   const INICIO = '2026-09-18';
   // venda = cliente no momento de venda do Hypnobox (ainda não há vendas lançadas nesses leads)
   const isVenda = r => /^vend/i.test(esc(r.momento));
+  // equipe = gerente do corretor no sistema (o mesmo da escala e do check-in), não o "gerente" do Hypnobox;
+  // quem não tem cadastro ativo no sistema fica em FORA DO SISTEMA
+  const FORA = 'FORA DO SISTEMA';
+  let SYS = null; // corretor do Hypnobox -> { nome, equipe }
+  function equipesDoSistema() {
+    const C = dash.data('corretores_sistema');
+    SYS = C.status === 'ok' && C.data.length ? new Map(C.data.map(c => [c.corretor, c])) : null;
+    if (!SYS) return;
+    ['leads_hypnobox', 'visitas_hypnobox'].forEach(id => { const D = dash.data(id); if (D.status !== 'ok' || D.data.__equipes) return; D.data.__equipes = true;
+      D.data.forEach(r => { r.gerente_hypnobox = r.gerente; const c = SYS.get(r.corretor); r.gerente = c ? c.equipe : FORA; }); });
+  }
+  // escala e check-in no sistema, com as datas da tela, até ontem (a escala já tem os próximos dias e o turno de hoje pode não ter começado)
+  const ONTEM = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() - 864e5));
+  const turnosDe = nome => { const T = dash.data('turnos_sistema');
+    const t = T.status === 'ok' ? T.data.filter(x => x.corretor === nome && x.data <= ONTEM && (!F.de || x.data >= F.de) && (!F.ate || x.data <= F.ate)) : [];
+    return { escalado: t.filter(x => x.escalado).length, checkin: t.filter(x => x.checkin).length, falta: t.filter(x => x.falta).length, extra: t.filter(x => x.extra).length }; };
+  const inicioEscala = () => { const T = dash.data('turnos_sistema'); return T.status === 'ok' && T.data.length ? T.data[0].data : null; };
   const COPPER = '#B28069', GREY = '#D4D4D4', NAVY = '#2D2D2D';
   const AV = ['#B28069', '#2D2D2D', '#0891B2', '#4F46E5', '#D97706', '#16A34A', '#7E5845', '#64748B', '#DB2777', '#0D9488'];
   const avColor = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return AV[h % AV.length]; };
@@ -982,7 +1010,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   function sideBadges() {
     const set = (id, v, alert) => { const e = $(id); if (!e) return; e.hidden = v == null; if (v != null) { e.textContent = int(v); e.classList.toggle('alert', !!alert); } };
     const L = dash.data('leads_hypnobox'), V = dash.data('visitas_hypnobox');
-    if (L.status === 'ok') { const R = rowsFiltered(L.data); set('badge-dashboard', R.length); set('sbadge-atendimentos', R.filter(r => r.etapa !== 'Não interessado').length); set('sbadge-corretores', new Set(R.map(r => r.corretor)).size); set('badge-campanhas', new Set(R.map(r => r.campanha)).size); }
+    if (L.status === 'ok') { const R = rowsFiltered(L.data); set('badge-dashboard', R.length); set('sbadge-atendimentos', R.filter(r => r.etapa !== 'Não interessado').length); set('sbadge-corretores', SYS ? [...SYS.values()].filter(c => (!F.ger || c.equipe === F.ger) && (!F.cor || c.corretor === F.cor)).length : new Set(R.map(r => r.corretor)).size); set('badge-campanhas', new Set(R.map(r => r.campanha)).size); }
     if (V.status === 'ok') { const vv = V.data.filter(r => (!F.ger || r.gerente === F.ger) && (!F.cor || r.corretor === F.cor) && (!F.prod || r.produto === F.prod)); const venc = vv.filter(r => r.status === 'Agendada' && r.data < HOJE).length, prox = vv.filter(r => r.status === 'Agendada' && r.data >= HOJE).length;
       set('badge-agenda', venc || prox, venc > 0); set('sbadge-agenda', prox); set('sbadge-visitas', vv.filter(r => r.status === 'Realizada').length); }
   }
@@ -1008,7 +1036,9 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
     for (let pass = 0; pass < 3; pass++) {
       let changed = false;
       Object.entries(FACETS).forEach(([k, col]) => {
-        const vals = [...new Set(all.filter(r => matchExcept(r, k)).map(r => r[col]))].sort();
+        // gerente e corretor: só os cadastrados no sistema (os clientes de quem está fora continuam em "Todos")
+        const vals = [...new Set(all.filter(r => matchExcept(r, k)).map(r => r[col]))]
+          .filter(v => !SYS || (k === 'ger' ? v !== FORA : k === 'cor' ? SYS.has(v) : true)).sort();
         fillSelect(fields[k], vals, k === 'prod' ? prodName : undefined);
         if (F[k] && !vals.includes(F[k])) { F[k] = ''; changed = true; }
         fields[k].value = F[k];
@@ -1084,7 +1114,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
       g.append('text').attr('x', ml - 10).attr('y', block / 2 + 4).attr('text-anchor', 'end').attr('font-size', 12).attr('fill', '#6B7280').text(lab.length > 32 ? lab.slice(0, 31) + '…' : lab);
       series.forEach((s, j) => {
         const v = r[s.key], yy = j * (bh + gap);
-        if (v === 0 && multi) return;
+        if (v === 0 && multi) { if (opt.zeros) g.append('text').attr('x', ml + 2).attr('y', yy + bh - 1).attr('font-size', 11).attr('font-weight', 600).attr('fill', s.color || '#6B7280').text(opt.fmt(0, r)); return; }
         if (v == null) { g.append('text').attr('x', ml + 2).attr('y', yy + bh - 1).attr('font-size', 11).attr('fill', '#6B7280').text('sem leads'); return; }
         g.append('rect').attr('x', ml).attr('y', yy).attr('width', Math.max(2, x(v))).attr('height', bh).attr('rx', 4).attr('fill', s.color || r.color || NAVY);
         g.append('text').attr('x', ml + Math.max(2, x(v)) + 6).attr('y', yy + bh / 2 + 4).attr('font-size', 11).attr('font-weight', 600).attr('fill', '#6B7280').text(opt.fmt(v, r));
@@ -1122,7 +1152,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   }
   function openModal(kind) {
     const defs = {
-      contato: ['Em contato', r => r.etapa === 'Em tratativa'], visitas: ['Total de visitas', isVis], propostas: ['Propostas', r => r.etapa === 'Proposta'], vendas: ['Vendas', isVenda],
+      contato: ['Em contato', r => r.etapa === 'Em tratativa'], visitas: ['Clientes em Visita, Proposta ou Venda', isVis], propostas: ['Propostas', r => r.etapa === 'Proposta'], vendas: ['Vendas', isVenda],
       semcontato: ['Sem contato', isSem], parados: ['Parados 7+ dias', r => isSem(r) && N(r.dias_sem_atualizar) >= 7]
     };
     const [title, f] = defs[kind]; const items = lastR.filter(f).sort((a, b) => N(b.dias_sem_atualizar) - N(a.dias_sem_atualizar));
@@ -1163,6 +1193,8 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
 
   // ===================== Corretores: ordenação, tabela e conversa 1:1 =====================
   let BK_ORD = 'atend', BK_DIR = -1, BK_VIEW = 'cards', BK_UM = null;
+  // último link de conferência gerado no 1:1 (corretor + período)
+  let LINK_CONF = null;
   // ordem inicial de cada coluna: texto de A a Z, números do maior para o menor
   const BK_TEXTO = { nome: true, ger: true };
   const bkOrdem = k => { if (BK_ORD === k) BK_DIR = -BK_DIR; else { BK_ORD = k; BK_DIR = BK_TEXTO[k] ? 1 : -1; } if ([...$('bk-ord').options].some(o => o.value === k)) $('bk-ord').value = k; render(); };
@@ -1173,42 +1205,60 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   const abrirUm = nome => { BK_UM = nome; render(); const u = $('bk-um'); if (u.scrollIntoView) u.scrollIntoView({ block: 'start' }); };
 
   // entradas de leads (novos e retornos) com os filtros da tela; o período usa a data da entrada
-  function entradasDoPainel(R) {
+  // livre = sem os filtros de gerente e corretor (a conversa 1:1 compara com a equipe e com o online)
+  function entradasDoPainel(R, livre) {
     const E = dash.data('entradas'); if (E.status !== 'ok') return [];
-    const daEquipe = F.ger ? new Set(R.map(r => r.corretor)) : null;
+    const daEquipe = F.ger && !livre ? new Set(R.map(r => r.corretor)) : null;
     return E.data.filter(r => (!F.de || r.data >= F.de) && (!F.ate || r.data <= F.ate) && (!daEquipe || daEquipe.has(r.corretor))
-      && (!F.cor || r.corretor === F.cor) && (!F.prod || r.produto === F.prod) && (!F.can || r.canal === F.can));
+      && (livre || !F.cor || r.corretor === F.cor) && (!F.prod || r.produto === F.prod) && (!F.can || r.canal === F.can));
   }
-  function statsCorretores(R, msgs, ent) {
+  // visitas da agenda pela data da visita (o canal não existe nas visitas)
+  // uma visita por cliente, corretor e dia: o Hypnobox aceita o mesmo agendamento duas vezes (vale o realizado, se houver)
+  const visitasDoPeriodo = () => d3.groups(visData().filter(v => (!F.de || v.data >= F.de) && (!F.ate || v.data <= F.ate) && (!F.prod || v.produto === F.prod)),
+    v => v.id_cliente ? v.id_cliente + '|' + v.corretor + '|' + v.data : v.visita_id)
+    .map(([, g]) => Object.assign({}, g.find(v => v.status === 'Realizada') || g[0], { registros: g.length }));
+  // com o cadastro do sistema: só os corretores ativos nele, e os ativos sem cliente no período entram zerados
+  function statsCorretores(R, msgs, ent, livre) {
     const M = new Map((msgs || []).map(m => [m.corretor, m]));
+    const semresp = nome => { const m = M.get(nome); return m ? N(m.lidas_sem_resposta) + N(m.direcionadas) + N(m.nao_lidas) : 0; };
     const retornos = d3.rollup(ent.filter(e => e.tipo === 'retorno'), v => v.length, e => e.corretor);
-    return d3.groups(R, r => r.corretor).map(([nome, v]) => {
+    const realizadas = d3.rollup(visitasDoPeriodo().filter(v => v.status === 'Realizada'), v => v.length, v => v.corretor);
+    const S = d3.groups(R, r => r.corretor).map(([nome, v]) => {
       const n = v.length, c = f => v.filter(f).length, cont = n - c(isSem), vis = c(isVis);
-      const ger = d3.greatest(d3.rollups(v, x => x.length, r => r.gerente), x => x[1])[0] || '';
-      const m = M.get(nome);
+      const ger = SYS && SYS.has(nome) ? SYS.get(nome).equipe : d3.greatest(d3.rollups(v, x => x.length, r => r.gerente), x => x[1])[0] || '';
       return { nome, ger, v, atend: n, cont, em: c(r => r.etapa === 'Em tratativa'), vis, conv: share(vis, n), contato: share(cont, n),
-        parados: c(r => isSem(r) && N(r.dias_sem_atualizar) >= 7), semresp: m ? N(m.lidas_sem_resposta) + N(m.direcionadas) + N(m.nao_lidas) : 0,
-        retornos: retornos.get(nome) || 0 };
+        parados: c(r => isSem(r) && N(r.dias_sem_atualizar) >= 7), semresp: semresp(nome), retornos: retornos.get(nome) || 0 };
     });
+    // visitas = realizadas na agenda no período; conversão = realizadas ÷ atendimentos
+    const comVisitas = s => { const r = realizadas.get(s.nome) || 0; return Object.assign(s, { realizadas: r, conv: share(r, s.atend) }, turnosDe(s.nome)); };
+    if (!SYS) return S.map(comVisitas);
+    const tem = new Set(S.map(s => s.nome));
+    const zerados = [...SYS.values()].filter(c => !tem.has(c.corretor) && (livre || ((!F.ger || c.equipe === F.ger) && (!F.cor || c.corretor === F.cor))))
+      .map(c => ({ nome: c.corretor, ger: c.equipe, v: [], atend: 0, cont: 0, em: 0, vis: 0, conv: 0, contato: 0, parados: 0, semresp: semresp(c.corretor), retornos: retornos.get(c.corretor) || 0 }));
+    return [...S.filter(s => SYS.has(s.nome)), ...zerados].map(comVisitas);
   }
+  // corretores com clientes no período sem cadastro ativo no sistema (ficam fora da análise de corretores)
+  const foraDoSistema = R => SYS ? d3.rollups(R.filter(r => !SYS.has(r.corretor)), v => v.length, r => r.corretor).sort((a, b) => b[1] - a[1]) : [];
   const ordenarBk = S => S.sort((a, b) => { const x = a[BK_ORD], y = b[BK_ORD];
     const d = typeof x === 'string' ? x.localeCompare(y, 'pt-BR') : x - y; return d ? d * BK_DIR : a.nome.localeCompare(b.nome, 'pt-BR'); });
 
   function drawBkTabela(S) {
     document.querySelectorAll('#tb-bk th[data-k]').forEach(th => th.setAttribute('aria-sort', th.dataset.k === BK_ORD ? (BK_DIR > 0 ? 'ascending' : 'descending') : 'none'));
-    const trs = fillRows(document.querySelector('#tb-bk tbody'), S.map(s => [[s.nome, 'strong'], [s.ger], [int(s.atend), 'num'], [int(s.em), 'num'], [int(s.vis), 'num'],
-      [pct1(s.conv), 'num'], [pct(s.contato), 'num' + (s.contato < 0.4 ? ' bad' : '')], [int(s.parados), 'num' + (s.parados >= 10 ? ' bad' : '')],
-      [int(s.semresp), 'num' + (s.semresp >= 5 ? ' bad' : '')], [int(s.retornos), 'num']]));
+    const trs = fillRows(document.querySelector('#tb-bk tbody'), S.map(s => [[s.nome, 'strong'], [s.ger], [int(s.atend), 'num'], [int(s.em), 'num'], [int(s.realizadas), 'num'], [pct1(s.conv), 'num'], [pct(s.contato), 'num' + (s.atend && s.contato < 0.4 ? ' bad' : '')], [int(s.parados), 'num' + (s.parados >= 10 ? ' bad' : '')],
+      [int(s.semresp), 'num' + (s.semresp >= 5 ? ' bad' : '')], [int(s.retornos), 'num'],
+      [s.escalado || s.checkin ? int(s.checkin) + '/' + int(s.escalado) : '–', 'num'], [int(s.falta), 'num' + (s.falta ? ' bad' : '')]]));
     trs.forEach((tr, i) => { tr.classList.add('clk'); actionable(tr); tr.title = 'Abrir a conversa 1:1 com ' + S[i].nome; tr.addEventListener('click', () => abrirUm(S[i].nome)); });
   }
 
-  // Conversa 1:1: os números do corretor ao lado da equipe (os mesmos filtros da tela) e as listas para a conversa.
+  // Conversa 1:1: o corretor ao lado da equipe dele (gerente no sistema) e do online, com as mesmas datas, produto e canal.
+  // Cada número diz o que conta e de quando: quase tudo segue o período de cadastro; vendas e mensagens não.
   function drawUm(nome, R, S, ent) {
     const box = $('bk-um'); box.innerHTML = '';
-    const s = S.find(x => x.nome === nome);
+    const s = S.find(x => x.nome === nome), sys = SYS && SYS.get(nome);
+    const de = F.de || fields.de.min, ate = F.ate || fields.de.max, per = brD(de) + ' a ' + brD(ate);
     const hd = el('div', 'uhd'); const av = el('div', 'sn-av', initials(nome)); av.style.background = avColor(nome); hd.appendChild(av);
     const tx = el('div'); tx.appendChild(el('div', 'nm', nome));
-    tx.appendChild(el('div', 'rl', (s && s.ger ? 'Equipe ' + s.ger + ' · ' : '') + 'cadastros de ' + brDate(F.de || fields.de.min) + ' a ' + brDate(F.ate || fields.de.max)));
+    tx.appendChild(el('div', 'rl', (s && s.ger ? 'Equipe ' + s.ger + ' · ' : '') + (sys && sys.nome.toUpperCase() !== nome ? 'no sistema: ' + sys.nome + ' · ' : '') + 'clientes cadastrados de ' + per));
     hd.appendChild(tx);
     const acts = el('div', 'acts');
     const voltar = el('button', 'sn-btn', '← Todos os corretores'); voltar.type = 'button'; voltar.addEventListener('click', () => { BK_UM = null; render(); });
@@ -1222,35 +1272,70 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
       const fim = () => { document.body.classList.remove('imprimir-um'); document.title = titulo; window.removeEventListener('afterprint', fim); };
       window.addEventListener('afterprint', fim); window.print(); setTimeout(fim, 1000);
     });
-    acts.appendChild(voltar); acts.appendChild(ver); acts.appendChild(pdf); hd.appendChild(acts); box.appendChild(hd);
-    box.appendChild(el('p', 'so-pdf', 'Conversa 1:1 · gerado em ' + brD(HOJE) + ' · números da equipe com os mesmos filtros. Clique no número do cliente para abrir a ficha no Hypnobox.'));
-    if (!s) { box.appendChild(el('p', 'sn-empty', 'Nenhum atendimento deste corretor com os filtros atuais.')); return; }
+    // link único para o corretor conferir as visitas deste período (página sem login)
+    const conf = el('button', 'sn-btn', 'Link para conferir visitas'); conf.type = 'button';
+    conf.title = 'Gera um link só deste corretor e deste período: ele abre, vê as visitas e diz quais aconteceram';
+    const caixaLink = el('div', 'conf-link'); caixaLink.hidden = true;
+    const chaveLink = nome + '|' + de + '|' + ate;
+    const mostrarLink = url => {
+        caixaLink.hidden = false; caixaLink.textContent = '';
+        caixaLink.appendChild(el('span', null, 'Link de ' + nome + ' para conferir as visitas de ' + per + ' (vale 45 dias):'));
+        const inp = el('input', 'sn-search'); inp.readOnly = true; inp.value = url; inp.setAttribute('aria-label', 'Link de conferência'); inp.addEventListener('focus', () => inp.select());
+        const cp = el('button', 'sn-btn pri', 'Copiar'); cp.type = 'button';
+        cp.addEventListener('click', async () => { try { await navigator.clipboard.writeText(url); cp.textContent = 'Copiado'; } catch (e) { inp.select(); } });
+        const wa = el('a', 'sn-btn', 'Enviar pelo WhatsApp'); wa.target = '_blank'; wa.rel = 'noopener noreferrer';
+        wa.href = 'https://wa.me/?text=' + encodeURIComponent('Oi! Confere pra mim as suas visitas de ' + per + '? É rapidinho: ' + url);
+        [inp, cp, wa].forEach(x => caixaLink.appendChild(x));
+    };
+    // o 1:1 é redesenhado (tela, dados): o link gerado continua à vista
+    if (LINK_CONF && LINK_CONF.k === chaveLink) mostrarLink(LINK_CONF.url);
+    conf.addEventListener('click', async () => {
+      if (!dash.criarLinkConferencia) return;
+      conf.disabled = true; caixaLink.hidden = false; caixaLink.textContent = 'Gerando o link…';
+      try {
+        const url = await dash.criarLinkConferencia(nome, (sys && sys.nome) || nome, de, ate);
+        LINK_CONF = { k: chaveLink, url }; mostrarLink(url);
+      } catch (e) { caixaLink.textContent = e && e.message ? e.message : 'Não foi possível gerar o link.'; }
+      conf.disabled = false;
+    });
+    acts.appendChild(voltar); acts.appendChild(ver); acts.appendChild(conf); acts.appendChild(pdf); hd.appendChild(acts); box.appendChild(hd); box.appendChild(caixaLink);
+    box.appendChild(el('p', 'so-pdf', 'Conversa 1:1 · gerado em ' + brD(HOJE) + ' · dados do Hypnobox de ' + brD(HOJE) + '. Clique no número do cliente para abrir a ficha no Hypnobox.'));
+    if (!s) { box.appendChild(el('p', 'sn-empty', SYS && !sys ? nome + ' não tem cadastro ativo no sistema, então fica fora da análise de corretores.' : 'Nenhum atendimento deste corretor com os filtros atuais.')); return; }
 
-    // equipe = todos os corretores na tela, com os mesmos filtros
-    const tot = k => S.reduce((a, x) => a + x[k], 0), nb = S.length;
-    const eq = { atend: tot('atend') / nb, contato: share(tot('cont'), tot('atend')), conv: share(tot('vis'), tot('atend')), parados: tot('parados') / nb, semresp: tot('semresp') / nb, retornos: tot('retornos') / nb };
+    // referências: a equipe dele (mesmo gerente no sistema, ele incluído) e o online (todos os corretores ativos)
+    const eqS = S.filter(x => x.ger === s.ger), soma = (G, k) => G.reduce((a, x) => a + x[k], 0), media = (G, k) => soma(G, k) / Math.max(1, G.length);
+    const taxa = (G, a, b) => share(soma(G, a), soma(G, b));
+    const filtros = [F.prod ? 'produto ' + prodName(F.prod) : 'todos os produtos', F.can ? 'canal ' + F.can : 'todos os canais'].join(' · ');
+    const esc0 = el('div', 'escopo'); esc0.appendChild(el('b', null, 'O que está nesta análise'));
+    const ul = el('ul'); esc0.appendChild(ul);
+    ['Clientes do Hypnobox cadastrados de ' + per + ' · ' + filtros + '.',
+     'Equipe ' + s.ger + ' = os ' + int(eqS.length) + ' corretores ativos do sistema com esse gerente, contando ' + nome + '; online = os ' + int(S.length) + ' corretores ativos do sistema. Mesmas datas, produto e canal; os números deles são média por corretor.',
+     'Etapa = situação do cliente hoje, não a do fim do período.',
+     'Não seguem o período: vendas (carteira inteira desde ' + brD(INICIO) + ') e mensagens sem resposta (relatório da coleta de ' + brD(HOJE) + ').']
+      .forEach(t => ul.appendChild(el('li', null, t)));
+    box.appendChild(esc0);
+
     const kp = el('div', 'sn-kpis'); box.appendChild(kp);
-    // melhor/pior também vai escrito (não só na cor)
-    const tile = (valor, rotulo, ref, melhor) => { const d = el('div', 'sn-kpi'); d.appendChild(el('div', 'v', valor)); d.appendChild(el('div', 'l', rotulo));
+    // o que o número conta vai escrito no próprio quadro; melhor/pior também vai escrito (não só na cor)
+    const tile = (valor, rotulo, oque, ref, melhor) => { const d = el('div', 'sn-kpi'); d.appendChild(el('div', 'v', valor)); d.appendChild(el('div', 'l', rotulo));
+      d.appendChild(el('div', 'o', oque));
       d.appendChild(el('div', 'h' + (melhor == null ? '' : melhor ? ' melhor' : ' pior'), ref + (melhor == null ? '' : melhor ? ' · melhor' : ' · abaixo'))); kp.appendChild(d); };
-    tile(int(s.atend), 'Atendimentos', 'média ' + dec(eq.atend), null);
-    tile(pct(s.contato), 'Taxa de contato', 'equipe ' + pct(eq.contato), s.contato >= eq.contato);
-    tile(int(s.vis), 'Visitas', 'conversão ' + pct1(s.conv), null);
-    tile(pct1(s.conv), 'Conversão em visita', 'equipe ' + pct1(eq.conv), s.conv >= eq.conv);
-    tile(int(s.parados), 'Parados 7+ dias', 'média ' + dec(eq.parados), s.parados <= eq.parados);
-    tile(int(s.semresp), 'Msg. sem resposta', 'média ' + dec(eq.semresp), s.semresp <= eq.semresp);
-    tile(int(s.retornos), 'Retornos', 'média ' + dec(eq.retornos), null);
+    const refMedia = k => 'equipe ' + dec(media(eqS, k)) + ' · online ' + dec(media(S, k));
+    const refTaxa = (a, b, f) => 'equipe ' + f(taxa(eqS, a, b)) + ' · online ' + f(taxa(S, a, b));
+    tile(int(s.atend), 'Atendimentos', 'clientes de ' + nome + ' cadastrados de ' + per, refMedia('atend'), null);
+    tile(s.atend ? pct(s.contato) : '–', 'Taxa de contato', int(s.cont) + ' de ' + int(s.atend) + ' já saíram de Sem contato e Sem registro', refTaxa('cont', 'atend', pct), s.atend ? s.contato >= taxa(eqS, 'cont', 'atend') : null);
+    tile(int(s.realizadas), 'Visitas realizadas', 'com baixa de realizada de ' + per + ', pela data da visita (qualquer cliente de ' + nome + ')', refMedia('realizadas'), s.realizadas >= media(eqS, 'realizadas'));
+    tile(int(s.parados), 'Sem contato há 7+ dias', 'clientes do período ainda sem contato e sem atualização há 7 dias ou mais', refMedia('parados'), s.parados <= media(eqS, 'parados'));
+    tile(int(s.retornos), 'Retornos', 'clientes que já existiam e voltaram a chamar de ' + per, refMedia('retornos'), null);
+    tile(int(s.semresp), 'Msg. sem resposta', 'relatório de Mensagens da coleta de ' + brD(HOJE) + ': não segue o período', refMedia('semresp'), s.semresp <= media(eqS, 'semresp'));
     // vendas: toda a carteira do corretor (não só o período da tela)
     const L = dash.data('leads_hypnobox'), vdc = vendasDe(L.status === 'ok' ? L.data.filter(r => r.corretor === nome) : []);
     const vmA = vdc.antes.length / 12, vmD = porMes(vdc.depois.length, vdc.diasDepois);
-    tile(int(vdc.depois.length), 'Vendas desde ' + brDate(INICIO), dec(vmD) + '/mês · antes ' + dec(vmA) + '/mês', vdc.depois.length || vdc.antes.length ? vmD >= vmA : null);
+    tile(int(vdc.depois.length), 'Vendas desde ' + brDate(INICIO), 'carteira inteira, não só o período: média por mês desde ' + brD(INICIO) + ' x 12 meses antes', dec(vmD) + '/mês · antes ' + dec(vmA) + '/mês', vdc.depois.length || vdc.antes.length ? vmD >= vmA : null);
 
-    const g1 = el('div', 'sn-grid2'); box.appendChild(g1);
-    const c1 = el('div', 'sn-card'); c1.appendChild(el('h3', null, 'Onde estão os atendimentos')); c1.appendChild(el('p', 'sub', 'Participação de cada etapa: ' + nome + ' x equipe'));
-    const ch = el('div', 'sn-chart'); c1.appendChild(ch); g1.appendChild(c1);
-
-    const lista = (titulo, cab, linhas, vazio, abrir) => {
-      const tc = el('div', 'sn-tablecard'); const bar = el('div', 'sn-tablebar'); bar.appendChild(el('h3', null, titulo + (linhas.length ? ' (' + int(linhas.length) + ')' : ''))); tc.appendChild(bar);
+    const lista = (titulo, sub, cab, linhas, vazio, abrir) => {
+      const tc = el('div', 'sn-tablecard'); const bar = el('div', 'sn-tablebar'); const tt = el('div');
+      tt.appendChild(el('h3', null, titulo + (linhas.length ? ' (' + int(linhas.length) + ')' : ''))); tt.appendChild(el('p', 'lsub', sub)); bar.appendChild(tt); tc.appendChild(bar);
       if (!linhas.length) { tc.appendChild(el('p', 'vazio', vazio)); return tc; }
       const tw = el('div', 'sn-tw'); const t = el('table', 'sn-table lst'); const th = el('thead'); const tr = el('tr');
       cab.forEach(([c, cl]) => tr.appendChild(el('th', cl || null, c))); th.appendChild(tr); t.appendChild(th); const tb = el('tbody'); t.appendChild(tb); tw.appendChild(t); tc.appendChild(tw);
@@ -1259,26 +1344,49 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
         if (!abrir(linhas[i], true)) return; row.classList.add('clk'); actionable(row); row.addEventListener('click', () => abrir(linhas[i])); });
       return tc;
     };
+
+    const g1 = el('div', 'sn-grid2'); box.appendChild(g1);
+    const eqR = R.filter(r => SYS ? (SYS.get(r.corretor) || {}).equipe === s.ger : r.gerente === s.ger);
+    const c1 = el('div', 'sn-card'); c1.appendChild(el('h3', null, 'Em que etapa estão hoje os clientes de ' + nome));
+    c1.appendChild(el('p', 'sub', '% dos ' + int(s.atend) + ' clientes de ' + nome + ' cadastrados de ' + per + ' em cada etapa x % dos ' + int(eqR.length) + ' clientes da equipe ' + s.ger + ' no mesmo período. Entre parênteses, quantos são de ' + nome + '.'));
+    const ch = el('div', 'sn-chart'); c1.appendChild(ch); g1.appendChild(c1);
     // leads ativos do período sem nenhuma atualização há 7 dias ou mais (contados até hoje)
     const desatualizados = s.v.filter(r => r.etapa !== 'Não interessado' && r.etapa !== 'Venda' && diasSemAtualizar(r) >= 7)
       .sort((a, b) => diasSemAtualizar(b) - diasSemAtualizar(a));
-    g1.appendChild(lista('Sem atualização há 7+ dias', [['Atualizado'], ['Cliente'], ['Etapa'], ['Produto'], ['Parado', 'num']],
+    g1.appendChild(lista('Sem atualização há 7+ dias', 'Clientes cadastrados de ' + per + ', fora de Venda e Descartado, sem nenhuma atualização há 7 dias ou mais (contados até ' + brD(HOJE) + '), em qualquer etapa.',
+      [['Atualizado'], ['Cliente'], ['Etapa'], ['Produto'], ['Parado', 'num']],
       desatualizados.map(r => ({ r, id: r.id, cells: [[brDate(r.atualizacao)], ['Cliente ' + r.id, 'strong'], [(ET[r.etapa] || { label: r.etapa }).label], [prodName(r.produto)], [int(diasSemAtualizar(r)) + ' dias', 'num bad']] })),
-      'Todos os leads ativos foram atualizados nos últimos 7 dias.', (x, so) => so || openLead(x.r)));
+      'Todos os clientes ativos do período foram atualizados nos últimos 7 dias.', (x, so) => so || openLead(x.r)));
     // o gráfico só depois que a grade tem as duas colunas (ele mede a largura da caixa)
-    hbar(ch, ETAPAS.map(e => ({ name: e.label, l: share(s.v.filter(r => r.etapa === e.k).length, s.atend), h: share(R.filter(r => r.etapa === e.k).length, R.length) })),
-      { fmt: x => pct(x), series: [{ key: 'l', name: nome, color: COPPER }, { key: 'h', name: 'Equipe', color: NAVY }] });
+    hbar(ch, ETAPAS.map(e => { const q = s.v.filter(r => r.etapa === e.k).length;
+      return { name: e.label + ' (' + int(q) + ')', l: share(q, s.atend), h: share(eqR.filter(r => r.etapa === e.k).length, eqR.length) }; }),
+      { fmt: x => pct(x), zeros: true, series: [{ key: 'l', name: nome, color: COPPER }, { key: 'h', name: 'Equipe ' + s.ger, color: NAVY }] });
 
     const g2 = el('div', 'sn-grid2'); box.appendChild(g2);
-    const V = visData().filter(v => v.corretor === nome && v.status === 'Agendada');
-    const semBaixa = V.filter(v => v.data < HOJE).sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
-    const proximas = V.filter(v => v.data >= HOJE).sort((a, b) => (a.data + a.hora).localeCompare(b.data + b.hora));
-    const linhaVis = (v, sit, cl) => ({ v, id: v.id_cliente, cells: [[brDate(v.data) + ' ' + esc(v.hora)], ['Cliente ' + v.id_cliente, 'strong'], [prodName(v.produto)], [sit, cl]] });
-    g2.appendChild(lista('Visitas: sem baixa e próximas', [['Data'], ['Cliente'], ['Produto'], ['Situação']],
-      [...semBaixa.map(v => linhaVis(v, 'Sem baixa', 'bad')), ...proximas.map(v => linhaVis(v, 'Agendada', 'ok'))],
-      'Nenhuma visita agendada.', (x, so) => !x.v.id_cliente ? false : so || openLeadById(x.v.id_cliente)));
+    // visitas da agenda com data no período (mesmo critério do quadro de visitas realizadas)
+    const V = visitasDoPeriodo().filter(v => v.corretor === nome).sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+    const sit = v => v.status === 'Realizada' ? ['Realizada', 'ok'] : v.status === 'Agendada' ? (v.data < HOJE ? ['Sem baixa', 'bad'] : ['Agendada', '']) : [esc(v.status), ''];
+    const nSit = k => V.filter(v => sit(v)[0] === k).length;
+    // resposta do corretor pelo link de conferência
+    const VC = dash.data('visitas_confirmadas'), conf0 = new Map(VC.status === 'ok' ? VC.data.map(x => [x.id_cliente + '|' + x.corretor + '|' + x.data, x]) : []);
+    const resposta = v => { const r = conf0.get(v.id_cliente + '|' + v.corretor + '|' + v.data);
+      return !r ? ['—'] : r.aconteceu === 'true' ? ['Sim' + (r.observacao ? ': ' + r.observacao : ''), 'ok'] : ['Não' + (r.observacao ? ': ' + r.observacao : ''), 'bad']; };
+    const nConf = V.filter(v => conf0.has(v.id_cliente + '|' + v.corretor + '|' + v.data)).length;
+    g2.appendChild(lista('Visitas de ' + per, 'Agenda de visitas do Hypnobox pela data da visita, uma por cliente por dia ("2 registros" = agendada duas vezes no Hypnobox)' + (F.prod ? ', só ' + prodName(F.prod) : '') + ': ' + int(nSit('Realizada')) + ' realizadas · ' + int(nSit('Sem baixa')) + ' sem baixa (a data passou e continua agendada) · ' + int(nSit('Agendada')) + ' agendadas. Conferidas por ' + nome + ' pelo link: ' + int(nConf) + '.',
+      [['Data'], ['Cliente'], ['Produto'], ['Situação'], ['Aconteceu?']],
+      V.map(v => ({ v, id: v.id_cliente, cells: [[brDate(v.data) + ' ' + esc(v.hora)], ['Cliente ' + v.id_cliente, 'strong'], [prodName(v.produto)], v.registros > 1 ? [sit(v)[0] + ' · ' + v.registros + ' registros', sit(v)[1]] : sit(v), resposta(v)] })),
+      'Nenhuma visita com data no período.', (x, so) => !x.v.id_cliente ? false : so || openLeadById(x.v.id_cliente)));
+    // visitas que o corretor informou pelo link e não estavam na agenda do Hypnobox
+    const VI = dash.data('visitas_informadas');
+    const informadas = (VI.status === 'ok' ? VI.data : []).filter(v => v.corretor === nome && (!F.de || v.data >= F.de) && (!F.ate || v.data <= F.ate))
+      .sort((a, b) => b.data.localeCompare(a.data));
+    if (informadas.length) g2.appendChild(lista('Visitas fora da agenda', 'Informadas por ' + nome + ' pelo link de conferência, com dia de ' + per + ': não estão na agenda do Hypnobox e não entram nas visitas realizadas.',
+      [['Dia'], ['Cliente'], ['Produto'], ['Observação']],
+      informadas.map(v => ({ v, id: v.id_cliente, cells: [[brDate(v.data)], ['Cliente ' + v.id_cliente, 'strong'], [prodName(v.produto)], [v.observacao || '—']] })),
+      '', (x, so) => so || openLeadById(x.v.id_cliente)));
     const rets = ent.filter(e => e.corretor === nome && e.tipo === 'retorno').sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
-    g2.appendChild(lista('Clientes que voltaram (retornos)', [['Entrada'], ['Cliente'], ['Produto'], ['Canal']],
+    g2.appendChild(lista('Clientes que voltaram (retornos)', 'Entradas de ' + per + ' de clientes que já existiam e voltaram a chamar, pela data da entrada.',
+      [['Entrada'], ['Cliente'], ['Produto'], ['Canal']],
       rets.map(e => ({ e, id: e.id_cliente || null, cells: [[brDate(e.data) + ' ' + esc(e.hora)], [e.id_cliente ? 'Cliente ' + e.id_cliente : 'Fora da lista de Clientes', 'strong'], [prodName(e.produto)], [e.canal]] })),
       ent.length ? 'Nenhum retorno no período.' : 'Sem as entradas de leads ainda (rode a coleta com o Relatório de contatos).', (x, so) => !x.e.id_cliente ? false : so || openLeadById(x.e.id_cliente)));
   }
@@ -1371,10 +1479,22 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   }
 
   function drawCorretores(R, msgs) {
+    // a faixa de números do topo é da tela inteira: some no 1:1 para não misturar
+    $('bk-um').hidden = !BK_UM; $('bk-todos').hidden = !!BK_UM; $('kpis').hidden = !!BK_UM;
+    if (BK_UM) {
+      // 1:1 sem os filtros de gerente e corretor: o corretor, a equipe dele e o online, com as mesmas datas, produto e canal
+      const L = dash.data('leads_hypnobox');
+      const Rb = L.data.filter(r => (!F.de || r.cadastro >= F.de) && (!F.ate || r.cadastro <= F.ate) && (!F.prod || r.produto === F.prod) && (!F.can || r.canal === F.can));
+      const eb = entradasDoPainel(Rb, true);
+      return drawUm(BK_UM, Rb, statsCorretores(Rb, msgs, eb, true), eb);
+    }
     const ent = entradasDoPainel(R);
     const S = ordenarBk(statsCorretores(R, msgs, ent));
-    $('bk-um').hidden = !BK_UM; $('bk-todos').hidden = !!BK_UM;
-    if (BK_UM) return drawUm(BK_UM, R, S, ent);
+    const fora = foraDoSistema(R), ini = inicioEscala();
+    $('bk-escopo').textContent = !SYS ? 'Equipe = gerente mais frequente no Hypnobox (sem o cadastro de corretores do sistema).'
+      : int(S.length) + ' corretores ativos no sistema; a equipe é a do gerente no sistema, a mesma da escala e do check-in. Os ativos sem cliente no período aparecem zerados.'
+        + ' Check-in = dias com check-in ÷ turnos escalados no período, até ' + brD(ONTEM) + (ini ? ' (a escala está no sistema desde ' + brD(ini) + ')' : '') + '.'
+        + (fora.length ? ' Fora da análise, por não ter cadastro ativo no sistema: ' + fora.map(([n, q]) => n + ' (' + int(q) + ')').join(', ') + '.' : '');
     $('brokers').hidden = BK_VIEW !== 'cards'; $('bk-tabela').hidden = BK_VIEW !== 'tabela';
     if (BK_VIEW === 'tabela') return drawBkTabela(S);
     const box = $('brokers'); box.innerHTML = '';
@@ -1387,16 +1507,16 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
       card.addEventListener('click', () => abrirUm(nome));
       const hd = document.createElement('div'); hd.className = 'hd';
       const av = document.createElement('div'); av.className = 'sn-av'; av.style.background = col; av.textContent = initials(nome); hd.appendChild(av);
-      const nm = document.createElement('div'); const a = document.createElement('div'); a.className = 'nm'; a.textContent = nome; const b = document.createElement('div'); b.className = 'rl'; b.textContent = 'Corretor · equipe ' + ger;
+      const nm = document.createElement('div'); const a = document.createElement('div'); a.className = 'nm'; a.textContent = nome; const b = document.createElement('div'); b.className = 'rl'; b.textContent = 'Equipe ' + ger + (st.escalado || st.checkin ? ' · check-in ' + int(st.checkin) + '/' + int(st.escalado) : '');
       nm.appendChild(a); nm.appendChild(b); hd.appendChild(nm); card.appendChild(hd);
       const s4 = document.createElement('div'); s4.className = 'st4';
-      [['Atend.', int(n)], ['Contato', int(em)], ['Visitas', int(vis)], ['Conv.', pct1(vis / n)]].forEach(([k, val]) => { const d = document.createElement('div'); const kk = document.createElement('div'); kk.className = 'k'; kk.textContent = k; const nn = document.createElement('div'); nn.className = 'n'; nn.textContent = val; d.appendChild(kk); d.appendChild(nn); s4.appendChild(d); });
+      [['Atend.', int(n)], ['Contato', int(em)], ['Visitas', int(st.realizadas)], ['Conv.', pct1(st.conv)]].forEach(([k, val]) => { const d = document.createElement('div'); const kk = document.createElement('div'); kk.className = 'k'; kk.textContent = k; const nn = document.createElement('div'); nn.className = 'n'; nn.textContent = val; d.appendChild(kk); d.appendChild(nn); s4.appendChild(d); });
       card.appendChild(s4);
       const sts = document.createElement('div'); sts.className = 'sts';
       ETAPAS.forEach(e => { const q = c(r => r.etapa === e.k); if (!q) return; const d = document.createElement('div'); const l = document.createElement('span'); const i = document.createElement('i'); i.style.background = e.color; l.appendChild(i); l.appendChild(document.createTextNode(e.label)); const bb = document.createElement('b'); bb.textContent = int(q); d.appendChild(l); d.appendChild(bb); sts.appendChild(d); });
       card.appendChild(sts);
-      const bar = document.createElement('div'); bar.className = 'bar'; const fl = document.createElement('div'); fl.style.width = Math.min(100, cont / n * 100) + '%'; fl.style.background = col; bar.appendChild(fl); card.appendChild(bar);
-      [['Taxa de contato', pct(cont / n), cont / n < 0.4], ['Parados 7+ dias', int(c(r => isSem(r) && N(r.dias_sem_atualizar) >= 7)), false], ['Mensagens sem resposta', int(semResp), semResp >= 5]]
+      const bar = document.createElement('div'); bar.className = 'bar'; const fl = document.createElement('div'); fl.style.width = Math.min(100, share(cont, n) * 100) + '%'; fl.style.background = col; bar.appendChild(fl); card.appendChild(bar);
+      [['Taxa de contato', n ? pct(cont / n) : '–', n && cont / n < 0.4], ['Parados 7+ dias', int(c(r => isSem(r) && N(r.dias_sem_atualizar) >= 7)), false], ['Mensagens sem resposta', int(semResp), semResp >= 5]]
         .forEach(([k, val, bad]) => { const d = document.createElement('div'); d.className = 'ln'; const l = document.createElement('span'); l.textContent = k + ':'; const bb = document.createElement('b'); bb.textContent = val; if (bad) bb.className = 'bad'; d.appendChild(l); d.appendChild(bb); card.appendChild(d); });
       const cnt = weeksAll.map(w => v.filter(r => weekKey(r.cadastro) === w).length), mx = Math.max(1, ...cnt), sw = 260, sh = 40, bw = sw / Math.max(1, cnt.length);
       const svg = d3.select(card).append('svg').attr('width', '100%').attr('height', sh).attr('viewBox', `0 0 ${sw} ${sh}`).attr('preserveAspectRatio', 'none');
@@ -2035,6 +2155,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   }
 
   function render() {
+    equipesDoSistema();
     try { sideBadges(); } catch (e) {}
     // o período da LEN tem de estar certo antes de desenhar as abas de campanhas
     if (TAB === 'midia' || TAB === 'pago' || TAB === 'comparacao') sincronizarLen();
