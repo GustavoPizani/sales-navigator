@@ -83,7 +83,9 @@ function normalizarLead(r) {
   if (r.atualizacao)
     r.dias_sem_atualizar = Math.max(
       0,
-      Math.round((Date.parse(hojeSP() + "T00:00:00Z") - Date.parse(r.atualizacao + "T00:00:00Z")) / 864e5),
+      Math.round(
+        (Date.parse(hojeSP() + "T00:00:00Z") - Date.parse(r.atualizacao + "T00:00:00Z")) / 864e5,
+      ),
     );
 }
 
@@ -352,8 +354,9 @@ export function criarServidorAnalise() {
       const F = funil(filtrar(leadsTodos, f), visitas);
       const linhas = [...agrupar(F, (x) => x.r[f.agrupar_por])]
         .map(([nome, X]) => ({
-          [f.agrupar_por]: nome,
-          canal: f.agrupar_por === "campanha" ? X[0].r.canal : undefined,
+          // por campanha, a linha também diz o canal (sem apagar o nome quando o grupo é o canal)
+          ...(f.agrupar_por === "campanha" ? { canal: X[0].r.canal } : {}),
+          [f.agrupar_por]: nome || "(vazio)",
           ...totais(X),
         }))
         .sort((a, b) => b.leads - a.leads);
@@ -502,6 +505,12 @@ export function criarServidorAnalise() {
           .describe("Data de início (aaaa-mm-dd); padrão: início na supervisão do online"),
         gerente: z.string().optional(),
         corretor: z.string().optional(),
+        incluir_lps: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Incluir os corretores LPS (por padrão ficam de fora, como na análise do online)",
+          ),
       },
       annotations: SO_LEITURA,
     },
@@ -517,11 +526,15 @@ export function criarServidorAnalise() {
       const hoje = hojeSP();
       const antesDe = dia(f.inicio, -365);
       const antesAte = dia(f.inicio, -1);
-      const diasDepois = Math.max(1, Math.round((Date.parse(hoje) - Date.parse(f.inicio)) / 864e5) + 1);
+      const diasDepois = Math.max(
+        1,
+        Math.round((Date.parse(hoje) - Date.parse(f.inicio)) / 864e5) + 1,
+      );
       const porMes = (n, dias) => Math.round((n / (dias / (365 / 12))) * 10) / 10;
       const conf = new Map(datas.map((d) => [String(d.id_cliente), d]));
       const base = leads.filter(
         (r) =>
+          (f.incluir_lps || !/LPS/i.test(r.corretor || "")) &&
           (!f.gerente || norm(r.gerente) === norm(f.gerente)) &&
           (!f.corretor || norm(r.corretor) === norm(f.corretor)),
       );
@@ -539,6 +552,8 @@ export function criarServidorAnalise() {
             data: c ? c.data_venda : r.atualizacao,
             data_confirmada: !!c,
             observacao: c?.observacao ?? null,
+            // 01/01 costuma ser data lançada sem a real: aparece marcada para revisão
+            data_suspeita: /-01-01$/.test((c ? c.data_venda : r.atualizacao) || ""),
           };
         })
         .filter((v) => v.data);
@@ -558,16 +573,25 @@ export function criarServidorAnalise() {
             media_mes_desde: porMes(d, diasDepois),
             propostas_abertas: L.filter((r) => r.etapa === "Proposta").length,
             visitas_realizadas_desde_inicio: visitas.filter(
-              (v) => norm(v.corretor) === norm(corretor) && v.status === "Realizada" && v.data >= f.inicio,
+              (v) =>
+                norm(v.corretor) === norm(corretor) &&
+                v.status === "Realizada" &&
+                v.data >= f.inicio,
             ).length,
           };
         })
         .filter((c) => c.vendas_antes || c.vendas_desde_inicio || c.propostas_abertas)
-        .sort((a, b) => b.vendas_desde_inicio - a.vendas_desde_inicio || b.vendas_antes - a.vendas_antes);
+        .sort(
+          (a, b) =>
+            b.vendas_desde_inicio - a.vendas_desde_inicio || b.vendas_antes - a.vendas_antes,
+        );
       const tA = vendas.filter(antes).length;
       const tD = vendas.filter(depois).length;
       return resposta({
-        janelas: { antes: { de: antesDe, ate: antesAte, dias: 365 }, desde_inicio: { de: f.inicio, ate: hoje, dias: diasDepois } },
+        janelas: {
+          antes: { de: antesDe, ate: antesAte, dias: 365 },
+          desde_inicio: { de: f.inicio, ate: hoje, dias: diasDepois },
+        },
         equipe: {
           vendas_antes: tA,
           media_mes_antes: Math.round((tA / 12) * 10) / 10,
@@ -580,6 +604,10 @@ export function criarServidorAnalise() {
         vendas: vendas.sort((a, b) => b.data.localeCompare(a.data)),
         notas: [
           "data_confirmada = false: a data é a última atualização do cliente e pode estar depois da venda real.",
+          "data_suspeita = true: data em 01/01, provavelmente lançada sem a data real; revisar com o ADM.",
+          f.incluir_lps
+            ? "Corretores LPS incluídos."
+            : "Corretores LPS fora dos totais (use incluir_lps para ver).",
           'Clientes "Não cliente" contam como descartados, menos os que estão em Venda.',
         ],
       });

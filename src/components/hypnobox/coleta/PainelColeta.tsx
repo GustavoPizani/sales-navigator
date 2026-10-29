@@ -673,6 +673,7 @@ const NOMES_TABELA: Record<string, string> = {
   al_mkt_anuncios: "Anúncios",
   al_mkt_palavras: "Palavras-chave",
   al_entradas: "Entradas de leads",
+  visitas_vinculadas: "Visitas antigas ligadas ao cliente",
 };
 
 function Checagens({ itens }: { itens: Checagem[] }) {
@@ -691,7 +692,11 @@ function Checagens({ itens }: { itens: Checagem[] }) {
           )}
           <span className="min-w-0 flex-1 truncate">{c.nome}</span>
           <span className="tabular-nums font-semibold">{c.texto}</span>
-          <span className="tabular-nums">(14/10: {c.referenciaTexto})</span>
+          {c.ref && (
+            <span className="tabular-nums">
+              ({c.ref}: {c.referenciaTexto})
+            </span>
+          )}
         </li>
       ))}
     </ul>
@@ -743,8 +748,10 @@ function Gravar({
 
       {gravacao.fase === "confirmar" && (
         <div className="mt-3 space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <p className="text-sm font-semibold text-amber-900">
-            Números bem diferentes da coleta de 14/10
+          <p className="text-sm font-semibold text-amber-900">Números bem diferentes do esperado</p>
+          <p className="text-xs text-amber-900/80">
+            Leads, visitas, mensagens e entradas comparados com os mesmos dias logo antes do
+            período; o dash da LEN, com o que já está gravado nas mesmas datas.
           </p>
           <Checagens itens={gravacao.carga.checagens} />
           <p className="text-xs text-amber-900/80">

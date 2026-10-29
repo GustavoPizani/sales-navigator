@@ -50,15 +50,6 @@ const TABELAS_LEN = [
   "al_mkt_palavras",
 ];
 
-// Referência da coleta de 14/10/2026: contagens muito diferentes são sinalizadas.
-const REFERENCIA = {
-  leads: 596,
-  visitas: 66,
-  mensagens: 466,
-  campanhas: 333,
-  investimento: 128700,
-};
-
 const FAIXAS = [
   ["00h–08h", 0, 8],
   ["08h–12h", 8, 12],
@@ -159,6 +150,18 @@ function montarVisitas(brutas, { idCliente, origem }, leadsPeriodo, todosLen) {
       etapa_no_crm: lead ? lead.etapa : null,
       nome_cliente: inteiro(v.c2[0]),
       email_cliente: inteiro(v.c2[1]) ? R.normalizaEmail(inteiro(v.c2[1])) : null,
+    };
+  });
+}
+
+/** Nome e e-mail do cliente de cada visita (inteiros), para achar o cliente nos leads do banco. */
+export function contatosDasVisitas(visitas) {
+  return visitas.map((v) => {
+    const p = pessoa(v.c2);
+    return {
+      visita_id: String(v.visita_id),
+      email: p.email && !p.emailCortado ? p.email : null,
+      nome: p.nome && !p.nomeCortado ? p.nome : null,
     };
   });
 }
@@ -273,48 +276,8 @@ export function montarCarga(dados, { dataColeta, periodo }) {
       : "",
     observacao: `Coleta de ${R.isoParaBR(dataColeta)} pela Central de coleta. Clientes: mídias com "len", cadastro de ${R.isoParaBR(periodo.de)} a ${R.isoParaBR(periodo.ate)}.${dados.len ? ` Campanhas em 4 janelas: ${dados.len.resumo.janelas.map((j) => `${j.janela} (${R.isoParaBR(j.de).slice(0, 5)}-${R.isoParaBR(j.ate).slice(0, 5)})`).join(", ")}.` : ""}`,
   };
-  return { tabelas, coleta, checagens: checar(tabelas, dados) };
-}
-
-function checar(tabelas, dados) {
-  const itens = [];
-  const add = (nome, valor, ref, fmt = (n) => n.toLocaleString("pt-BR")) => {
-    if (valor == null) return;
-    const desvio = ref ? Math.abs(valor - ref) / ref : 0;
-    itens.push({
-      nome,
-      valor,
-      referencia: ref,
-      texto: fmt(valor),
-      referenciaTexto: fmt(ref),
-      alerta: desvio > 0.25,
-    });
-  };
-  if (tabelas.al_leads) {
-    const extras = tabelas.al_leads.filter((l) => CANAIS_FORA_LEN.includes(l.canal)).length;
-    add("Leads LEN", tabelas.al_leads.length - extras, REFERENCIA.leads);
-    if (extras)
-      itens.push({
-        nome: "Fora da LEN (orgânico, carteira e outras origens)",
-        valor: extras,
-        referencia: 0,
-        texto: extras.toLocaleString("pt-BR"),
-        referenciaTexto: "—",
-        alerta: false,
-      });
-  }
-  if (tabelas.al_visitas) add("Visitas", tabelas.al_visitas.length, REFERENCIA.visitas);
-  if (dados.mensagens) add("Mensagens LEN", dados.mensagens.mensagens.length, REFERENCIA.mensagens);
-  if (tabelas.al_mkt_campanhas)
-    add("Linhas de campanhas", tabelas.al_mkt_campanhas.length, REFERENCIA.campanhas);
-  if (dados.len)
-    add(
-      "Investimento no período",
-      dados.len.resumo.investimentoPeriodo,
-      REFERENCIA.investimento,
-      (n) => "R$ " + (n / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil",
-    );
-  return itens;
+  // as checagens (comparação com o banco) são montadas em montarCargaGuiada
+  return { tabelas, coleta, checagens: [] };
 }
 
 // ---------------- cruzamentos (relatório de contatos x clientes x visitas) ----------------
@@ -417,7 +380,7 @@ function indiceDeContatos(contatos) {
       return x && x.midia ? x.midia : null;
     },
     /** id do cliente de cada visita (pelo cliente da visita) e origem de quem não está na lista de clientes. */
-    detalhesDasVisitas(visitas, clientes) {
+    detalhesDasVisitas(visitas, clientes, doBanco = {}) {
       const cli = criarIndice();
       for (const c of clientes) cli.add(pessoa(c.c1), c.id);
       const idCliente = {};
@@ -427,6 +390,8 @@ function indiceDeContatos(contatos) {
         let id = cli.achar(p);
         const ct = achar(null, p);
         if (!id && ct && ct.id) id = ct.id;
+        // quem visitou e não está na lista lida (cadastro antigo): pelo e-mail ou nome, nos leads do banco
+        if (!id && doBanco[v.visita_id]) id = doBanco[v.visita_id];
         if (!id) continue;
         idCliente[v.visita_id] = id;
         if (ct && !origem[id]) origem[id] = { midia: ct.midia, canal: ct.canal };
@@ -476,8 +441,16 @@ function campDoGrupo(c) {
       palavra_chave: null,
     };
   if (c._grupo === "organico")
-    return { canal: "Orgânico", campanha: midia ? `Orgânico · ${midia}` : "Orgânico", palavra_chave: null };
-  return { canal: "Outras origens", campanha: midia ? `Outras · ${midia}` : "Outras origens", palavra_chave: null };
+    return {
+      canal: "Orgânico",
+      campanha: midia ? `Orgânico · ${midia}` : "Orgânico",
+      palavra_chave: null,
+    };
+  return {
+    canal: "Outras origens",
+    campanha: midia ? `Outras · ${midia}` : "Outras origens",
+    palavra_chave: null,
+  };
 }
 const foraDaLen = (g) => g === "organico" || g === "carteira" || g === "carteira_pg";
 
@@ -547,7 +520,9 @@ export function montarCargaGuiada(
   len,
   existentes: Set<string> | null = null,
   // completa: entram todos os clientes do período, de qualquer origem (carga inicial)
-  { completa = false }: { completa?: boolean } = {},
+  // referencia: o que já está no banco (getReferenciaColeta), para as checagens e
+  // para achar o cliente das visitas que não estão na lista lida
+  { completa = false, referencia = null }: { completa?: boolean; referencia?: any } = {},
 ) {
   const contatos = Object.values(dados.contatos);
   const origem = indiceDeContatos(contatos);
@@ -602,7 +577,11 @@ export function montarCargaGuiada(
   let detalhes = null;
   if (prontos.visitas) {
     visitas = Object.values(dados.visitas);
-    detalhes = origem.detalhesDasVisitas(visitas, todos || []);
+    detalhes = origem.detalhesDasVisitas(
+      visitas,
+      todos || [],
+      (referencia && referencia.clienteDaVisita) || {},
+    );
   }
   const msgs = prontos.mensagens ? Object.values(dados.mensagens) : null;
   const midiaMsg = (m) => {
@@ -633,74 +612,182 @@ export function montarCargaGuiada(
     carga.coleta.fontes = carga.coleta.fontes
       ? carga.coleta.fontes.replace(/^Hypnobox \(/, "Hypnobox (Relatório de contatos, ")
       : "Hypnobox (Relatório de contatos)";
-    carga.checagens.push({
-      nome: "Entradas de leads (relatório de contatos)",
-      valor: entradas.entradas.length,
+  }
+  carga.checagens = checagens({
+    carga,
+    periodo,
+    referencia,
+    todos,
+    doLen,
+    extras,
+    atualizados,
+    visitas,
+    detalhes,
+    entradas,
+    noPeriodo,
+  });
+  return carga;
+}
+
+const int = (n) => n.toLocaleString("pt-BR");
+const brl = (n) =>
+  "R$ " + (n / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil";
+const diaMes = (iso) => R.isoParaBR(iso).slice(0, 5);
+
+/**
+ * O que a coleta confere antes de gravar. Leads, visitas, mensagens e entradas
+ * são comparados com os mesmos dias imediatamente antes do período, já gravados;
+ * o dash da LEN, com o que já está no banco nas mesmas datas (ele é trocado
+ * inteiro, então uma diferença grande ali é erro de leitura).
+ */
+function checagens({
+  carga,
+  periodo,
+  referencia,
+  todos,
+  doLen,
+  extras,
+  atualizados,
+  visitas,
+  detalhes,
+  entradas,
+  noPeriodo,
+}) {
+  const itens = [];
+  const noPer = (d) => d && d >= periodo.de && d <= periodo.ate;
+  const info = (nome, valor, alerta = false) =>
+    itens.push({
+      nome,
+      valor,
       referencia: 0,
-      texto: entradas.entradas.length.toLocaleString("pt-BR"),
+      texto: int(valor),
       referenciaTexto: "—",
-      alerta: false,
+      ref: null,
+      alerta,
     });
-    if (entradas.semId)
-      carga.checagens.push({
-        nome: "Entradas de quem não está na lista de Clientes (contam pela pessoa)",
-        valor: entradas.semId,
+  // poucos dias variam muito de um dia para o outro (fim de semana, feriado):
+  // só alerta quando a diferença é grande em proporção e em quantidade
+  const comparar = (nome, valor, ref, rotulo, { tolerancia, minimo = 0, fmt = int }) => {
+    if (ref == null)
+      return itens.push({
+        nome,
+        valor,
         referencia: 0,
-        texto: entradas.semId.toLocaleString("pt-BR"),
+        texto: fmt(valor),
         referenciaTexto: "—",
+        ref: null,
         alerta: false,
       });
-    if (entradas.semPessoa)
-      carga.checagens.push({
-        nome: "Contatos sem telefone nem e-mail (fora das entradas)",
-        valor: entradas.semPessoa,
-        referencia: 0,
-        texto: entradas.semPessoa.toLocaleString("pt-BR"),
-        referenciaTexto: "—",
-        alerta: entradas.semPessoa > entradas.entradas.length * 0.1,
-      });
-  }
-  // "Leads LEN" conta só os do período; os já existentes atualizados vêm numa linha à parte
-  const linhaLen = carga.checagens.find((c) => c.nome === "Leads LEN");
-  if (linhaLen) {
-    linhaLen.valor = leadsLen.length;
-    linhaLen.texto = leadsLen.length.toLocaleString("pt-BR");
-    linhaLen.alerta = linhaLen.referencia
-      ? Math.abs(leadsLen.length - linhaLen.referencia) / linhaLen.referencia > 0.25
-      : false;
-  }
-  if (atualizados.length)
-    carga.checagens.push({
-      nome: "Leads que já estavam no banco, atualizados",
-      valor: atualizados.length,
-      referencia: 0,
-      texto: atualizados.length.toLocaleString("pt-BR"),
-      referenciaTexto: "—",
-      alerta: false,
+    const desvio = ref ? Math.abs(valor - ref) / ref : valor ? 1 : 0;
+    itens.push({
+      nome,
+      valor,
+      referencia: ref,
+      texto: fmt(valor),
+      referenciaTexto: fmt(ref),
+      ref: rotulo,
+      alerta: desvio > tolerancia && Math.abs(valor - ref) >= minimo,
     });
+  };
+  const ant = referencia && referencia.anterior;
+  const cont = referencia && referencia.contagens;
+  const rotAnt = ant ? `${diaMes(ant.de)} a ${diaMes(ant.ate)}` : null;
+  const doPeriodo = { tolerancia: 0.5, minimo: 10 };
+
   if (todos) {
-    const semMidia = todos.filter((c) => !c.midia).length;
-    carga.checagens.push({
-      nome: "Clientes lidos sem mídia identificada",
-      valor: semMidia,
-      referencia: 0,
-      texto: semMidia.toLocaleString("pt-BR"),
-      referenciaTexto: "—",
-      alerta: todos.length > 0 && semMidia / todos.length > 0.25,
-    });
+    comparar(
+      "Leads LEN cadastrados no período",
+      doLen.filter(noPeriodo).length,
+      cont ? cont.leadsLen : null,
+      rotAnt,
+      doPeriodo,
+    );
+    if (extras.length) info("Fora da LEN (orgânico, carteira e outras origens)", extras.length);
+    if (atualizados.length) info("Leads que já estavam no banco, atualizados", atualizados.length);
+  }
+  if (carga.tabelas.al_visitas)
+    comparar(
+      "Visitas com data no período",
+      carga.tabelas.al_visitas.filter((v) => noPer(v.data)).length,
+      cont ? cont.visitas : null,
+      rotAnt,
+      doPeriodo,
+    );
+  if (carga.tabelas.al_mensagens)
+    comparar(
+      "Mensagens LEN",
+      carga.tabelas.al_mensagens.filter((m) => noPer(m.data)).length,
+      cont ? cont.mensagensLen : null,
+      rotAnt,
+      doPeriodo,
+    );
+  if (entradas) {
+    comparar(
+      "Entradas de leads (relatório de contatos)",
+      entradas.entradas.length,
+      cont ? cont.entradas : null,
+      rotAnt,
+      doPeriodo,
+    );
+    if (entradas.semId)
+      info("Entradas de quem não está na lista de Clientes (contam pela pessoa)", entradas.semId);
+    if (entradas.semPessoa)
+      info(
+        "Contatos sem telefone nem e-mail (fora das entradas)",
+        entradas.semPessoa,
+        entradas.semPessoa > entradas.entradas.length * 0.1,
+      );
+  }
+
+  const lenRef = referencia && referencia.len;
+  if (carga.tabelas.al_mkt_diario && lenRef) {
+    const gravado = new Map(lenRef.diario);
+    const datas = [...new Set(carga.tabelas.al_mkt_diario.map((r) => r.data))]
+      .filter((d) => gravado.has(d))
+      .sort();
+    if (datas.length) {
+      const novo = carga.tabelas.al_mkt_diario
+        .filter((r) => gravado.has(r.data))
+        .reduce((a, r) => a + Number(r.investimento || 0), 0);
+      const antigo = datas.reduce((a, d) => a + gravado.get(d), 0);
+      comparar(
+        "Investimento da LEN nas datas já gravadas",
+        novo,
+        antigo,
+        `banco, ${diaMes(datas[0])} a ${diaMes(datas[datas.length - 1])}`,
+        { tolerancia: 0.1, minimo: 1000, fmt: brl },
+      );
+    }
+  }
+  if (carga.tabelas.al_mkt_campanhas)
+    comparar(
+      "Campanhas no período da LEN",
+      carga.tabelas.al_mkt_campanhas.filter((c) => c.janela === "periodo").length,
+      lenRef ? lenRef.campanhas : null,
+      "última gravação",
+      { tolerancia: 0.25, minimo: 5 },
+    );
+
+  if (todos) {
+    // a tela de Clientes vem pela data de atualização: os antigos quase nunca têm mídia
+    // na tela; o que importa é quem se cadastrou no período
+    const novos = todos.filter(noPeriodo);
+    const semMidia = novos.filter((c) => !c.midia).length;
+    info(
+      "Clientes cadastrados no período sem mídia identificada",
+      semMidia,
+      novos.length > 0 && semMidia / novos.length > 0.25,
+    );
   }
   if (detalhes) {
     const sem = visitas.length - Object.keys(detalhes.idCliente).length;
-    carga.checagens.push({
-      nome: "Visitas sem cliente identificado",
-      valor: sem,
-      referencia: 0,
-      texto: sem.toLocaleString("pt-BR"),
-      referenciaTexto: "—",
-      alerta: visitas.length > 0 && sem / visitas.length > 0.25,
-    });
+    info(
+      "Visitas sem cliente identificado",
+      sem,
+      visitas.length > 0 && sem / visitas.length > 0.25,
+    );
   }
-  return carga;
+  return itens;
 }
 
 /**

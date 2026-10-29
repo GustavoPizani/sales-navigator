@@ -3,7 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { secondaryAdmin } from "@/integrations/supabase/secondary.server";
-import { periodoColetado, type ColetaPeriodo } from "@/lib/coleta/periodo";
+import { CANAIS_FORA_LEN } from "@/lib/coleta/carga";
+import { ehCargaCompleta, periodoColetado, type ColetaPeriodo } from "@/lib/coleta/periodo";
 
 // Central de coleta (Hypnobox + dash da LEN). O extrator roda no PC do ADM e
 // coleta; aqui o servidor lê o banco novo e grava a carga. Dados de contato são
@@ -245,6 +246,7 @@ export const sincronizarCarga = createServerFn({ method: "POST" })
         JSON.parse(gunzipSync(Buffer.from(data.gz, "base64")).toString("utf8")),
       );
     } else carga = data;
+    if (carga.tabelas.al_leads) carga.tabelas.al_leads = await manterOrigem(carga.tabelas.al_leads);
     let { data: res, error } = await secondaryAdmin.rpc("al_sincronizar", { p: carga });
     // banco ainda sem al_entradas (migration 20261023_entradas.sql não rodada): grava o resto
     if (error && carga.tabelas.al_entradas && /al_entradas/.test(error.message)) {
@@ -260,6 +262,7 @@ export const sincronizarCarga = createServerFn({ method: "POST" })
         return {
           ...((res ?? {}) as ResultadoSincronizacao),
           al_entradas: { aviso: "não gravadas: falta rodar 20261023_entradas.sql" },
+          ...(await vincularVisitasSemCliente()),
         };
     }
     if (error) {
@@ -273,7 +276,261 @@ export const sincronizarCarga = createServerFn({ method: "POST" })
         );
       throw new Error(`O banco recusou a carga: ${error.message}`);
     }
-    return (res ?? {}) as ResultadoSincronizacao;
+    return { ...((res ?? {}) as ResultadoSincronizacao), ...(await vincularVisitasSemCliente()) };
+  });
+
+// ---------------- origem do lead ----------------
+
+/**
+ * Quanto a origem diz: campanha (LEN) e origem própria (orgânico, carteira) são
+ * conhecidas; "Outras origens" é quando a tela não mostrou a mídia.
+ */
+const origemConhecida = (canal: unknown) =>
+  typeof canal === "string" && canal !== "" && canal !== "Outras origens";
+
+/**
+ * Guarda a primeira origem conhecida do lead: a tela de Clientes nem sempre mostra
+ * a mídia, e a coleta mandava "Outras origens" por cima da campanha LEN já gravada.
+ * Quando o banco já tem origem conhecida, canal, campanha e palavra-chave vão
+ * vazios (al_sincronizar mantém o que está gravado quando o valor novo é vazio).
+ */
+async function manterOrigem(leads: Record<string, unknown>[]) {
+  const gravado = new Map<string, unknown>();
+  const ids = leads.map((l) => String(l.id_cliente));
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data, error } = await secondaryAdmin
+      .from("al_leads")
+      .select("id_cliente, canal")
+      .in("id_cliente", ids.slice(i, i + 300));
+    if (error) throw new Error(`Não foi possível conferir a origem dos leads: ${error.message}`);
+    for (const r of data ?? []) gravado.set(String(r.id_cliente), r.canal);
+  }
+  return leads.map((l) => {
+    const antes = gravado.get(String(l.id_cliente));
+    if (!origemConhecida(antes)) return l;
+    // o banco já sabe a origem: não troca (nem uma LEN por outra)
+    return { ...l, canal: null, campanha: null, palavra_chave: null };
+  });
+}
+
+// ---------------- referência da coleta e cliente das visitas ----------------
+
+/** Todas as linhas de uma consulta, de 1000 em 1000 (ordenadas para a paginação ser estável). */
+async function todasAsLinhas(
+  tabela: string,
+  cols: string,
+  ordem: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  filtro: (q: any) => any = (q) => q,
+) {
+  const out: AnyRow[] = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await filtro(secondaryAdmin.from(tabela).select(cols))
+      .order(ordem)
+      .range(i, i + 999);
+    if (error) throw new Error(`${tabela}: ${error.message}`);
+    out.push(...((data ?? []) as AnyRow[]));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+async function contarNoPeriodo(
+  tabela: string,
+  coluna: string,
+  de: string,
+  ate: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  filtro: (q: any) => any = (q) => q,
+) {
+  const { count, error } = await filtro(
+    secondaryAdmin
+      .from(tabela)
+      .select("*", { count: "exact", head: true })
+      .gte(coluna, de)
+      .lte(coluna, ate),
+  );
+  if (error) throw new Error(`${tabela}: ${error.message}`);
+  return (count ?? 0) as number;
+}
+
+const chaveNome = (s: unknown) =>
+  String(s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+const chaveEmail = (s: unknown) =>
+  String(s ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+/**
+ * Cliente pelo e-mail e, se não achar, pelo nome completo (8+ letras), entre
+ * todos os leads do banco. Só vale quando um único cliente tem aquele valor.
+ */
+async function indiceDeLeads() {
+  const leads = await todasAsLinhas("al_leads", "id_cliente, nome, email", "id_cliente");
+  const porEmail = new Map<string, string | null>();
+  const porNome = new Map<string, string | null>();
+  const add = (m: Map<string, string | null>, k: string, id: string) => {
+    if (k) m.set(k, m.has(k) && m.get(k) !== id ? null : id);
+  };
+  for (const l of leads) {
+    const id = String(l.id_cliente);
+    add(porEmail, chaveEmail(l.email), id);
+    add(porNome, chaveNome(l.nome), id);
+  }
+  return (email: unknown, nome: unknown): string | null => {
+    const e = chaveEmail(email);
+    if (e && porEmail.get(e)) return porEmail.get(e)!;
+    const n = chaveNome(nome);
+    return n.length >= 8 ? (porNome.get(n) ?? null) : null;
+  };
+}
+
+/** Visitas já gravadas sem cliente: liga ao lead do banco pelo e-mail ou nome da visita. */
+async function vincularVisitasSemCliente(): Promise<ResultadoSincronizacao> {
+  try {
+    const sem = await todasAsLinhas(
+      "al_visitas",
+      "visita_id, nome_cliente, email_cliente",
+      "visita_id",
+      (q) => q.is("id_cliente", null),
+    );
+    if (!sem.length) return {};
+    const achar = await indiceDeLeads();
+    let n = 0;
+    for (const v of sem) {
+      const id = achar(v.email_cliente, v.nome_cliente);
+      if (!id) continue;
+      const { error } = await secondaryAdmin
+        .from("al_visitas")
+        .update({ id_cliente: id })
+        .eq("visita_id", v.visita_id as string)
+        .is("id_cliente", null);
+      if (!error) n++;
+    }
+    return n
+      ? { visitas_vinculadas: { atualizados: n, aviso: `${n} pelo e-mail ou nome do cliente` } }
+      : {};
+  } catch {
+    // a carga já foi gravada: o vínculo fica para a próxima coleta
+    return {};
+  }
+}
+
+export type ReferenciaColeta = {
+  /** mesmos dias imediatamente antes do período; null se o banco não tem esses dias coletados */
+  anterior: { de: string; ate: string } | null;
+  contagens: { leadsLen: number; visitas: number; mensagensLen: number; entradas: number } | null;
+  /** dash da LEN já gravado: investimento por dia (só dias completos) e campanhas do período */
+  len: { diario: [string, number][]; campanhas: number } | null;
+  /** visita_id -> id_cliente, achado nos leads do banco */
+  clienteDaVisita: Record<string, string>;
+};
+
+const somaDiasIso = (iso: string, n: number) => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const diaBrasilia = (ts: string) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(ts));
+
+/** Todo dia de `de` a `ate` está dentro de alguma coleta (sem contar as cargas completas). */
+function cobre(coletas: ColetaPeriodo[], de: string, ate: string) {
+  const faixas = coletas.filter(
+    (c) => !ehCargaCompleta(c) && c.periodo_inicio && c.periodo_fim,
+  ) as { periodo_inicio: string; periodo_fim: string }[];
+  for (let d = de; d <= ate; d = somaDiasIso(d, 1))
+    if (!faixas.some((f) => f.periodo_inicio <= d && f.periodo_fim >= d)) return false;
+  return true;
+}
+
+const referenciaSchema = z.object({
+  de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  visitas: z
+    .array(
+      z.object({
+        visita_id: z.string().min(1).max(20),
+        email: z.string().max(200).nullable(),
+        nome: z.string().max(200).nullable(),
+      }),
+    )
+    .max(5000),
+});
+
+/**
+ * O que a coleta compara antes de gravar: os mesmos dias imediatamente antes do
+ * período (leads, visitas, mensagens e entradas já gravados) e o dash da LEN já
+ * gravado nas mesmas datas. Também acha nos leads do banco o cliente das visitas.
+ */
+export const getReferenciaColeta = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    referenciaSchema.refine((x) => x.de <= x.ate, "Período inválido.").parse(d),
+  )
+  .handler(async ({ data, context }): Promise<ReferenciaColeta> => {
+    await exigirAdmin(context);
+    const dias = Math.round((Date.parse(data.ate) - Date.parse(data.de)) / 864e5) + 1;
+    const anterior = { de: somaDiasIso(data.de, -dias), ate: somaDiasIso(data.de, -1) };
+    const { data: coletas } = await secondaryAdmin
+      .from("al_coletas")
+      .select("coletado_em, periodo_inicio, periodo_fim, fontes");
+    const lista = (coletas ?? []) as (ColetaPeriodo & { coletado_em: string })[];
+
+    let contagens: ReferenciaColeta["contagens"] = null;
+    if (cobre(lista, anterior.de, anterior.ate)) {
+      const { de, ate } = anterior;
+      const [leadsLen, visitas, mensagensLen, entradas] = await Promise.all([
+        // lead LEN no banco: canal de campanha (os de fora da LEN têm canal próprio ou vazio)
+        contarNoPeriodo("al_leads", "cadastro", de, ate, (q) =>
+          q
+            .not("canal", "is", null)
+            .not("canal", "in", `(${CANAIS_FORA_LEN.map((c) => `"${c}"`).join(",")})`),
+        ),
+        contarNoPeriodo("al_visitas", "data", de, ate),
+        contarNoPeriodo("al_mensagens", "data", de, ate, (q) => q.ilike("midia", "%len%")),
+        contarNoPeriodo("al_entradas", "data", de, ate).catch(() => 0),
+      ]);
+      contagens = { leadsLen, visitas, mensagensLen, entradas };
+    }
+
+    // o último dia gravado do dash da LEN pode estar incompleto (coleta no meio do dia)
+    const ultimaLen = lista
+      .filter((c) => /LEN/.test(c.fontes ?? "") && c.coletado_em)
+      .map((c) => diaBrasilia(c.coletado_em))
+      .sort()
+      .pop();
+    let len: ReferenciaColeta["len"] = null;
+    if (ultimaLen) {
+      const diario = new Map<string, number>();
+      for (const r of await todasAsLinhas("al_mkt_diario", "data, investimento", "data", (q) =>
+        q.lt("data", ultimaLen),
+      ))
+        diario.set(
+          r.data as string,
+          (diario.get(r.data as string) ?? 0) + Number(r.investimento ?? 0),
+        );
+      const { count } = await secondaryAdmin
+        .from("al_mkt_campanhas")
+        .select("*", { count: "exact", head: true })
+        .eq("janela", "periodo");
+      len = { diario: [...diario.entries()], campanhas: count ?? 0 };
+    }
+
+    const clienteDaVisita: Record<string, string> = {};
+    if (data.visitas.length) {
+      const achar = await indiceDeLeads();
+      for (const v of data.visitas) {
+        const id = achar(v.email, v.nome);
+        if (id) clienteDaVisita[v.visita_id] = id;
+      }
+    }
+    return { anterior: contagens ? anterior : null, contagens, len, clienteDaVisita };
   });
 
 // ---------------- dash da LEN (API pública da Keepi) ----------------

@@ -99,7 +99,7 @@ function ColetaPage() {
       const carga =
         gravacao.fase === "confirmar" && forcar
           ? gravacao.carga
-          : (setGravacao({ fase: "lendo" }), col.carga());
+          : (setGravacao({ fase: "lendo" }), await col.carga());
       if (!forcar && carga.checagens.some((c) => c.alerta))
         return setGravacao({ fase: "confirmar", carga });
       setGravacao({ fase: "gravando" });

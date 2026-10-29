@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getColetaBase, lerParteLen, type ParteLen } from "@/lib/coleta.functions";
-import { diagnosticoGuiado, montarCargaGuiada } from "@/lib/coleta/carga";
+import {
+  getColetaBase,
+  getReferenciaColeta,
+  lerParteLen,
+  type ParteLen,
+} from "@/lib/coleta.functions";
+import { contatosDasVisitas, diagnosticoGuiado, montarCargaGuiada } from "@/lib/coleta/carga";
 import {
   HYPNOBOX,
   PASSOS,
@@ -30,6 +35,8 @@ export type Checagem = {
   referencia: number;
   texto: string;
   referenciaTexto: string;
+  /** com o que foi comparado ("24/10 a 26/10", "banco, 01/06 a 28/10"); null = sem comparação */
+  ref: string | null;
   alerta: boolean;
 };
 export type Carga = {
@@ -270,11 +277,20 @@ export function useColetaGuiada() {
   const baseRef = useRef(baseQ.data);
   baseRef.current = baseQ.data;
 
-  const carga = useCallback((): Carga => {
+  const carga = useCallback(async (): Promise<Carga> => {
     const e = guiaRef.current;
     const prontos = Object.fromEntries(
       PASSOS.map((p) => [p.id, e.passos[p.id].status === "ok"]),
     ) as Record<PassoId, boolean>;
+    // o banco: os mesmos dias antes do período, o dash da LEN já gravado e o
+    // cliente das visitas que não está na lista lida
+    const referencia = await getReferenciaColeta({
+      data: {
+        de: e.periodo.de,
+        ate: e.periodo.ate,
+        visitas: prontos.visitas ? contatosDasVisitas(Object.values(e.dados.visitas)) : [],
+      },
+    });
     return montarCargaGuiada(
       e.dados,
       prontos,
@@ -283,7 +299,7 @@ export function useColetaGuiada() {
       baseQ.data ? new Set(baseQ.data.ids) : null,
       // a base já tem todos os clientes (carga completa de 23/10/2026): cada coleta
       // atualiza quem foi lido e cadastra quem é novo, de qualquer origem
-      { completa: true },
+      { completa: true, referencia },
     ) as Carga;
   }, [len, baseQ.data]);
 
