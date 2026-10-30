@@ -168,14 +168,15 @@ function AdminTeamView() {
   );
 }
 
-type NewKind = "broker" | "master" | "hr";
-type KindFilter = "all" | "master" | "broker" | "hr";
+type NewKind = "broker" | "master" | "hr" | "viewer";
+type KindFilter = "all" | "master" | "broker" | "hr" | "viewer";
 type StatusFilter = "all" | "active" | "inactive";
 
 const NEW_KINDS: { key: NewKind; label: string }[] = [
   { key: "broker", label: "Corretor" },
   { key: "master", label: "Gerente" },
   { key: "hr", label: "RH" },
+  { key: "viewer", label: "Leitor" },
 ];
 
 const normalizeText = (t: string) =>
@@ -270,7 +271,22 @@ function UsersTab() {
     },
   });
 
+  // Leitores: gestores da empresa que acompanham sem editar (cargo Leitor)
+  const viewerQ = useQuery({
+    queryKey: ["team-viewer"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,full_name,email,phone,color,role,is_active,manager_id,team_name,avatar_url,cargo_id")
+        .eq("role", "viewer" as never)
+        .order("full_name");
+      if (error) throw error;
+      return (data ?? []) as Profile[];
+    },
+  });
+
   const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["team-viewer"] });
     qc.invalidateQueries({ queryKey: ["team-hr"] });
     qc.invalidateQueries({ queryKey: ["team-managers"] });
     qc.invalidateQueries({ queryKey: ["brokers-active"] });
@@ -310,6 +326,7 @@ function UsersTab() {
   const managers = managersQ.data ?? [];
   const brokers = (brokersQ.data ?? []) as Profile[];
   const hrUsers = hrQ.data ?? [];
+  const viewerUsers = viewerQ.data ?? [];
   const managerIds = new Set(managers.map((m) => m.id));
   const teams: TeamOption[] = managers.filter((m) => m.is_active).map((m) => ({ id: m.id, label: teamLabel(m) }));
 
@@ -327,6 +344,8 @@ function UsersTab() {
       ? brokers.filter((b) => (!b.manager_id || !managerIds.has(b.manager_id)) && matches(b))
       : [];
   const hrList = (kindFilter === "all" || kindFilter === "hr") && teamFilter === "all" ? hrUsers.filter(matches) : [];
+  const viewerList =
+    (kindFilter === "all" || kindFilter === "viewer") && teamFilter === "all" ? viewerUsers.filter(matches) : [];
 
   const sections = managers
     .filter((m) => teamFilter === "all" || m.id === teamFilter)
@@ -337,7 +356,7 @@ function UsersTab() {
       // enquanto arrasta, todas as equipes ativas aparecem como destino
       const visible = dragId
         ? m.is_active
-        : kindFilter === "hr"
+        : kindFilter === "hr" || kindFilter === "viewer"
           ? false
           : kindFilter === "broker"
             ? team.length > 0 || !q
@@ -413,6 +432,7 @@ function UsersTab() {
           <option value="master">Gerentes</option>
           <option value="broker">Corretores</option>
           <option value="hr">RH</option>
+          <option value="viewer">Leitores</option>
         </select>
         <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} className={selectCls} aria-label="Equipe">
           <option value="all">Todas as equipes</option>
@@ -562,6 +582,23 @@ function UsersTab() {
               key={u.id}
               broker={u}
               roleLabel="RH"
+              onEdit={() => setEditing(u)}
+              onToggleActive={() => toggleActive.mutate({ id: u.id, is_active: u.is_active })}
+              onDelete={() => setConfirmDelete(u)}
+              onResetPassword={() => setResetPasswordProfile(u)}
+            />
+          ))}
+        </section>
+      )}
+
+      {viewerList.length > 0 && (
+        <section className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Leitores ({viewerList.length})</p>
+          {viewerList.map((u) => (
+            <BrokerCard
+              key={u.id}
+              broker={u}
+              roleLabel="Leitor"
               onEdit={() => setEditing(u)}
               onToggleActive={() => toggleActive.mutate({ id: u.id, is_active: u.is_active })}
               onDelete={() => setConfirmDelete(u)}
@@ -1153,8 +1190,11 @@ function AddBrokerSheet({
   );
 }
 
-function AddManagerSheet({ onClose, kind = "master", switcher }: { onClose: () => void; kind?: "master" | "hr"; switcher?: ReactNode }) {
-  const isHr = kind === "hr";
+function AddManagerSheet({ onClose, kind = "master", switcher }: { onClose: () => void; kind?: "master" | "hr" | "viewer"; switcher?: ReactNode }) {
+  const isLeitor = kind === "viewer";
+  // RH e leitor não têm equipe: o formulário é o mesmo
+  const isHr = kind === "hr" || isLeitor;
+  const rotulo = isLeitor ? "Leitor" : kind === "hr" ? "RH" : "Gerente";
   const qc = useQueryClient();
   const [teamName, setTeamName] = useState("");
   const [name, setName] = useState("");
@@ -1185,12 +1225,25 @@ function AddManagerSheet({ onClose, kind = "master", switcher }: { onClose: () =
       if (error) throw error;
       if (!data.user) throw new Error("Não foi possível criar o usuário.");
 
-      const { error: setupErr } = await supabase.rpc("crm_setup_member", {
-        p_user_id: data.user.id,
-        p_role: kind,
-        p_team_name: isHr ? undefined : teamName.trim() || undefined,
-      });
-      if (setupErr) throw setupErr;
+      if (isLeitor) {
+        // cargo Leitor (tipo viewer): o ADM aplica direto no perfil
+        const { data: cargo } = await (supabase as any)
+          .from("cargos")
+          .select("id")
+          .eq("base_role", "viewer")
+          .eq("is_system", true)
+          .maybeSingle();
+        if (!cargo) throw new Error("O cargo Leitor ainda não existe: rode a migration 20261030000002_leitor_cargo.sql.");
+        const { error: cErr } = await supabase.from("profiles").update({ cargo_id: cargo.id, manager_id: null }).eq("id", data.user.id);
+        if (cErr) throw cErr;
+      } else {
+        const { error: setupErr } = await supabase.rpc("crm_setup_member", {
+          p_user_id: data.user.id,
+          p_role: kind as "master" | "hr",
+          p_team_name: isHr ? undefined : teamName.trim() || undefined,
+        });
+        if (setupErr) throw setupErr;
+      }
       const { error: upErr } = await supabase
         .from("profiles")
         .update({ full_name: name, phone: phone || null, color: "#7E5845" })
@@ -1205,7 +1258,7 @@ function AddManagerSheet({ onClose, kind = "master", switcher }: { onClose: () =
   });
 
   if (created) {
-    return <SuccessSheet name={created.name} roleLabel={isHr ? "RH" : "Gerente"} email={created.email} phone={created.phone} tempPassword={tempPassword} teamLabel={isHr ? "Paes & Gregori" : teamName.trim() || created.name} onClose={onClose} />;
+    return <SuccessSheet name={created.name} roleLabel={rotulo} email={created.email} phone={created.phone} tempPassword={tempPassword} teamLabel={isHr ? "Paes & Gregori" : teamName.trim() || created.name} onClose={onClose} />;
   }
 
   return (
@@ -1215,13 +1268,15 @@ function AddManagerSheet({ onClose, kind = "master", switcher }: { onClose: () =
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-[var(--navy)] mb-4">
-          {switcher ? "Novo usuário" : isHr ? "Adicionar usuário de RH" : "Adicionar gerente"}
+          {switcher ? "Novo usuário" : isLeitor ? "Adicionar leitor" : isHr ? "Adicionar usuário de RH" : "Adicionar gerente"}
         </h3>
         {switcher}
         <div className="space-y-3">
           {isHr ? (
             <p className="text-xs text-muted-foreground">
-              O RH acessa o log de check-ins e os módulos que você liberar em Permissões. Não vê leads por padrão.
+              {isLeitor
+                ? "O leitor acompanha o Dashboard Hypnobox, a Escala, o Check-in (com o log e os relatórios), Imóveis e Treinamentos de todas as equipes, sem editar nada e sem a coleta de dados."
+                : "O RH acessa o log de check-ins e os módulos que você liberar em Permissões. Não vê leads por padrão."}
             </p>
           ) : (
             <input
@@ -1275,7 +1330,7 @@ function AddManagerSheet({ onClose, kind = "master", switcher }: { onClose: () =
               disabled={!name || !email || m.isPending}
               className="flex-1 h-12 rounded-xl bg-[var(--navy)] text-white font-semibold disabled:opacity-50"
             >
-              {m.isPending ? "Criando…" : isHr ? "Criar usuário de RH" : "Criar gerente"}
+              {m.isPending ? "Criando…" : isLeitor ? "Criar leitor" : isHr ? "Criar usuário de RH" : "Criar gerente"}
             </button>
           </div>
         </div>
@@ -1348,7 +1403,13 @@ function EditBrokerSheet({
         <div className="flex items-center gap-3 mb-4">
           <Avatar name={name} color={color} src={profile.avatar_url} size={44} />
           <h3 className="text-lg font-semibold text-[var(--navy)]">
-            {isManagerProfile ? "Editar gerente" : profile.role === "hr" ? "Editar usuário de RH" : "Editar corretor"}
+            {isManagerProfile
+              ? "Editar gerente"
+              : profile.role === "hr"
+                ? "Editar usuário de RH"
+                : (profile.role as string) === "viewer"
+                  ? "Editar leitor"
+                  : "Editar corretor"}
           </h3>
         </div>
         <div className="space-y-3">

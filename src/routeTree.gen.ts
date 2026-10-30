@@ -28,6 +28,7 @@ import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedRelatorioVisitasRouteImport } from './routes/_authenticated/relatorio-visitas'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated/schedule'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
+import { Route as AuthenticatedTreinamentosRouteImport } from './routes/_authenticated/treinamentos'
 import { Route as ConferirTokenRouteImport } from './routes/conferir.$token'
 import { Route as EscalaTokenRouteImport } from './routes/escala.$token'
 import { Route as DotwellKnownOauthProtectedResourceSplatRouteImport } from './routes/[.]well-known/oauth-protected-resource.$'
@@ -36,6 +37,7 @@ import { Route as AuthenticatedLeadsLeadIdRouteImport } from './routes/_authenti
 import { Route as AuthenticatedSettingsChaveIaRouteImport } from './routes/_authenticated/settings/chave-ia'
 import { Route as AuthenticatedSettingsPermissionsRouteImport } from './routes/_authenticated/settings/permissions'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile'
+import { Route as AuthenticatedTreinamentosCursoIdRouteImport } from './routes/_authenticated/treinamentos_.$cursoId'
 import { Route as ApiExtSplatRouteImport } from './routes/api/ext/$'
 import { Route as ApiMcpIndexRouteImport } from './routes/api/mcp/index'
 import { Route as ApiMcpTokenRouteImport } from './routes/api/mcp/$token'
@@ -143,6 +145,12 @@ const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTreinamentosRoute =
+  AuthenticatedTreinamentosRouteImport.update({
+    id: '/treinamentos',
+    path: '/treinamentos',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const ConferirTokenRoute = ConferirTokenRouteImport.update({
   id: '/conferir/$token',
   path: '/conferir/$token',
@@ -187,6 +195,12 @@ const AuthenticatedSettingsProfileRoute =
   AuthenticatedSettingsProfileRouteImport.update({
     id: '/settings/profile',
     path: '/settings/profile',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedTreinamentosCursoIdRoute =
+  AuthenticatedTreinamentosCursoIdRouteImport.update({
+    id: '/treinamentos_/$cursoId',
+    path: '/treinamentos/$cursoId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const ApiExtSplatRoute = ApiExtSplatRouteImport.update({
@@ -251,6 +265,7 @@ export interface FileRoutesByFullPath {
   '/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/treinamentos': typeof AuthenticatedTreinamentosRoute
   '/conferir/$token': typeof ConferirTokenRoute
   '/escala/$token': typeof EscalaTokenRoute
   '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
@@ -259,6 +274,7 @@ export interface FileRoutesByFullPath {
   '/settings/chave-ia': typeof AuthenticatedSettingsChaveIaRoute
   '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/treinamentos/$cursoId': typeof AuthenticatedTreinamentosCursoIdRoute
   '/api/ext/$': typeof ApiExtSplatRoute
   '/api/mcp/$token': typeof ApiMcpTokenRoute
   '/api/oauth/authorize': typeof ApiOauthAuthorizeRoute
@@ -287,6 +303,7 @@ export interface FileRoutesByTo {
   '/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/treinamentos': typeof AuthenticatedTreinamentosRoute
   '/conferir/$token': typeof ConferirTokenRoute
   '/escala/$token': typeof EscalaTokenRoute
   '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
@@ -295,6 +312,7 @@ export interface FileRoutesByTo {
   '/settings/chave-ia': typeof AuthenticatedSettingsChaveIaRoute
   '/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/treinamentos/$cursoId': typeof AuthenticatedTreinamentosCursoIdRoute
   '/api/ext/$': typeof ApiExtSplatRoute
   '/api/mcp/$token': typeof ApiMcpTokenRoute
   '/api/oauth/authorize': typeof ApiOauthAuthorizeRoute
@@ -325,6 +343,7 @@ export interface FileRoutesById {
   '/_authenticated/relatorio-visitas': typeof AuthenticatedRelatorioVisitasRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
+  '/_authenticated/treinamentos': typeof AuthenticatedTreinamentosRoute
   '/conferir/$token': typeof ConferirTokenRoute
   '/escala/$token': typeof EscalaTokenRoute
   '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
@@ -333,6 +352,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/chave-ia': typeof AuthenticatedSettingsChaveIaRoute
   '/_authenticated/settings/permissions': typeof AuthenticatedSettingsPermissionsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/_authenticated/treinamentos_/$cursoId': typeof AuthenticatedTreinamentosCursoIdRoute
   '/api/ext/$': typeof ApiExtSplatRoute
   '/api/mcp/$token': typeof ApiMcpTokenRoute
   '/api/oauth/authorize': typeof ApiOauthAuthorizeRoute
@@ -363,6 +383,7 @@ export interface FileRouteTypes {
     | '/relatorio-visitas'
     | '/schedule'
     | '/team'
+    | '/treinamentos'
     | '/conferir/$token'
     | '/escala/$token'
     | '/.well-known/oauth-protected-resource/$'
@@ -371,6 +392,7 @@ export interface FileRouteTypes {
     | '/settings/chave-ia'
     | '/settings/permissions'
     | '/settings/profile'
+    | '/treinamentos/$cursoId'
     | '/api/ext/$'
     | '/api/mcp/$token'
     | '/api/oauth/authorize'
@@ -399,6 +421,7 @@ export interface FileRouteTypes {
     | '/relatorio-visitas'
     | '/schedule'
     | '/team'
+    | '/treinamentos'
     | '/conferir/$token'
     | '/escala/$token'
     | '/.well-known/oauth-protected-resource/$'
@@ -407,6 +430,7 @@ export interface FileRouteTypes {
     | '/settings/chave-ia'
     | '/settings/permissions'
     | '/settings/profile'
+    | '/treinamentos/$cursoId'
     | '/api/ext/$'
     | '/api/mcp/$token'
     | '/api/oauth/authorize'
@@ -436,6 +460,7 @@ export interface FileRouteTypes {
     | '/_authenticated/relatorio-visitas'
     | '/_authenticated/schedule'
     | '/_authenticated/team'
+    | '/_authenticated/treinamentos'
     | '/conferir/$token'
     | '/escala/$token'
     | '/.well-known/oauth-protected-resource/$'
@@ -444,6 +469,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/chave-ia'
     | '/_authenticated/settings/permissions'
     | '/_authenticated/settings/profile'
+    | '/_authenticated/treinamentos_/$cursoId'
     | '/api/ext/$'
     | '/api/mcp/$token'
     | '/api/oauth/authorize'
@@ -607,6 +633,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTeamRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/treinamentos': {
+      id: '/_authenticated/treinamentos'
+      path: '/treinamentos'
+      fullPath: '/treinamentos'
+      preLoaderRoute: typeof AuthenticatedTreinamentosRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/conferir/$token': {
       id: '/conferir/$token'
       path: '/conferir/$token'
@@ -661,6 +694,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/profile'
       fullPath: '/settings/profile'
       preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/treinamentos_/$cursoId': {
+      id: '/_authenticated/treinamentos_/$cursoId'
+      path: '/treinamentos/$cursoId'
+      fullPath: '/treinamentos/$cursoId'
+      preLoaderRoute: typeof AuthenticatedTreinamentosCursoIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/api/ext/$': {
@@ -750,11 +790,13 @@ interface AuthenticatedRouteChildren {
   AuthenticatedRelatorioVisitasRoute: typeof AuthenticatedRelatorioVisitasRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
+  AuthenticatedTreinamentosRoute: typeof AuthenticatedTreinamentosRoute
   AuthenticatedHypnoboxColetaRoute: typeof AuthenticatedHypnoboxColetaRoute
   AuthenticatedLeadsLeadIdRoute: typeof AuthenticatedLeadsLeadIdRoute
   AuthenticatedSettingsChaveIaRoute: typeof AuthenticatedSettingsChaveIaRoute
   AuthenticatedSettingsPermissionsRoute: typeof AuthenticatedSettingsPermissionsRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
+  AuthenticatedTreinamentosCursoIdRoute: typeof AuthenticatedTreinamentosCursoIdRoute
   AuthenticatedScheduleClaimTokenRoute: typeof AuthenticatedScheduleClaimTokenRoute
 }
 
@@ -771,11 +813,13 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedRelatorioVisitasRoute: AuthenticatedRelatorioVisitasRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
+  AuthenticatedTreinamentosRoute: AuthenticatedTreinamentosRoute,
   AuthenticatedHypnoboxColetaRoute: AuthenticatedHypnoboxColetaRoute,
   AuthenticatedLeadsLeadIdRoute: AuthenticatedLeadsLeadIdRoute,
   AuthenticatedSettingsChaveIaRoute: AuthenticatedSettingsChaveIaRoute,
   AuthenticatedSettingsPermissionsRoute: AuthenticatedSettingsPermissionsRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
+  AuthenticatedTreinamentosCursoIdRoute: AuthenticatedTreinamentosCursoIdRoute,
   AuthenticatedScheduleClaimTokenRoute: AuthenticatedScheduleClaimTokenRoute,
 }
 
