@@ -9,6 +9,7 @@ import {
   criarLinkConferencia,
   getHypnoboxData,
   salvarDataVenda,
+  validarProposta,
   type HypnoboxData,
   type HypnoboxRow,
 } from "@/lib/hypnobox.functions";
@@ -57,16 +58,17 @@ export const Route = createFileRoute("/_authenticated/hypnobox")({
   component: HypnoboxPageGuarded,
 });
 
+// ADM e quem tem o módulo "Análise Hypnobox" na matriz (o leitor, só para ler)
 function HypnoboxPageGuarded() {
   return (
-    <RequireModule adminOnly>
+    <RequireModule modules={["analise"]}>
       <HypnoboxPage />
     </RequireModule>
   );
 }
 
 function HypnoboxPage() {
-  const { profile } = useAuth();
+  const { profile, isSuperAdmin, isLeitor } = useAuth();
   const home = useHomePath();
   const navigate = useNavigate({ from: Route.fullPath });
   const search = Route.useSearch();
@@ -84,6 +86,18 @@ function HypnoboxPage() {
       const linhas = await salvarDataVenda({ data: { id_cliente: id, data_venda: data } });
       queryClient.setQueryData<HypnoboxData>(["hypnobox-data"], (old) =>
         old ? { ...old, datasets: { ...old.datasets, vendas_data: linhas } } : old,
+      );
+    },
+    [queryClient],
+  );
+  // se o cliente marcado como Proposta teve proposta mesmo (cartão Propostas)
+  const validar = useCallback(
+    async (id: string, teve: boolean | null, data: string | null, observacao: string) => {
+      const linhas = await validarProposta({
+        data: { id_cliente: id, teve_proposta: teve, data_proposta: data, observacao },
+      });
+      queryClient.setQueryData<HypnoboxData>(["hypnobox-data"], (old) =>
+        old ? { ...old, datasets: { ...old.datasets, propostas_validadas: linhas } } : old,
       );
     },
     [queryClient],
@@ -136,7 +150,15 @@ function HypnoboxPage() {
   const dados = useMemo(
     () =>
       dataQ.data && lenAtual
-        ? { ...dataQ.data, datasets: { ...dataQ.data.datasets, ...conjuntosDoDash(lenAtual) } }
+        ? {
+            ...dataQ.data,
+            datasets: {
+              ...dataQ.data.datasets,
+              ...conjuntosDoDash(lenAtual),
+              // o acompanhamento mensal usa sempre o investimento diário da coleta (o período todo)
+              mkt_diario_coleta: dataQ.data.datasets.mkt_diario ?? [],
+            },
+          }
         : dataQ.data,
     [dataQ.data, lenAtual],
   );
@@ -171,14 +193,18 @@ function HypnoboxPage() {
     <Suspense fallback={<Centered>Carregando análise…</Centered>}>
       <HypnoboxFrame
         data={dados!}
+        somenteLeitura={!isSuperAdmin}
         lenInfo={lenInfo}
         onPedirLen={pedirLen}
         onSalvarDataVenda={salvarVenda}
+        onValidarProposta={validar}
         onCriarLinkConferencia={criarLink}
         initialTab={initialTab}
         initialLead={initialLead}
         userName={profile?.full_name ?? ""}
-        userRole={profile ? (ROLE_LABELS[profile.role] ?? profile.role) : ""}
+        userRole={
+          profile && profile.role !== "viewer" ? (ROLE_LABELS[profile.role] ?? profile.role) : ""
+        }
         onTab={(tab) =>
           navigate({
             search: (prev: Search) => ({ ...prev, tab: tab === "graficos" ? undefined : tab }),
@@ -191,6 +217,8 @@ function HypnoboxPage() {
             replace: true,
           })
         }
+        semSidebar={isLeitor}
+        tab={search.tab}
         onExit={() => navigate({ to: home })}
         onColeta={() => navigate({ to: "/hypnobox/coleta" })}
       />

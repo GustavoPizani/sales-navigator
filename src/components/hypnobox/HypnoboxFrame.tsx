@@ -51,6 +51,16 @@ export type LenInfo =
   | { estado: "erro"; de: string; ate: string; erro: string };
 
 type Props = {
+  /** leitor: vê o painel sem as ações de gravar e sem a coleta de dados */
+  somenteLeitura?: boolean;
+  /**
+   * Leitor: o painel é a tela inicial dele, então a sidebar do painel mostra os
+   * outros módulos dele (no lugar de "Voltar ao sistema") e o botão Sair.
+   */
+  /** Dentro do layout normal (leitor): sem a sidebar e a barra própria do painel. */
+  semSidebar?: boolean;
+  /** Aba pedida pelo endereço (?tab=): a sidebar do sistema troca a aba do painel. */
+  tab?: string;
   data: HypnoboxData;
   /** Dash da LEN: período da coleta, carregando outro período, ou outro período pronto. */
   lenInfo: LenInfo;
@@ -58,8 +68,20 @@ type Props = {
   onPedirLen: (de: string | null, ate: string | null) => void;
   /** Grava a data real de uma venda (null apaga). */
   onSalvarDataVenda: (id: string, data: string | null) => Promise<void>;
+  /** teve: true/false grava a validação; null apaga */
+  onValidarProposta: (
+    id: string,
+    teve: boolean | null,
+    data: string | null,
+    observacao: string,
+  ) => Promise<void>;
   /** Cria o link único para o corretor conferir as visitas do período; devolve o endereço. */
-  onCriarLinkConferencia: (corretor: string, nome: string, de: string, ate: string) => Promise<string>;
+  onCriarLinkConferencia: (
+    corretor: string,
+    nome: string,
+    de: string,
+    ate: string,
+  ) => Promise<string>;
   initialTab?: string;
   /** ID do lead a abrir assim que o painel carrega. */
   initialLead?: string;
@@ -94,6 +116,14 @@ export default function HypnoboxFrame(props: Props) {
   const redraw = useRef<() => void>(() => {});
 
   useEffect(() => redraw.current(), [props.data, props.lenInfo]);
+  // a sidebar do sistema mudou a aba (?tab=): abre a mesma aba dentro do painel
+  useEffect(() => {
+    const doc = frame.current?.contentDocument;
+    const aba =
+      props.semSidebar && props.tab === "atendimentos" ? "graficos" : (props.tab ?? "graficos");
+    const bt = doc?.getElementById(`tab-${aba}`);
+    if (bt && bt.getAttribute("aria-selected") !== "true") bt.click();
+  }, [props.tab]);
 
   const start = () => {
     const win = frame.current?.contentWindow as PanelWindow | null | undefined;
@@ -148,10 +178,19 @@ export default function HypnoboxFrame(props: Props) {
       // data real de uma venda (aba Vendas)
       salvarDataVenda: (id: string, data: string | null) =>
         latest.current.onSalvarDataVenda(id, data),
+      // validação da proposta (cartão Propostas)
+      validarProposta: (
+        id: string,
+        teve: boolean | null,
+        data: string | null,
+        observacao: string,
+      ) => latest.current.onValidarProposta(id, teve, data, observacao),
       // link de conferência da agenda (1:1)
       criarLinkConferencia: (corretor: string, nome: string, de: string, ate: string) =>
         latest.current.onCriarLinkConferencia(corretor, nome, de, ate),
       len: () => latest.current.lenInfo,
+      // leitor: o painel esconde o que grava (datas de venda, propostas, link de conferência)
+      leitura: !!latest.current.somenteLeitura,
       refresh: () => {},
       params: () => ({}),
       setParams: () => {},
@@ -200,6 +239,9 @@ export default function HypnoboxFrame(props: Props) {
     );
     const roleLabel = doc.querySelector(".sn-pc .rl")?.lastChild;
     if (roleLabel) roleLabel.textContent = userRole;
+    // sem cargo (o leitor): a linha do cargo some
+    const roleLine = doc.querySelector<HTMLElement>(".sn-pc .rl");
+    if (roleLine && !userRole) roleLine.hidden = true;
     if (coletadoEm) {
       setText(".sn-head .r b", `atualizado em ${brDate(coletadoEm)}`);
       setText(".sn-side .upd span", `Dados de ${brDate(coletadoEm)} · Hypnobox e LEN`);
@@ -215,6 +257,14 @@ export default function HypnoboxFrame(props: Props) {
     sideBack.style.marginBottom = "6px";
     sideBack.addEventListener("click", exit);
     doc.querySelector(".sn-side .foot .sn-pc")?.before(sideBack);
+    // leitor: o painel fica dentro do layout normal; a navegação é a sidebar do sistema
+    if (latest.current.semSidebar) {
+      const css = doc.createElement("style");
+      // o leitor também não vê a lista de atendimentos (leads um a um)
+      css.textContent =
+        ".sn-side, .sn-toggle, .sn-bottom, #tab-atendimentos, #side-atendimentos { display: none !important; }";
+      doc.head.appendChild(css);
+    }
     // Central de coleta: atualiza os dados desta análise
     const sideColeta = doc.createElement("button");
     sideColeta.type = "button";
@@ -222,14 +272,15 @@ export default function HypnoboxFrame(props: Props) {
     sideColeta.title = "Coleta de dados";
     sideColeta.innerHTML = `${ICON_CLOUD}<span class="lab">Coleta de dados</span>`;
     sideColeta.addEventListener("click", () => latest.current.onColeta());
-    sideBack.before(sideColeta);
+    if (!latest.current.somenteLeitura) sideBack.before(sideColeta);
     const barBack = doc.createElement("button");
     barBack.type = "button";
     barBack.innerHTML = `${ICON_BACK}<span>Voltar</span>`;
     barBack.addEventListener("click", exit);
     doc.querySelector(".sn-bottom .bar")?.prepend(barBack);
 
-    if (initialTab) doc.getElementById(`tab-${initialTab}`)?.click();
+    if (initialTab && !(latest.current.semSidebar && initialTab === "atendimentos"))
+      doc.getElementById(`tab-${initialTab}`)?.click();
     ready = true;
     if (initialLead) win.snOpenLead?.(initialLead);
   };
@@ -240,7 +291,11 @@ export default function HypnoboxFrame(props: Props) {
       title="Análise Hypnobox"
       srcDoc={SRC_DOC}
       onLoad={start}
-      className="fixed inset-0 z-30 h-dvh w-full border-0 bg-[var(--surface)]"
+      className={`fixed inset-0 z-30 h-dvh w-full border-0 bg-[var(--surface)] ${
+        props.semSidebar
+          ? "lg:left-[var(--sidebar-w,4.75rem)] lg:w-[calc(100%-var(--sidebar-w,4.75rem))] transition-[left,width] duration-200"
+          : ""
+      }`}
     />
   );
 }

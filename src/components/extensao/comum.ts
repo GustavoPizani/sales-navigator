@@ -10,16 +10,25 @@ export const CAMPO =
   "h-11 w-full min-w-0 rounded-xl border border-border bg-[var(--surface)] px-3 text-sm text-[var(--navy)] focus:border-[var(--gold)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]/40";
 
 /**
- * Quem usa a extensão no MVP: o piloto (profiles.enabled_features.extensao), o
- * admin e a conta de teste. A API (/api/ext) aplica a mesma regra.
+ * Quem usa a extensão no MVP: o piloto (profiles.enabled_features.extensao) e o
+ * admin. A conta de teste nunca usa (em nenhum cargo). A API (/api/ext) aplica a
+ * mesma regra.
  */
 export function useExtensaoLiberada(): boolean {
   const { profile, isTester } = useAuth();
-  if (!profile) return false;
+  if (!profile || isTester) return false;
   return (
-    isTester ||
     profile.role === "admin" ||
     profile.role === "director" ||
     profile.enabled_features?.extensao === true
   );
+}
+
+/**
+ * A extensão aparece no menu? Para quem está liberado, sim, a não ser que o
+ * próprio ADM tenha desligado a chave em Minha conta (enabled_features.extensao_menu).
+ */
+export function useExtensaoNoMenu(): boolean {
+  const { profile } = useAuth();
+  return useExtensaoLiberada() && profile?.enabled_features?.extensao_menu !== false;
 }

@@ -5,7 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { AuthSplash } from "@/components/AuthSplash";
 import { BottomNav } from "@/components/BottomNav";
-import { SIDEBAR_WIDTH, Sidebar } from "@/components/Sidebar";
+import { Sidebar } from "@/components/Sidebar";
 import { PushSubscriber } from "@/components/PushSubscriber";
 import { ConfirmarVisitas } from "@/components/ConfirmarVisitas";
 import { CheckinAlerts } from "@/components/CheckinAlerts";
@@ -42,7 +42,8 @@ function AuthenticatedLayout() {
 function AppShell() {
   const { isTester, isSuperAdmin, profile } = useAuth();
   const { pathname } = useLocation();
-  // A Análise Hypnobox é um subsistema em tela cheia, com menu próprio.
+  // A Análise Hypnobox é um subsistema em tela cheia, com menu próprio (só o
+  // ADM; o leitor a vê dentro do layout normal, com as seções na sidebar do sistema).
   if (isSuperAdmin && pathname.startsWith("/hypnobox"))
     return (
       <>
@@ -55,17 +56,16 @@ function AppShell() {
     <div className="min-h-screen bg-[var(--surface)]">
       {isTester && (
         <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[80] pointer-events-none rounded-full bg-fuchsia-600 px-3 py-1 text-[11px] font-bold text-white shadow-lg">
-          {profile?.is_test ? `CONTA DE TESTE · ${profile?.cargo_name ?? profile?.role}` : "MODO TESTE (LOCAL)"}
+          {profile?.is_test
+            ? `CONTA DE TESTE · ${profile?.cargo_name ?? profile?.role}`
+            : "MODO TESTE (LOCAL)"}
         </div>
       )}
       <PushSubscriber />
       {/* admin: aviso de cada check-in */}
       <CheckinAlerts />
       <Sidebar />
-      <div
-        className="min-w-0 lg:pl-[var(--sidebar-offset)]"
-        style={{ "--sidebar-offset": SIDEBAR_WIDTH.collapsed } as React.CSSProperties}
-      >
+      <div className="min-w-0 transition-[padding] duration-200 ease-out motion-reduce:transition-none lg:pl-[var(--sidebar-w,4.75rem)]">
         <Outlet />
       </div>
       {/* depois do horário de uma visita: aconteceu ou não? */}
@@ -106,7 +106,9 @@ function ProfileLoadFailed({ onRetry }: { onRetry: () => Promise<void> }) {
   return (
     <div className="min-h-screen grid place-items-center p-6 text-center">
       <div>
-        <h2 className="text-xl font-semibold text-[var(--navy)]">Não foi possível carregar seu perfil</h2>
+        <h2 className="text-xl font-semibold text-[var(--navy)]">
+          Não foi possível carregar seu perfil
+        </h2>
         <p className="text-muted-foreground mt-2">Verifique sua conexão e tente novamente.</p>
         <button
           onClick={handleRetry}
@@ -177,11 +179,15 @@ function ForcePasswordChange() {
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-border w-full max-w-sm">
         <h2 className="text-xl font-bold text-[var(--navy)] mb-2">Trocar senha</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          Como este é o seu primeiro acesso, por segurança defina uma senha nova, diferente da provisória.
+          Como este é o seu primeiro acesso, por segurança defina uma senha nova, diferente da
+          provisória.
         </p>
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
-            <label htmlFor="nova-senha" className="text-xs font-medium text-muted-foreground mb-1 block">
+            <label
+              htmlFor="nova-senha"
+              className="text-xs font-medium text-muted-foreground mb-1 block"
+            >
               Nova senha
             </label>
             <div className="relative">
@@ -208,7 +214,10 @@ function ForcePasswordChange() {
             </div>
           </div>
           <div>
-            <label htmlFor="confirma-senha" className="text-xs font-medium text-muted-foreground mb-1 block">
+            <label
+              htmlFor="confirma-senha"
+              className="text-xs font-medium text-muted-foreground mb-1 block"
+            >
               Repita a nova senha
             </label>
             <input
@@ -223,14 +232,25 @@ function ForcePasswordChange() {
             />
           </div>
           {erro && (
-            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+            <p
+              role="alert"
+              className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2"
+            >
               {erro}
             </p>
           )}
-          <button type="submit" disabled={busy} className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full h-12 rounded-xl bg-[var(--gold)] text-[var(--navy)] font-bold disabled:opacity-50"
+          >
             {busy ? "Salvando..." : "Salvar nova senha e entrar"}
           </button>
-          <button type="button" onClick={sair} className="w-full h-10 text-sm text-muted-foreground underline-offset-2 hover:underline">
+          <button
+            type="button"
+            onClick={sair}
+            className="w-full h-10 text-sm text-muted-foreground underline-offset-2 hover:underline"
+          >
             Sair e entrar de novo
           </button>
         </form>

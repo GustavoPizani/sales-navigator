@@ -4,6 +4,11 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { secondaryAdmin } from "@/integrations/supabase/secondary.server";
 import { periodoColetado, type ColetaPeriodo } from "@/lib/coleta/periodo";
 import { corretoresDoSistema } from "@/lib/corretores-sistema.server";
+import {
+  exigirLeituraAnalise,
+  INICIO_LEITOR,
+  recortarParaLeitor,
+} from "@/lib/analise-acesso.server";
 
 // O painel "Análise Hypnobox" foi escrito para ler planilhas (CSV): todo valor
 // chega como texto e célula vazia é "". As linhas saem daqui nesse formato para
@@ -55,9 +60,16 @@ const SOURCES: Record<string, { table: string; order?: string }> = {
   visitas_confirmadas: { table: "al_visitas_confirmadas", order: "chave" },
   // visitas que o corretor informou pelo link e não estavam na agenda do Hypnobox
   visitas_informadas: { table: "al_visitas_informadas", order: "data" },
+  // o ADM confirma se o cliente marcado como Proposta teve proposta mesmo, e quando
+  propostas_validadas: { table: "al_propostas_validacao", order: "id_cliente" },
 };
 // tabelas que podem ainda não existir no banco: sem elas o painel abre do mesmo jeito
-const OPCIONAIS = new Set(["al_vendas_data", "al_visitas_confirmadas", "al_visitas_informadas"]);
+const OPCIONAIS = new Set([
+  "al_vendas_data",
+  "al_visitas_confirmadas",
+  "al_visitas_informadas",
+  "al_propostas_validacao",
+]);
 
 const PAGE = 1000;
 
@@ -148,6 +160,48 @@ export const salvarDataVenda = createServerFn({ method: "POST" })
     return (await readTable("al_vendas_data", "id_cliente")).map((r) => toSheetRow(r));
   });
 
+const validacaoPropostaSchema = z.object({
+  id_cliente: z.string().regex(/^\d{1,12}$/),
+  // null apaga a validação (volta a valer o status do Hypnobox)
+  teve_proposta: z.boolean().nullable(),
+  data_proposta: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  observacao: z.string().max(500).optional(),
+});
+
+/** Grava (ou apaga) se o cliente teve proposta e quando; devolve todas as validações. */
+export const validarProposta = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => validacaoPropostaSchema.parse(d))
+  .handler(async ({ data, context }): Promise<HypnoboxRow[]> => {
+    const quem = await exigirAdmin(context);
+    if (data.teve_proposta && !data.data_proposta) throw new Error("Escolha o dia da proposta.");
+    const { error } =
+      data.teve_proposta === null
+        ? await secondaryAdmin
+            .from("al_propostas_validacao")
+            .delete()
+            .eq("id_cliente", data.id_cliente)
+        : await secondaryAdmin.from("al_propostas_validacao").upsert({
+            id_cliente: data.id_cliente,
+            teve_proposta: data.teve_proposta,
+            data_proposta: data.teve_proposta ? data.data_proposta : null,
+            observacao: data.observacao || null,
+            atualizado_em: new Date().toISOString(),
+            atualizado_por: quem.full_name,
+          });
+    if (error)
+      throw new Error(
+        /al_propostas_validacao/.test(error.message) && /exist|schema cache/i.test(error.message)
+          ? "O banco ainda não tem a validação de propostas: rode supabase/analise-leads/20261030_propostas_validacao.sql no SQL Editor do projeto novo."
+          : `Não foi possível gravar: ${error.message}`,
+      );
+    return (await readTable("al_propostas_validacao", "id_cliente")).map((r) => toSheetRow(r));
+  });
+
 const linkConferenciaSchema = z.object({
   corretor: z.string().min(1).max(120),
   nome: z.string().max(120).optional(),
@@ -186,12 +240,13 @@ export const criarLinkConferencia = createServerFn({ method: "POST" })
 export const getHypnoboxData = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<HypnoboxPacote> => {
-    await exigirAdmin(context);
+    // ADM e leitor; o contato dos clientes só vai para o ADM
+    const { admin } = await exigirLeituraAnalise(context);
 
     const entries = await Promise.all(
       Object.entries(SOURCES).map(async ([id, src]) => {
         const rows = (await readTable(src.table, src.order)).map((r) =>
-          toSheetRow(r, src.table === "al_leads"),
+          toSheetRow(r, admin && src.table === "al_leads"),
         );
         return [id, rows] as const;
       }),
@@ -207,6 +262,8 @@ export const getHypnoboxData = createServerFn({ method: "POST" })
     const sistema = await corretoresDoSistema([...nomesHyp]);
     datasets.corretores_sistema = sistema.corretores;
     datasets.turnos_sistema = sistema.turnos;
+    // leitor: só a partir de INICIO_LEITOR (e quem interagiu nesse período)
+    if (!admin) recortarParaLeitor(datasets);
 
     const { data: coleta } = await secondaryAdmin
       .from("al_coletas")
@@ -224,7 +281,11 @@ export const getHypnoboxData = createServerFn({ method: "POST" })
     const { data: todas } = await secondaryAdmin
       .from("al_coletas")
       .select("periodo_inicio, periodo_fim, fontes");
-    const periodo = periodoColetado((todas ?? []) as ColetaPeriodo[]);
+    const coletado = periodoColetado((todas ?? []) as ColetaPeriodo[]);
+    const periodo =
+      coletado && !admin && coletado.de < INICIO_LEITOR
+        ? { ...coletado, de: INICIO_LEITOR }
+        : coletado;
 
     const { gzipSync } = await import("node:zlib");
     const pacote: HypnoboxData = { datasets, coletadoEm, periodo };

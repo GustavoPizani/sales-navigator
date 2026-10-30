@@ -9,7 +9,9 @@ export type ModuleKey =
   | "checkin"
   | "appointments"
   | "projects"
-  | "team";
+  | "team"
+  | "training"
+  | "analise";
 export type PermissionLevel = "hidden" | "view" | "edit";
 
 export const MODULES: { key: ModuleKey; label: string; description: string }[] = [
@@ -24,6 +26,16 @@ export const MODULES: { key: ModuleKey; label: string; description: string }[] =
   { key: "appointments", label: "Agendamentos", description: "Agenda de visitas e compromissos" },
   { key: "projects", label: "Imóveis", description: "Catálogo de imóveis e documentos" },
   { key: "team", label: "Time", description: "Equipes, gerentes e corretores" },
+  {
+    key: "training",
+    label: "Treinamentos",
+    description: "Biblioteca de PDFs e cursos em vídeo",
+  },
+  {
+    key: "analise",
+    label: "Dashboard Hypnobox",
+    description: "Painel de análise dos leads e campanhas (sem a coleta de dados)",
+  },
 ];
 
 export const LEVEL_LABEL: Record<PermissionLevel, string> = {
@@ -38,6 +50,7 @@ export const BASE_ROLE_LABEL: Record<string, string> = {
   master: "Gestor — vê a própria equipe",
   broker: "Corretor — vê só os próprios dados",
   hr: "RH — sem acesso a leads",
+  viewer: "Leitor — vê todas as equipes, sem editar",
 };
 
 /** Permissões padrão por tipo de cargo (usadas enquanto a matriz não carrega). */
@@ -50,6 +63,8 @@ export const DEFAULT_LEVELS: Record<string, Record<ModuleKey, PermissionLevel>> 
     appointments: "edit",
     projects: "view",
     team: "edit",
+    training: "view",
+    analise: "hidden",
   },
   broker: {
     dashboard: "view",
@@ -59,6 +74,8 @@ export const DEFAULT_LEVELS: Record<string, Record<ModuleKey, PermissionLevel>> 
     appointments: "edit",
     projects: "view",
     team: "hidden",
+    training: "view",
+    analise: "hidden",
   },
   hr: {
     dashboard: "hidden",
@@ -68,6 +85,20 @@ export const DEFAULT_LEVELS: Record<string, Record<ModuleKey, PermissionLevel>> 
     appointments: "hidden",
     projects: "hidden",
     team: "hidden",
+    training: "hidden",
+    analise: "hidden",
+  },
+  // Leitor: acompanha sem editar (a coleta de dados fica só com o ADM)
+  viewer: {
+    dashboard: "hidden",
+    leads: "hidden",
+    schedule: "view",
+    checkin: "view",
+    appointments: "hidden",
+    projects: "view",
+    team: "hidden",
+    training: "view",
+    analise: "view",
   },
 };
 
@@ -80,4 +111,6 @@ export const MODULE_ROUTE: Record<ModuleKey, string> = {
   appointments: "/calendar",
   projects: "/projects",
   team: "/team",
+  training: "/treinamentos",
+  analise: "/hypnobox",
 };

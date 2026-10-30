@@ -147,6 +147,10 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
 .sn-seg { display: inline-flex; border: 1px solid var(--border); background: #fff; border-radius: 10px; padding: 2px; }
 .sn-seg button { height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
 .sn-seg button[aria-pressed="true"] { background: var(--navy); color: #fff; }
+/* acompanhamento mensal (LEN x Hypnobox) */
+.sn-mes-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.sn-h2 { font-size: 17px; font-weight: 700; color: var(--navy); margin: 0 0 2px; }
+.sn-mes-head .sn-seg { flex-wrap: wrap; }
 .sn-sel { height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--border); background: #fff; font: inherit; font-size: 13px; color: var(--navy); }
 .sn-gold { height: 38px; padding: 0 16px; border-radius: 12px; border: 0; background: var(--gold); color: var(--navy); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .sn-gold:hover { filter: brightness(1.06); }
@@ -209,6 +213,15 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
 .sn-side { flex: none; align-self: stretch; width: 260px; z-index: 40; background: linear-gradient(180deg, #2D2D2D 0%, #232323 100%); color: #fff; transition: width .2s ease-out; border-right: 1px solid rgba(255,255,255,.04); }
 .sn.collapsed .sn-side { width: 72px; }
 .sn-side .in { position: sticky; top: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* menu maior que a tela (seção aberta, atalhos do leitor): rola dentro da sidebar */
+.sn-side .in { max-height: 100vh; max-height: 100dvh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+.sn-side .sec-min { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 7px; background: transparent; color: rgba(255,255,255,.45); cursor: pointer; transition: background .15s, color .15s; }
+.sn-side .sec-min:hover { background: rgba(255,255,255,.08); color: #fff; }
+.sn-side .sec-min:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.sn-side .sec-min svg { transition: transform .2s; }
+.sn-side.subs-min .sec-min svg { transform: rotate(-90deg); }
+.sn-side.subs-min .subs { display: none; }
+.sn.collapsed .sn-side .sec-min { opacity: 0; pointer-events: none; }
 .sn-side .brandrow { height: 56px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 18px; border-bottom: 1px solid rgba(255,255,255,.06); }
 .sn-side .logo { width: 36px; height: 36px; flex: none; border-radius: 11px; background: linear-gradient(135deg, var(--gold), var(--gold-dark)); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; box-shadow: 0 4px 12px rgba(178,128,105,.35); }
 .sn-side .lab { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; transition: opacity .15s .05s; }
@@ -355,7 +368,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
     <div class="in">
       <div class="brandrow"><div class="logo">P&amp;G</div><div class="lab"><div class="bn">Paes &amp; Gregori</div><div class="bs">Gestão Comercial</div></div></div>
       <nav>
-        <div class="sec"><i></i><p>Menu</p></div>
+        <div class="sec"><i></i><p>Menu</p><button class="sec-min" type="button" id="subs-toggle" aria-expanded="true" title="Minimizar as seções" aria-label="Minimizar as seções"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>
         <ul>
           <li>
             <button class="it" type="button" data-sec="dashboard" id="nav-dashboard" title="Dashboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg><span class="lab">Dashboard</span><span class="badge" id="badge-dashboard" hidden></span></button>
@@ -412,8 +425,8 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   <section class="sn-kpis" id="kpis" data-source="leads_hypnobox">
     <div class="sn-kpi"><div class="v" id="k-total">—</div><div class="l">Total de atendimentos</div></div>
     <button class="sn-kpi click" type="button" data-kpi="contato"><div class="v" id="k-contato">—</div><div class="l">Em contato</div><div class="h">ver detalhes</div></button>
-    <button class="sn-kpi click" type="button" data-kpi="visitas"><div class="v" id="k-visitas">—</div><div class="l">Em visita ou além</div><div class="h">clientes em Visita, Proposta ou Venda</div></button>
-    <button class="sn-kpi click" type="button" data-kpi="propostas"><div class="v" id="k-prop">—</div><div class="l">Propostas</div><div class="h">ver detalhes</div></button>
+    <button class="sn-kpi click" type="button" data-kpi="visitas"><div class="v" id="k-visitas">—</div><div class="l">Visitas realizadas</div><div class="h">no período, pela data da visita</div></button>
+    <button class="sn-kpi click" type="button" data-kpi="propostas"><div class="v" id="k-prop">—</div><div class="l">Propostas</div><div class="h">atualizadas no período</div></button>
     <button class="sn-kpi click" type="button" data-kpi="vendas"><div class="v" id="k-venda">—</div><div class="l">Vendas</div><div class="h">ver detalhes</div></button>
     <button class="sn-kpi click" type="button" data-kpi="semcontato"><div class="v" id="k-sem">—</div><div class="l">Sem contato</div><div class="h">ver detalhes</div></button>
     <button class="sn-kpi click" type="button" data-kpi="parados"><div class="v" id="k-parados">—</div><div class="l">Parados 7+ dias</div><div class="h">ver detalhes</div></button>
@@ -676,8 +689,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
     <p class="sn-note">Campanhas, anúncios e palavras-chave do dash da LEN (Meta e Google). Estes números não mudam com os filtros do topo.</p>
     <div class="sn-pbar">
       <div class="sn-seg" role="group" aria-label="Janela">
-        <button type="button" data-jan="periodo" aria-pressed="true">Período</button>
-        <button type="button" data-jan="anterior" aria-pressed="false">Período anterior</button>
+        <button type="button" data-jan="periodo" aria-pressed="true" id="pg-jan-tudo">Período todo</button>
         <button type="button" data-jan="setembro" aria-pressed="false" data-mes-btn="1">Mês 1</button>
         <button type="button" data-jan="outubro" aria-pressed="false" data-mes-btn="2">Mês 2</button>
       </div>
@@ -720,11 +732,37 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   </section>
 
   <section class="sn-panel" id="p-comparacao" role="tabpanel" aria-labelledby="tab-comparacao" hidden>
+    <div class="sn-mes-head">
+      <div><h2 class="sn-h2">Acompanhamento mensal</h2><p class="sn-note" id="mes-nota"></p></div>
+      <div class="sn-seg" id="mes-sel" role="group" aria-label="Mês"></div>
+    </div>
+    <div class="sn-kpis" id="mes-kpis" data-source="entradas mkt_diario visitas_hypnobox"></div>
+    <div class="sn-card" data-source="entradas"><h3>Entradas de leads por mês e origem</h3><p class="sub">Cada entrada no Relatório de contatos do Hypnobox (lead novo ou retorno), pela origem da entrada. O número em cima é o total do mês.</p><div class="sn-chart" id="ch-mes-origem"></div></div>
+    <div class="sn-grid2">
+      <div class="sn-card" data-source="entradas mkt_diario"><h3>Custo por lead pago, por mês</h3><p class="sub">Investimento em mídia (Meta + Google) ÷ entradas de mídia paga no mês</p><div class="sn-chart" id="ch-mes-cpl"></div></div>
+      <div class="sn-card" data-source="visitas_hypnobox mkt_diario"><h3>Custo por visita, por mês</h3><p class="sub">Investimento em mídia ÷ visitas realizadas no mês por clientes que vieram de mídia paga</p><div class="sn-chart" id="ch-mes-cpv"></div></div>
+    </div>
+    <div class="sn-tablecard">
+      <div class="sn-tablebar"><h3>Mês a mês</h3></div>
+      <div class="sn-tw">
+        <table class="sn-table" id="tb-mes">
+          <thead><tr><th>Mês</th><th class="num">Entradas</th><th class="num">Mídia paga</th><th class="num">% paga</th><th class="num">Orgânico</th><th class="num">Carteira</th><th class="num">Outras origens</th><th class="num">Investimento</th><th class="num">Custo por lead pago</th><th class="num">Visitas (mídia paga)</th><th class="num">Custo por visita</th><th class="num">Visitas (todas)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <h2 class="sn-h2" style="margin-top:8px">Conferência com o dash da LEN</h2>
     <p class="sn-note" id="note-cmp"></p>
     <div class="sn-kpis" id="cmp-kpis" data-source="funil_produto leads_hypnobox"></div>
-    <div class="sn-grid2">
-      <div class="sn-card"><h3 id="g-cmp-prod">Leads por empreendimento</h3><p class="sub">Leads pagos no dash da LEN x entradas no Hypnobox (novos + retornos)</p><div class="sn-chart" id="ch-cmp-prod" data-source="funil_produto entradas"></div></div>
-      <div class="sn-card"><h3 id="g-cmp-veic">Leads por veículo</h3><p class="sub">Card "Meta de Lead por Origem" da LEN x canal no Hypnobox</p><div class="sn-chart" id="ch-cmp-veic" data-source="veiculo leads_hypnobox"></div></div>
+    <div class="sn-tablecard" data-source="veiculo entradas">
+      <div class="sn-tablebar"><h3>Por origem</h3></div>
+      <p class="sn-note" style="padding:0 16px 8px">A LEN conta cada lead uma vez no CRM dela; por isso a comparação é com os leads novos do Hypnobox. Retornos são clientes que já existiam e voltaram a chamar por um anúncio da LEN: aparecem à parte.</p>
+      <div class="sn-tw">
+        <table class="sn-table" id="tb-cmp-origem">
+          <thead><tr><th>Origem</th><th class="num">LEN</th><th class="num">Novos no Hypnobox</th><th class="num">Diferença</th><th class="num">Novos ÷ LEN</th><th class="num">Retornos</th><th class="num">Entradas no Hypnobox</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
     <div class="sn-tablecard">
       <div class="sn-tablebar"><h3>Empreendimento a empreendimento</h3></div>
@@ -732,7 +770,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
         <table class="sn-table" id="tb-cmp-prod">
           <thead><tr>
             <th>Empreendimento</th><th class="num">LEN pago</th><th class="num">Hypnobox</th><th class="num">Novos</th><th class="num">Retornos</th>
-            <th class="num">Diferença</th><th class="num">Hypnobox ÷ LEN pago</th>
+            <th class="num">Diferença (novos)</th><th class="num">Novos ÷ LEN pago</th>
             <th class="num">Investimento</th><th class="num">CPL real</th><th class="num">Visitas realizadas</th><th class="num">Custo por visita</th>
             <th class="num" data-mes="1" data-pre="LEN ">LEN set</th><th class="num" data-mes="1" data-pre="Hypnobox ">Hypnobox set</th><th class="num" data-mes="2" data-pre="LEN ">LEN out</th><th class="num" data-mes="2" data-pre="Hypnobox ">Hypnobox out</th>
           </tr></thead>
@@ -751,9 +789,10 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
       </div>
     </div>
     <div class="sn-grid2">
-      <div class="sn-card"><h3 id="g-cmp-st">Status dos leads: LEN x Hypnobox</h3><p class="sub">Participação de cada status no total de cada fonte</p><div class="sn-chart" id="ch-cmp-st" data-source="status_geral leads_hypnobox"></div></div>
+      <div class="sn-card"><h3 id="g-cmp-st">Status dos leads: LEN x Hypnobox</h3><p class="sub">Dos leads de <span data-sub="dois"></span>, quanto está em cada status no CRM da LEN e no Hypnobox</p><div class="sn-chart" id="ch-cmp-st" data-source="status_geral leads_hypnobox"></div></div>
       <div class="sn-tablecard">
         <div class="sn-tablebar"><h3>Status em números</h3></div>
+        <p class="sn-note" style="padding:0 16px 8px">Os mesmos leads (<span data-sub="dois"></span>) contados nos dois lados: na LEN, pelo status do CRM dela; no Hypnobox, pela etapa do cliente hoje. Diferença em pontos percentuais: positiva = o Hypnobox tem mais leads nesse status que a LEN.</p>
         <div class="sn-tw">
           <table class="sn-table" id="tb-cmp-st">
             <thead><tr><th>Status</th><th class="num">LEN</th><th class="num">% LEN</th><th class="num">Hypnobox</th><th class="num">% Hypnobox</th><th class="num">Diferença (p.p.)</th></tr></thead>
@@ -762,7 +801,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
         </div>
       </div>
     </div>
-    <p class="sn-note">Diferença = Hypnobox − LEN pago. Status agrupados para ficarem comparáveis: "Sem contato" junta Tentando contato e sem status/sem registro; "Em contato" junta Em contato e Interesse futuro da LEN com Em tratativa do Hypnobox; "Visita" junta agendada e realizada. LinkedIn do 312 Jam entra em 312 Jam; Harmonia junta Residencial e Studios.</p>
+    <p class="sn-note">Diferença = leads novos no Hypnobox − LEN pago (os retornos ficam à parte). Status agrupados para ficarem comparáveis: "Sem contato" junta Tentando contato e sem status/sem registro; "Em contato" junta Em contato e Interesse futuro da LEN com Em tratativa do Hypnobox; "Visita" junta agendada e realizada. LinkedIn do 312 Jam entra em 312 Jam; Harmonia junta Residencial e Studios.</p>
   </section>
 
   <section class="sn-panel" id="p-midia" role="tabpanel" aria-labelledby="tab-midia" hidden>
@@ -875,11 +914,12 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   function textosDoPeriodo() {
     const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
     set('note-midia', 'Visão da agência (dash da LEN, ' + PER_TXT + '). Use as datas no topo para ver outro período. Incluem orgânico e acesso direto, por isso o total é maior que o das campanhas no Hypnobox. Status, fontes e descarte mostram os dois últimos meses do período (' + ROT1 + ' e ' + ROT2 + ').');
-    set('note-cmp', 'Compara o que a agência reporta (dash da LEN, ' + PER_TXT + ') com as entradas de leads de campanha LEN no Hypnobox no mesmo período, como a LEN conta: novos e retornos, pela data em que o lead entrou (Relatório de contatos). Orgânico, carteira e outras origens ficam fora. O total da LEN inclui orgânico e acesso direto; "LEN pago" tira o orgânico para a comparação ficar na mesma base. CPL real e custo por visita usam o investimento do dash da LEN com as entradas e as visitas realizadas do Hypnobox. O status compara só ' + ROT1 + ' e ' + ROT2 + '. Só as datas valem aqui.');
+    set('note-cmp', 'Compara o que a agência reporta (dash da LEN, ' + PER_TXT + ') com as entradas de leads de campanha LEN no Hypnobox no mesmo período, pela data em que o lead entrou (Relatório de contatos). A LEN conta cada lead uma vez, então a diferença usa só os leads novos do Hypnobox; os retornos (clientes antigos que voltaram por anúncio) aparecem à parte. Orgânico, carteira e outras origens ficam fora. O total da LEN inclui orgânico e acesso direto; "LEN pago" tira o orgânico para a comparação ficar na mesma base. CPL real e custo por visita usam o investimento do dash da LEN com as entradas e as visitas realizadas do Hypnobox. O status compara só ' + ROT1 + ' e ' + ROT2 + '. Só as datas valem aqui.');
     set('note-vis', 'Módulo de Visitas do Hypnobox, coleta de ' + COLETA_TXT + ' (inclui as já marcadas para depois), com o ID do cliente e a origem dele. Filtros de período, gerente, corretor e produto valem aqui; o período usa a data da visita.');
     set('note-ag', 'Agendamentos do módulo de Visitas do Hypnobox (coleta de ' + COLETA_TXT + ').');
     document.querySelectorAll('[data-mes]').forEach(th => { th.textContent = (th.dataset.pre || '') + curto(th.dataset.mes === '1' ? ROT1 : ROT2); });
     document.querySelectorAll('[data-mes-btn]').forEach(b => { b.textContent = b.dataset.mesBtn === '1' ? ROT1 : ROT2; });
+    { const t = document.getElementById('pg-jan-tudo'); if (t) t.textContent = 'Período todo · ' + PER_TXT; }
     document.querySelectorAll('[data-sub="dois"]').forEach(e => { e.textContent = ROT1 + ' e ' + ROT2; });
     document.querySelectorAll('[data-sub="ritmo"]').forEach(e => { e.textContent = 'Média diária: ' + ROT1 + ' ÷ ' + M1_DIAS + ' dias e ' + ROT2 + ' ÷ ' + M2_DIAS + ' dias'; });
     document.querySelectorAll('[data-sub="fontes"]').forEach(e => { e.textContent = 'Leads por fonte registrada, ' + ROT1 + ' e ' + ROT2; });
@@ -976,6 +1016,25 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   const avColor = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return AV[h % AV.length]; };
   const initials = s => s.split(/\s+/).slice(0, 2).map(x => x[0] || '').join('').toUpperCase();
   const prodName = s => esc(s).toLowerCase().replace(/(^|\s|-|\()(\S)/g, (m, a, b) => a + b.toUpperCase()).replace(' Da ', ' da ').replace(/^Li - /, 'LI · ');
+
+  // ===================== Sidebar: minimizar as seções =====================
+  (() => {
+    const side = document.querySelector('.sn-side'), bt = document.getElementById('subs-toggle');
+    if (!side || !bt) return;
+    const aplicar = min => {
+      side.classList.toggle('subs-min', min);
+      bt.setAttribute('aria-expanded', String(!min));
+      const t = min ? 'Mostrar as seções' : 'Minimizar as seções';
+      bt.title = t; bt.setAttribute('aria-label', t);
+    };
+    let min = false;
+    try { min = localStorage.getItem('sn:subs-min') === '1'; } catch (e) { /* sem armazenamento */ }
+    aplicar(min);
+    bt.addEventListener('click', () => {
+      min = !min; aplicar(min);
+      try { localStorage.setItem('sn:subs-min', min ? '1' : '0'); } catch (e) { /* sem armazenamento */ }
+    });
+  })();
 
   // ===================== Filtros e abas =====================
   const F = { de: '', ate: '', ger: '', cor: '', prod: '', can: '' };
@@ -1139,18 +1198,53 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   $('pg-prev').addEventListener('click', () => { page = Math.max(1, page - 1); render(); });
   $('pg-next').addEventListener('click', () => { page++; render(); });
 
+  // Visitas e Propostas não dependem do cadastro: contam o que aconteceu no período
+  // (visita realizada pela data da visita; proposta pela última atualização do
+  // cliente, porque o Hypnobox não guarda a data da proposta), de clientes de
+  // qualquer data de cadastro, com gerente, corretor, produto e canal.
+  // Propostas validadas pelo ADM: "teve" conta pela data da proposta; "não teve" sai da contagem.
+  let KPI_PER = { visitas: [], propostas: [], semProposta: [], lead: new Map() };
+  const validacoes = () => { const D = dash.data('propostas_validadas'); return new Map(D.status === 'ok' ? D.data.map(x => [String(x.id_cliente), x]) : []); };
+  function kpisDoPeriodo(all) {
+    const noPer = d => !!d && (!F.de || d >= F.de) && (!F.ate || d <= F.ate);
+    const outros = r => (!F.ger || r.gerente === F.ger) && (!F.cor || r.corretor === F.cor) && (!F.prod || r.produto === F.prod) && (!F.can || r.canal === F.can);
+    const lead = new Map(all.map(r => [String(r.id), r]));
+    const val = validacoes();
+    const propostas = [], semProposta = [];
+    all.forEach(r => {
+      if (!outros(r)) return;
+      const v = val.get(String(r.id));
+      if (v && v.teve_proposta === 'true') { if (noPer(v.data_proposta)) propostas.push(r); return; }
+      if (r.etapa !== 'Proposta' || !noPer(r.atualizacao)) return;
+      if (v) semProposta.push(r); else propostas.push(r);
+    });
+    const visitas = visitasDoPeriodo().filter(v => {
+      if (v.status !== 'Realizada') return false;
+      if ((F.ger && v.gerente !== F.ger) || (F.cor && v.corretor !== F.cor)) return false;
+      if (!F.can) return true;
+      const l = lead.get(String(v.id_cliente));
+      return !!l && l.canal === F.can;
+    }).sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
+    KPI_PER = { visitas, propostas, semProposta, lead };
+  }
   function drawKpis(R) {
     const n = R.length, c = f => R.filter(f).length;
     $('k-total').textContent = int(n);
     $('k-contato').textContent = int(c(r => r.etapa === 'Em tratativa'));
-    $('k-visitas').textContent = int(c(isVis));
-    $('k-prop').textContent = int(c(r => r.etapa === 'Proposta'));
+    $('k-visitas').textContent = int(KPI_PER.visitas.length);
+    $('k-prop').textContent = int(KPI_PER.propostas.length);
     $('k-venda').textContent = int(c(isVenda));
     $('k-sem').textContent = int(c(isSem));
     $('k-sem').parentElement.querySelector('.h').textContent = (n ? pct(c(isSem) / n) + ' do total · ' : '') + 'ver detalhes';
     $('k-parados').textContent = int(c(r => isSem(r) && N(r.dias_sem_atualizar) >= 7));
   }
   function openModal(kind) {
+    if (kind === 'visitas') return modalClientes('Visitas realizadas no período', KPI_PER.visitas.map(v => {
+      const l = KPI_PER.lead.get(String(v.id_cliente));
+      return { id: v.id_cliente || null, t: (v.id_cliente ? 'ID ' + v.id_cliente : 'Cliente sem cadastro') + ' · ' + prodName(v.produto),
+        m: [['Visita', brDate(v.data) + ' ' + (v.hora || '')], ['Corretor', v.corretor], ['Cadastro', l ? brDate(l.cadastro) : '—'], ['Status hoje', l ? l.submomento : v.submomento]] };
+    }));
+    if (kind === 'propostas') return modalPropostas();
     const defs = {
       contato: ['Em contato', r => r.etapa === 'Em tratativa'], visitas: ['Clientes em Visita, Proposta ou Venda', isVis], propostas: ['Propostas', r => r.etapa === 'Proposta'], vendas: ['Vendas', isVenda],
       semcontato: ['Sem contato', isSem], parados: ['Parados 7+ dias', r => isSem(r) && N(r.dias_sem_atualizar) >= 7]
@@ -1170,6 +1264,85 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
     linkLead(null); showModal();
   }
   document.querySelectorAll('[data-kpi]').forEach(b => b.addEventListener('click', () => openModal(b.dataset.kpi)));
+  // Propostas do período com a validação do ADM: teve proposta (e o dia) ou não teve
+  function modalPropostas() {
+    const val = validacoes();
+    const ordem = (a, b) => String(b.atualizacao).localeCompare(String(a.atualizacao));
+    const aValidar = KPI_PER.propostas.filter(r => !val.has(String(r.id))).sort(ordem);
+    const validadas = KPI_PER.propostas.filter(r => val.has(String(r.id))).sort(ordem);
+    $('modal-t').textContent = 'Propostas no período (' + int(KPI_PER.propostas.length) + ')';
+    const mb = $('modal-b'); mb.innerHTML = '';
+    const nota = el('p', 'sn-note', 'Sem validação, conta quem está em Proposta no Hypnobox e foi atualizado no período (o Hypnobox não guarda a data da proposta). Validada, conta pelo dia da proposta; "Não teve" sai da contagem.'); nota.style.padding = '4px 18px 0'; mb.appendChild(nota);
+    const secao = (titulo, rows) => {
+      if (!rows.length) return;
+      const h = el('h3', null, titulo + ' (' + int(rows.length) + ')'); h.style.cssText = 'font-size:13px;font-weight:700;margin:14px 0 4px;padding:0 18px;color:var(--navy)'; mb.appendChild(h);
+      rows.forEach(r => mb.appendChild(itemProposta(r, val.get(String(r.id)))));
+    };
+    secao('A validar', aValidar);
+    secao('Validadas: teve proposta', validadas);
+    if (!KPI_PER.propostas.length) mb.appendChild(el('p', 'sn-empty', 'Nenhuma proposta no período.'));
+    linkLead(null); showModal();
+  }
+  function itemProposta(r, v) {
+    const it = el('div', 'it');
+    const t = el('div', 't', 'ID ' + r.id + ' · ' + prodName(r.produto)); it.appendChild(t);
+    const m = el('div', 'm');
+    [['Corretor', r.corretor], ['Status no Hypnobox', r.submomento], ['Atualizado', brDate(r.atualizacao)], ['Cadastro', brDate(r.cadastro)], ['Campanha', r.campanha]]
+      .forEach(([k, x]) => { const sp = el('span'); sp.appendChild(document.createTextNode(k + ': ')); sp.appendChild(el('b', null, x || '—')); m.appendChild(sp); });
+    it.appendChild(m);
+    const gravarSo = async (teve, dia, obs, btn, st) => {
+      if (!dash.validarProposta) { st.textContent = 'Indisponível aqui'; return; }
+      btn.disabled = true; st.textContent = 'Salvando…';
+      try { await dash.validarProposta(r.id, teve, dia, obs); modalPropostas(); }
+      catch (e) { btn.disabled = false; st.textContent = e && e.message ? e.message : 'Não foi possível gravar'; }
+    };
+    // validada: o item inteiro abre o card do cliente; só "Desfazer" fica à parte
+    if (v && v.teve_proposta === 'true') {
+      it.style.cursor = 'pointer'; it.title = 'Abrir o card do cliente'; actionable(it); it.addEventListener('click', () => openLead(r));
+      const linha = el('div', 'm'); linha.style.marginTop = '6px'; linha.style.alignItems = 'center';
+      const ok = el('b', null, 'Teve proposta em ' + brDate(v.data_proposta) + (v.observacao ? ' · ' + v.observacao : '')); ok.style.color = '#047857'; linha.appendChild(ok);
+      const st = el('span', 'sn-note');
+      const lp = el('button', 'sn-btn', 'Desfazer'); lp.type = 'button'; lp.title = 'Apagar a validação (volta a valer o status do Hypnobox)';
+      lp.addEventListener('click', ev => { ev.stopPropagation(); gravarSo(null, null, '', lp, st); });
+      lp.addEventListener('keydown', ev => ev.stopPropagation());
+      if (!dash.leitura) linha.appendChild(lp);
+      linha.appendChild(st);
+      it.appendChild(linha);
+      return it;
+    }
+    // leitor: só a situação; o item inteiro abre o card
+    if (dash.leitura) {
+      it.style.cursor = 'pointer'; it.title = 'Abrir o card do cliente'; actionable(it); it.addEventListener('click', () => openLead(r));
+      const sit = el('b', null, 'A validar pelo ADM'); sit.style.color = '#B45309';
+      const ln = el('div', 'm'); ln.style.marginTop = '6px'; ln.appendChild(sit); it.appendChild(ln);
+      return it;
+    }
+    t.style.cursor = 'pointer'; t.title = 'Abrir o card do cliente'; actionable(t); t.addEventListener('click', () => openLead(r));
+    const ctl = el('div', 'm'); ctl.style.marginTop = '6px'; ctl.style.alignItems = 'center';
+    const situ = el('b', null, !v ? 'A validar' : v.teve_proposta === 'true' ? 'Teve proposta em ' + brDate(v.data_proposta) : 'Não teve proposta');
+    situ.style.color = !v ? '#B45309' : v.teve_proposta === 'true' ? '#047857' : '#B91C1C';
+    ctl.appendChild(situ);
+    const dia = el('input'); dia.type = 'date'; dia.className = 'sn-search'; dia.style.width = '10.5rem'; dia.max = HOJE;
+    dia.value = v && v.data_proposta ? v.data_proposta : (r.atualizacao || '').slice(0, 10);
+    dia.setAttribute('aria-label', 'Dia da proposta do cliente ' + r.id);
+    const obs = el('input'); obs.type = 'text'; obs.className = 'sn-search'; obs.placeholder = 'Observação (opcional)'; obs.value = v && v.observacao ? v.observacao : ''; obs.style.width = '14rem';
+    obs.setAttribute('aria-label', 'Observação da proposta do cliente ' + r.id);
+    const st = el('span', 'sn-note');
+    const gravar = async (teve, btn) => {
+      if (!dash.validarProposta) { st.textContent = 'Indisponível aqui'; return; }
+      if (teve && !dia.value) { st.textContent = 'Escolha o dia da proposta'; return; }
+      btn.disabled = true; st.textContent = 'Salvando…';
+      try { await dash.validarProposta(r.id, teve, teve ? dia.value : null, obs.value.trim()); modalPropostas(); }
+      catch (e) { btn.disabled = false; st.textContent = e && e.message ? e.message : 'Não foi possível gravar'; }
+    };
+    const sim = el('button', 'sn-btn', 'Teve proposta'); sim.type = 'button'; sim.addEventListener('click', () => gravar(true, sim));
+    const nao = el('button', 'sn-btn', 'Não teve'); nao.type = 'button'; nao.addEventListener('click', () => gravar(false, nao));
+    ctl.appendChild(dia); ctl.appendChild(obs); ctl.appendChild(sim); ctl.appendChild(nao);
+    if (v) { const lp = el('button', 'sn-btn', 'Desfazer'); lp.type = 'button'; lp.title = 'Apagar a validação (volta a valer o status do Hypnobox)'; lp.addEventListener('click', () => gravar(null, lp)); ctl.appendChild(lp); }
+    ctl.appendChild(st);
+    it.appendChild(ctl);
+    return it;
+  }
   // clientes por trás de um número do 1:1: itens { id, t, m: [[rótulo, valor]] }; o clique abre a ficha
   function modalClientes(titulo, itens) {
     $('modal-t').textContent = titulo + ' (' + int(itens.length) + ')';
@@ -1313,7 +1486,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
       } catch (e) { caixaLink.textContent = e && e.message ? e.message : 'Não foi possível gerar o link.'; }
       conf.disabled = false;
     });
-    acts.appendChild(voltar); acts.appendChild(ver); acts.appendChild(conf); acts.appendChild(pdf); hd.appendChild(acts); box.appendChild(hd); box.appendChild(caixaLink);
+    acts.appendChild(voltar); acts.appendChild(ver); if (!dash.leitura) acts.appendChild(conf); acts.appendChild(pdf); hd.appendChild(acts); box.appendChild(hd); box.appendChild(caixaLink);
     box.appendChild(el('p', 'so-pdf', 'Conversa 1:1 · gerado em ' + brD(HOJE) + ' · dados do Hypnobox de ' + brD(HOJE) + '. Clique no número do cliente para abrir a ficha no Hypnobox.'));
     if (!s) { box.appendChild(el('p', 'sn-empty', SYS && !sys ? nome + ' não tem cadastro ativo no sistema, então fica fora da análise de corretores.' : 'Nenhum atendimento deste corretor com os filtros atuais.')); return; }
 
@@ -1475,7 +1648,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
 
     // todas as vendas, para confirmar a data venda a venda (as sem data confirmada primeiro)
     const lista = [...vd.todas].sort((a, b) => (a.confirmada - b.confirmada) || b.data.localeCompare(a.data));
-    $('vd-lista-t').textContent = 'Todas as vendas: confirme a data real (' + int(conf) + ' de ' + int(lista.length) + ' confirmadas)';
+    $('vd-lista-t').textContent = (dash.leitura ? 'Todas as vendas (' : 'Todas as vendas: confirme a data real (') + int(conf) + ' de ' + int(lista.length) + ' com a data confirmada)';
     const tb = document.querySelector('#tb-vd-lista tbody'); tb.innerHTML = '';
     lista.forEach(x => {
       const r = x.r, tr = el('tr');
@@ -1484,6 +1657,8 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
       td(x.confirmada ? 'Confirmada' : 'Aproximada', x.confirmada ? 'ok' : 'bad');
       linkHypno(td(''), r.id); td(r.corretor); td(prodName(r.produto)); td(r.submomento);
       const cell = td('');
+      // leitor: só vê a data (confirmar fica com o ADM)
+      if (dash.leitura) { cell.textContent = x.confirmada ? 'Confirmada pelo ADM' : '—'; tb.appendChild(tr); return; }
       const inp = el('input'); inp.type = 'date'; inp.value = x.confirmada ? x.data : ''; inp.max = HOJE; inp.className = 'sn-search'; inp.style.width = '10.5rem'; inp.setAttribute('aria-label', 'Data real da venda do cliente ' + r.id);
       const ok = el('button', 'sn-btn', 'Salvar'); ok.type = 'button'; ok.style.marginLeft = '6px';
       const st = el('span', 'sn-note'); st.style.marginLeft = '6px';
@@ -1689,6 +1864,149 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   const CMP_SERIES = [{ key: 'l', name: 'Dash da LEN', color: NAVY }, { key: 'h', name: 'Hypnobox', color: COPPER }];
   // orgânicos e carteira do corretor vêm do Hypnobox, não da LEN: ficam fora da comparação
   const FORA_LEN = new Set(['Orgânico', 'Carteira do corretor', 'Carteira P&G / oferta ativa', 'Outras origens']);
+  // ===================== Acompanhamento mensal (entradas, origem, custo) =====================
+  // Origens das entradas, na ordem do empilhamento: as pagas primeiro. Cores da
+  // paleta de referência (validada: CVD e visão normal); cinza = mídia desconhecida.
+  const ORIGENS = [
+    { k: 'meta', name: 'Meta Ads', color: '#2a78d6', pago: true },
+    { k: 'google', name: 'Google', color: '#eb6834', pago: true },
+    { k: 'outras_pagas', name: 'Outras mídias pagas', color: '#6250d6', pago: true },
+    { k: 'organico', name: 'Orgânico', color: '#1baf7a', pago: false },
+    { k: 'carteira', name: 'Carteira', color: '#eda100', pago: false },
+    { k: 'outras', name: 'Outras origens', color: '#A3A3A3', pago: false },
+  ];
+  const origemDe = canal => {
+    const c = esc(canal);
+    if (c === 'Meta Ads') return 'meta';
+    if (/^google/i.test(c)) return 'google';
+    if (c === 'Orgânico') return 'organico';
+    if (/^carteira/i.test(c)) return 'carteira';
+    if (!c || c === 'Outras origens') return 'outras';
+    return 'outras_pagas';
+  };
+  const MES_NOME = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const mesTxt = m => MES_NOME[Number(m.slice(5, 7)) - 1] + '/' + m.slice(2, 4);
+  let MES_SEL = '';
+  // entradas, investimento e visitas por mês, desde o primeiro mês com investimento
+  function dadosMensais(todos) {
+    // investimento diário da coleta (o período todo), não o do período das datas do topo
+    const DC = dash.data('mkt_diario_coleta');
+    const E = dash.data('entradas'), D = DC.status === 'ok' && DC.data.length ? DC : dash.data('mkt_diario');
+    if (E.status !== 'ok' || D.status !== 'ok') return null;
+    const inv = d3.rollup(D.data, v => d3.sum(v, r => N(r.investimento)), r => esc(r.data).slice(0, 7));
+    const ini = [...inv.keys()].sort()[0];
+    if (!ini) return null;
+    const fim = HOJE.slice(0, 7);
+    const meses = [];
+    for (let d = new Date(ini + '-01T00:00:00Z'); d.toISOString().slice(0, 7) <= fim; d.setUTCMonth(d.getUTCMonth() + 1)) meses.push(d.toISOString().slice(0, 7));
+    const base = () => Object.fromEntries(ORIGENS.map(o => [o.k, 0]));
+    const M = new Map(meses.map(m => [m, { mes: m, o: base(), total: 0, pago: 0, inv: inv.get(m) || 0, visPago: 0, vis: 0, dias: new Set() }]));
+    E.data.forEach(e => { const r = M.get(esc(e.data).slice(0, 7)); if (!r) return; const k = origemDe(e.canal); r.o[k]++; r.total++; if (ORIGENS.find(o => o.k === k).pago) r.pago++; r.dias.add(e.data); });
+    // visitas realizadas (uma por cliente, corretor e dia), pela origem do cliente
+    const canal = new Map(todos.map(r => [String(r.id), r.canal]));
+    const vistos = new Set();
+    visData().filter(v => v.status === 'Realizada').forEach(v => {
+      const k = v.id_cliente ? v.id_cliente + '|' + v.corretor + '|' + v.data : v.visita_id; if (vistos.has(k)) return; vistos.add(k);
+      const r = M.get(esc(v.data).slice(0, 7)); if (!r) return;
+      r.vis++;
+      if (!FORA_LEN.has(canal.get(String(v.id_cliente)) || 'Outras origens')) r.visPago++;
+    });
+    const lista = meses.map(m => M.get(m));
+    // dias com dado no último mês (ele pode estar em andamento)
+    lista.forEach(r => { r.ultimoDia = [...r.dias].sort().pop() || ''; });
+    return lista;
+  }
+  // colunas empilhadas: um mês por coluna, uma origem por faixa (2px de respiro entre as faixas)
+  function colunasEmpilhadas(box, rows) {
+    box.innerHTML = '';
+    if (!rows.some(r => r.total)) return empty(box, 'Sem entradas no período.');
+    const W = Math.max(300, box.clientWidth), H = 300, m = { t: 22, r: 8, b: 28, l: 40 };
+    const x = d3.scaleBand(rows.map(r => r.mes), [m.l, W - m.r]).padding(0.32);
+    const y = d3.scaleLinear([0, d3.max(rows, r => r.total) || 1], [H - m.b, m.t]).nice();
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H).attr('role', 'img')
+      .attr('aria-label', 'Entradas de leads por mês e origem: ' + rows.map(r => mesTxt(r.mes) + ' ' + r.total).join(', '));
+    const ticks = y.ticks(5).filter(Number.isInteger);
+    svg.append('g').selectAll('line').data(ticks).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', d => y(d)).attr('y2', d => y(d)).attr('stroke', '#E5E7EB').attr('stroke-dasharray', '3 3');
+    svg.append('g').selectAll('text').data(ticks).join('text').attr('x', m.l - 6).attr('y', d => y(d) + 4).attr('text-anchor', 'end').attr('font-size', 12).attr('fill', '#6B7280').text(int);
+    const bw = Math.min(64, x.bandwidth());
+    rows.forEach(r => {
+      const cx = x(r.mes) + (x.bandwidth() - bw) / 2, g = svg.append('g');
+      let acc = 0;
+      const vis = ORIGENS.filter(o => r.o[o.k] > 0), topo = vis[vis.length - 1];
+      vis.forEach(o => {
+        const y0 = y(acc), y1 = y(acc + r.o[o.k]); acc += r.o[o.k];
+        const h = Math.max(0, y0 - y1 - (o === topo ? 0 : 2));
+        if (o === topo) g.append('path').attr('class', 'b').attr('d', roundTop(cx, y1, bw, h, 4)).attr('fill', o.color);
+        else g.append('rect').attr('class', 'b').attr('x', cx).attr('y', y1 + 2).attr('width', bw).attr('height', h).attr('fill', o.color);
+      });
+      g.append('text').attr('x', cx + bw / 2).attr('y', y(r.total) - 6).attr('text-anchor', 'middle').attr('font-size', 12).attr('font-weight', 700).attr('fill', NAVY).text(int(r.total));
+      svg.append('text').attr('x', x(r.mes) + x.bandwidth() / 2).attr('y', H - 8).attr('text-anchor', 'middle').attr('font-size', 12).attr('font-weight', r.mes === MES_SEL ? 700 : 400).attr('fill', r.mes === MES_SEL ? NAVY : '#6B7280').text(mesTxt(r.mes));
+      g.append('rect').attr('x', x(r.mes)).attr('y', m.t).attr('width', x.bandwidth()).attr('height', H - m.b - m.t).attr('fill', 'transparent').style('cursor', 'pointer')
+        .on('mousemove', ev => { g.selectAll('.b').attr('opacity', .85); showTip(box, ev, mesTxt(r.mes) + ' · ' + int(r.total) + ' entradas', [...ORIGENS].reverse().filter(o => r.o[o.k]).map(o => [o.color, o.name + ': ' + int(r.o[o.k]) + ' (' + pct(r.o[o.k] / r.total) + ')']).concat([['', 'Mídia paga: ' + pct(r.pago / Math.max(1, r.total))]])); })
+        .on('mouseleave', () => { g.selectAll('.b').attr('opacity', 1); hideTip(box); })
+        .on('click', () => { MES_SEL = r.mes; render(); });
+    });
+    legend(box, ORIGENS.map(o => [o.name, o.color]));
+  }
+  // colunas de um valor por mês (custo), com o valor em cima; mês sem dado fica "–"
+  function colunasValor(box, rows, campo, rotulo) {
+    box.innerHTML = '';
+    const vals = rows.map(r => r[campo]).filter(v => v != null);
+    if (!vals.length) return empty(box, 'Sem investimento ou sem visitas para calcular.');
+    const W = Math.max(280, box.clientWidth), H = 220, m = { t: 22, r: 8, b: 28, l: 52 };
+    const x = d3.scaleBand(rows.map(r => r.mes), [m.l, W - m.r]).padding(0.38);
+    const y = d3.scaleLinear([0, d3.max(vals) || 1], [H - m.b, m.t]).nice();
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H).attr('role', 'img')
+      .attr('aria-label', rotulo + ': ' + rows.map(r => mesTxt(r.mes) + ' ' + (r[campo] == null ? 'sem dado' : brl(r[campo]))).join(', '));
+    const ticks = y.ticks(4);
+    svg.append('g').selectAll('line').data(ticks).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', d => y(d)).attr('y2', d => y(d)).attr('stroke', '#E5E7EB').attr('stroke-dasharray', '3 3');
+    svg.append('g').selectAll('text').data(ticks).join('text').attr('x', m.l - 6).attr('y', d => y(d) + 4).attr('text-anchor', 'end').attr('font-size', 11).attr('fill', '#6B7280').text(d => 'R$ ' + int(d));
+    const bw = Math.min(48, x.bandwidth());
+    rows.forEach(r => {
+      const v = r[campo], cx = x(r.mes) + (x.bandwidth() - bw) / 2, sel = r.mes === MES_SEL;
+      if (v != null) {
+        svg.append('path').attr('d', roundTop(cx, y(v), bw, Math.max(1, y(0) - y(v)), 4)).attr('fill', sel ? COPPER : '#C9A594');
+        svg.append('text').attr('x', cx + bw / 2).attr('y', y(v) - 6).attr('text-anchor', 'middle').attr('font-size', 11).attr('font-weight', 700).attr('fill', NAVY).text(brl(v));
+      } else svg.append('text').attr('x', cx + bw / 2).attr('y', y(0) - 6).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', '#9CA3AF').text('–');
+      svg.append('text').attr('x', x(r.mes) + x.bandwidth() / 2).attr('y', H - 8).attr('text-anchor', 'middle').attr('font-size', 12).attr('font-weight', sel ? 700 : 400).attr('fill', sel ? NAVY : '#6B7280').text(mesTxt(r.mes));
+      svg.append('rect').attr('x', x(r.mes)).attr('y', m.t).attr('width', x.bandwidth()).attr('height', H - m.b - m.t).attr('fill', 'transparent').style('cursor', 'pointer')
+        .on('mousemove', ev => showTip(box, ev, mesTxt(r.mes), campo === 'cpl'
+          ? [[COPPER, 'Custo por lead pago: ' + (v == null ? '–' : brl(v))], ['', 'Investimento: ' + brl(r.inv)], ['', 'Entradas de mídia paga: ' + int(r.pago)]]
+          : [[COPPER, 'Custo por visita: ' + (v == null ? '–' : brl(v))], ['', 'Investimento: ' + brl(r.inv)], ['', 'Visitas de mídia paga: ' + int(r.visPago)]]))
+        .on('mouseleave', () => hideTip(box))
+        .on('click', () => { MES_SEL = r.mes; render(); });
+    });
+  }
+  function drawMensal(todos) {
+    const L = dadosMensais(todos);
+    const boxes = ['ch-mes-origem', 'ch-mes-cpl', 'ch-mes-cpv'].map($);
+    if (!L) { boxes.forEach(b => empty(b, 'Sem as entradas do Relatório de contatos ou sem o investimento do dash da LEN.')); $('mes-kpis').innerHTML = ''; return; }
+    L.forEach(r => { r.cpl = r.inv && r.pago ? r.inv / r.pago : null; r.cpv = r.inv && r.visPago ? r.inv / r.visPago : null; });
+    if (!L.some(r => r.mes === MES_SEL)) MES_SEL = L[L.length - 1].mes;
+    // seletor de mês
+    const sel = $('mes-sel'); sel.innerHTML = '';
+    L.forEach(r => { const b = el('button', null, mesTxt(r.mes)); b.type = 'button'; b.setAttribute('aria-pressed', String(r.mes === MES_SEL)); b.addEventListener('click', () => { MES_SEL = r.mes; render(); }); sel.appendChild(b); });
+    const r = L.find(x => x.mes === MES_SEL), ant = L[L.indexOf(r) - 1];
+    const parcial = r.mes === HOJE.slice(0, 7);
+    $('mes-nota').textContent = 'Entradas do Relatório de contatos e investimento do dash da LEN (Meta + Google), mês a mês desde ' + mesTxt(L[0].mes) + '. Não mudam com as datas do topo.' + (parcial ? ' ' + mesTxt(r.mes) + ' ainda está em andamento (dados até ' + brDate(r.ultimoDia || HOJE) + ').' : '');
+    const delta = (a, b, fmt) => (b == null || a == null || !b) ? '' : (a >= b ? '↑ ' : '↓ ') + fmt(Math.abs(a - b)) + ' vs ' + mesTxt(ant.mes);
+    const kp = $('mes-kpis'); kp.innerHTML = '';
+    kpiTile(kp, int(r.total), 'Entradas de leads', ant ? delta(r.total, ant.total, int) : 'novos + retornos');
+    kpiTile(kp, pct(r.pago / Math.max(1, r.total)), 'Mídia paga', int(r.pago) + ' pagas · ' + int(r.total - r.pago) + ' orgânico e outras');
+    kpiTile(kp, brl(r.inv), 'Investimento', 'Meta + Google no mês');
+    kpiTile(kp, r.cpl == null ? '–' : brl(r.cpl), 'Custo por lead pago', ant && r.cpl != null && ant.cpl != null ? delta(r.cpl, ant.cpl, brl) : 'investimento ÷ entradas pagas');
+    kpiTile(kp, int(r.visPago), 'Visitas de mídia paga', int(r.vis) + ' visitas realizadas no total');
+    kpiTile(kp, r.cpv == null ? '–' : brl(r.cpv), 'Custo por visita', ant && r.cpv != null && ant.cpv != null ? delta(r.cpv, ant.cpv, brl) : 'investimento ÷ visitas de mídia paga');
+    colunasEmpilhadas(boxes[0], L);
+    colunasValor(boxes[1], L, 'cpl', 'Custo por lead pago');
+    colunasValor(boxes[2], L, 'cpv', 'Custo por visita');
+    const trs = fillRows(document.querySelector('#tb-mes tbody'), [...L].reverse().map(x => [
+      [mesTxt(x.mes) + (x.mes === HOJE.slice(0, 7) ? ' (parcial)' : ''), 'strong'], [int(x.total), 'num'], [int(x.pago), 'num'], [pct(x.pago / Math.max(1, x.total)), 'num'],
+      [int(x.o.organico), 'num'], [int(x.o.carteira), 'num'], [int(x.o.outras), 'num'], [x.inv ? brl(x.inv) : '–', 'num'],
+      [x.cpl == null ? '–' : brl(x.cpl), 'num'], [int(x.visPago), 'num'], [x.cpv == null ? '–' : brl(x.cpv), 'num'], [int(x.vis), 'num']]));
+    trs.forEach((tr, i) => { if ([...L].reverse()[i].mes === MES_SEL) tr.style.background = 'rgba(178,128,105,.08)'; });
+  }
+
   function drawComparacao(todos) {
     // mesmo período do dash da LEN que está na tela, só campanhas LEN
     const leads = todos.filter(r => !FORA_LEN.has(r.canal) && r.cadastro >= META.de && r.cadastro <= META.ate);
@@ -1700,8 +2018,9 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
       ? E.data.filter(r => !FORA_LEN.has(r.canal) && r.data >= META.de && r.data <= META.ate).map(r => ({ produto: r.produto, canal: r.canal, dia: r.data, ret: r.tipo === 'retorno' }))
       : leads.map(r => ({ produto: r.produto, canal: r.canal, dia: r.cadastro, ret: false }));
     const FP = dash.data('funil_produto'), VE = dash.data('veiculo'), SG = dash.data('status_geral');
-    const boxes = ['ch-cmp-prod', 'ch-cmp-veic', 'ch-cmp-st'].map($);
-    if (FP.status !== 'ok' || VE.status !== 'ok' || SG.status !== 'ok') { if (![FP, VE, SG].some(d => d.status === 'loading')) boxes.forEach(b => fail(b, 'error')); return; }
+    drawMensal(todos);
+    const boxes = [null, null, $('ch-cmp-st')];
+    if (FP.status !== 'ok' || VE.status !== 'ok' || SG.status !== 'ok') { if (![FP, VE, SG].some(d => d.status === 'loading')) fail(boxes[2], 'error'); return; }
 
     // por empreendimento
     const prods = new Map();
@@ -1721,14 +2040,16 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
     kpiTile(kp, int(len), 'Leads no dash da LEN', 'com orgânico e direto');
     kpiTile(kp, int(pago), 'LEN pago', 'sem os ' + int(len - pago) + ' orgânicos');
     kpiTile(kp, int(hyp), comEntradas ? 'Entradas no Hypnobox' : 'Leads no Hypnobox', comEntradas ? int(hyp - ret) + ' novos · ' + int(ret) + ' retornos' : 'pela data de cadastro');
-    kpiTile(kp, signed(hyp - pago), 'Diferença', 'Hypnobox − LEN pago');
-    kpiTile(kp, pct(share(hyp, pago)), 'Hypnobox ÷ LEN pago', 'quanto do reportado está no CRM');
+    // a LEN conta cada lead uma vez: compara com os novos (os retornos ficam à parte)
+    const novos = comEntradas ? hyp - ret : hyp;
+    kpiTile(kp, signed(novos - pago), 'Diferença', (comEntradas ? 'novos no Hypnobox' : 'Hypnobox') + ' − LEN pago');
+    kpiTile(kp, pct(share(novos, pago)), (comEntradas ? 'Novos' : 'Hypnobox') + ' ÷ LEN pago', 'quanto do reportado está no CRM');
+    if (comEntradas) kpiTile(kp, int(ret), 'Retornos', 'clientes antigos que voltaram por anúncio da LEN');
     kpiTile(kp, hyp ? brl(inv / hyp) : '–', 'CPL real', 'investimento ÷ entradas no CRM');
     kpiTile(kp, vis ? brl(inv / vis) : '–', 'Custo por visita real', int(vis) + ' visitas realizadas');
 
-    hbar(boxes[0], P.map(p => ({ name: p.name, l: p.pago, h: p.hyp })), { fmt: x => int(x), series: CMP_SERIES });
     const row = p => [[p.name, 'strong'], [p.inLen ? int(p.pago) : '–', 'num'], [int(p.hyp), 'num'], [comEntradas ? int(p.hyp - p.ret) : '–', 'num'], [comEntradas ? int(p.ret) : '–', 'num'],
-      [signed(p.hyp - p.pago), 'num' + (p.hyp < p.pago ? ' bad' : '')], [p.pago > 0 ? pct(p.hyp / p.pago) : '–', 'num'],
+      [signed(p.hyp - (comEntradas ? p.ret : 0) - p.pago), 'num' + (p.hyp - (comEntradas ? p.ret : 0) < p.pago ? ' bad' : '')], [p.pago > 0 ? pct((p.hyp - (comEntradas ? p.ret : 0)) / p.pago) : '–', 'num'],
       [p.inv ? brl(p.inv) : '–', 'num'], [p.inv && p.hyp ? brl(p.inv / p.hyp) : '–', 'num'], [int(p.vis), 'num'], [p.inv && p.vis ? brl(p.inv / p.vis) : '–', 'num'],
       [p.inLen ? int(p.lenSet) : '–', 'num'], [int(p.hypSet), 'num'], [p.inLen ? int(p.lenOut) : '–', 'num'], [int(p.hypOut), 'num']];
     const trs = fillRows(document.querySelector('#tb-cmp-prod tbody'), [...P.map(p => row(p)),
@@ -1748,13 +2069,26 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
     $('cmp-sem-lead-vazio').hidden = semLead.length > 0; $('tb-cmp-sem').closest('.sn-tw').hidden = !semLead.length;
     fillRows(document.querySelector('#tb-cmp-sem tbody'), semLead.map(g => [[g.produto, 'strong'], [g.canal], [int(g.camps), 'num'], [brl(g.inv), 'num bad']]));
 
-    // por veículo
-    const veics = new Map();
-    const vslot = name => { const m = VEIC_RX.find(([rx]) => rx.test(name)), key = m ? m[1] : name;
-      if (!veics.has(key)) veics.set(key, { name: key, l: 0, h: 0 }); return veics.get(key); };
-    VE.data.forEach(r => { vslot(r.veiculo).l += N(r.leads); });
-    hypRows.forEach(r => { vslot(r.canal).h++; });
-    hbar(boxes[1], [...veics.values()].filter(v => v.l || v.h).sort((a, b) => b.l - a.l || b.h - a.h), { fmt: x => int(x), series: CMP_SERIES });
+
+    // por origem: o veículo da LEN x o canal da entrada no Hypnobox (novos e retornos)
+    const origemCmp = nome => { const t = esc(nome).toLowerCase();
+      if (/meta|facebook|instagram/.test(t)) return 'Meta Ads';
+      if (/google/.test(t)) return 'Google';
+      if (/linkedin/.test(t)) return 'LinkedIn';
+      if (/tiktok/.test(t)) return 'TikTok';
+      if (/chatgpt/.test(t)) return 'ChatGPT';
+      if (/org[aâ]nic/.test(t)) return null;
+      return 'Outras mídias'; };
+    const og = new Map();
+    const oslot = k => { if (!og.has(k)) og.set(k, { name: k, len: 0, novos: 0, ret: 0 }); return og.get(k); };
+    VE.data.forEach(r => { const k = origemCmp(r.veiculo); if (k) oslot(k).len += N(r.leads); });
+    hypRows.forEach(r => { const k = origemCmp(r.canal) || 'Outras mídias'; const o = oslot(k); if (r.ret) o.ret++; else o.novos++; });
+    const O = [...og.values()].filter(o => o.len || o.novos || o.ret).sort((a, b) => b.len - a.len || b.novos - a.novos);
+    const ot = k => O.reduce((a, o) => a + o[k], 0);
+    const linhaO = o => [[o.name, 'strong'], [int(o.len), 'num'], [int(o.novos), 'num'], [signed(o.novos - o.len), 'num' + (o.novos < o.len ? ' bad' : '')],
+      [o.len ? pct(o.novos / o.len) : '–', 'num'], [comEntradas ? int(o.ret) : '–', 'num'], [int(o.novos + o.ret), 'num']];
+    const trsO = fillRows(document.querySelector('#tb-cmp-origem tbody'), [...O.map(linhaO), linhaO({ name: 'TOTAL', len: ot('len'), novos: ot('novos'), ret: ot('ret') })]);
+    if (trsO.length) trsO[trsO.length - 1].style.fontWeight = '700';
 
     // por status
     // o status da LEN cobre os dois últimos meses: o Hypnobox entra com os mesmos meses
@@ -2078,6 +2412,8 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   let PGJ = 'periodo';
   const pgJanelaTxt = () => ({ periodo: 'Período ' + PER_TXT, anterior: 'Período anterior (mesmo nº de dias)', setembro: ROT1, outubro: ROT2 })[PGJ];
   document.querySelectorAll('[data-mes-btn]').forEach(b => { b.textContent = b.dataset.mesBtn === '1' ? ROT1 : ROT2; });
+  // a janela "periodo" é tudo o que o dash da LEN tem na tela: o botão diz as datas
+  $('pg-jan-tudo').textContent = 'Período todo · ' + PER_TXT;
   document.querySelectorAll('[data-jan]').forEach(b => b.addEventListener('click', () => { PGJ = b.dataset.jan;
     document.querySelectorAll('[data-jan]').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false')); render(); }));
   ['pg-canal', 'q-pg-camp', 'q-pg-anu'].forEach(id => $(id).addEventListener('input', () => render()));
@@ -2167,9 +2503,12 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
   function sincronizarLen() {
     if (!dash.len) return;
     const want = { de: F.de || META0.de, ate: F.ate || META0.ate };
+    // leitor: o dash da LEN gravado não vem (começa antes do período dele); sempre
+    // busca o do período, a partir do início liberado (META0.de)
+    if (dash.leitura && want.de < META0.de) want.de = META0.de;
     const info = dash.len();
-    const ehColeta = want.de === META0.de && want.ate === META0.ate;
-    const alvo = info.estado === 'coleta' ? META0 : info;
+    const ehColeta = !dash.leitura && want.de === META0.de && want.ate === META0.ate;
+    const alvo = info.estado === 'coleta' ? (dash.leitura ? { de: '', ate: '' } : META0) : info;
     if (ehColeta) { if (info.estado !== 'coleta') dash.pedirLen(null, null); }
     else if (alvo.de !== want.de || alvo.ate !== want.ate) dash.pedirLen(want.de, want.ate);
     if (info.estado === 'ok') lenMostrado = { de: info.de, ate: info.ate };
@@ -2204,6 +2543,7 @@ a.hb { color: var(--navy); font-weight: 600; text-decoration: underline; text-de
       }
       fillFacets(all);
       const R = rowsFiltered(all); lastR = R;
+      kpisDoPeriodo(all);
       $('per-label').textContent = 'Leads no Hypnobox (todas as origens) · cadastro de ' + brDate(F.de || fields.de.min) + ' a ' + brDate(F.ate || fields.de.max) + (F.cor ? ' · ' + F.cor : F.ger ? ' · equipe ' + F.ger : '') + ' · ' + int(R.length) + ' atendimentos';
       drawKpis(R);
       if (TAB === 'graficos') drawGraficos(R);

@@ -6,12 +6,13 @@ import {
   Building2,
   Users,
   ClipboardList,
+  GraduationCap,
   MapPinCheck,
   MessageCircle,
   ScrollText,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useExtensaoLiberada } from "@/components/extensao/comum";
+import { useExtensaoNoMenu } from "@/components/extensao/comum";
 
 export type NavTab = {
   to: string;
@@ -21,7 +22,37 @@ export type NavTab = {
   sidebarOnly?: boolean;
   /** Em teste: tarja vermelha BETA no menu. */
   beta?: boolean;
+  /** Subitens (abas da tela), mostrados na sidebar quando o item está aberto. */
+  subs?: { grupo: string; itens: { label: string; tab?: string }[] }[];
 };
+
+/** Seções do Dashboard Hypnobox (abas do painel), para a sidebar do leitor (sem Atendimentos). */
+export const SECOES_HYPNOBOX: NonNullable<NavTab["subs"]> = [
+  {
+    grupo: "Dashboard",
+    itens: [
+      { label: "Gráficos" },
+      { label: "Desempenho por Corretor", tab: "corretores" },
+      { label: "Vendas", tab: "vendas" },
+    ],
+  },
+  {
+    grupo: "Agendamentos",
+    itens: [
+      { label: "Agendamentos", tab: "agenda" },
+      { label: "Relatório de visitas", tab: "visitas" },
+    ],
+  },
+  {
+    grupo: "Campanhas",
+    itens: [
+      { label: "Conversão por campanha", tab: "campanhas" },
+      { label: "Mídia LEN", tab: "midia" },
+      { label: "Mídia paga", tab: "pago" },
+      { label: "LEN x Hypnobox", tab: "comparacao" },
+    ],
+  },
+];
 
 /**
  * Abas da navegação (barra do celular e sidebar), montadas pela matriz de
@@ -30,7 +61,8 @@ export type NavTab = {
  */
 export function useNavTabs(): NavTab[] {
   const { profile, can, isSuperAdmin, isHr } = useAuth();
-  const extensaoLiberada = useExtensaoLiberada();
+  // o ADM pode tirar a extensão do menu (chave em Minha conta)
+  const extensaoNoMenu = useExtensaoNoMenu();
   if (!profile) return [];
   const isBroker = profile.role === "broker";
   const managesTeam =
@@ -55,20 +87,28 @@ export function useNavTabs(): NavTab[] {
         : { to: "/calendar", label: "Agendamentos", icon: CalendarDays },
     );
   if (can("projects")) tabs.push({ to: "/projects", label: "Imóveis", icon: Building2 });
+  if (can("training"))
+    tabs.push({ to: "/treinamentos", label: "Treinamentos", icon: GraduationCap });
   if (can("team") && managesTeam) tabs.push({ to: "/team", label: "Time", icon: Users });
   // extensão do WhatsApp (substitui o WAHA para os corretores)
-  if (extensaoLiberada) tabs.push({ to: "/extensao", label: "Extensão WhatsApp", icon: MessageCircle, beta: true });
+  if (extensaoNoMenu)
+    tabs.push({ to: "/extensao", label: "Extensão WhatsApp", icon: MessageCircle, beta: true });
   // RH: o log de check-ins é a tela principal (o ADM acessa pelo menu "Geral")
   if (isHr && !isSuperAdmin)
     tabs.push({ to: "/checkin-log", label: "Log de check-ins", icon: ScrollText });
-  // subsistema com navegação própria, só para o ADM e só no menu do desktop
-  if (isSuperAdmin)
-    tabs.push({
+  // subsistema com navegação própria, no menu do desktop: o ADM e quem tem o
+  // módulo "Dashboard Hypnobox" na matriz. Para o leitor é a tela inicial.
+  if (isSuperAdmin || can("analise")) {
+    const analise: NavTab = {
       to: "/hypnobox",
-      label: "Análise Hypnobox",
+      label: "Dashboard Hypnobox",
       icon: ChartNoAxesCombined,
       sidebarOnly: true,
-    });
+    };
+    // o leitor vê o painel dentro do layout normal: as seções ficam na sidebar
+    if (profile.role === "viewer") tabs.unshift({ ...analise, subs: SECOES_HYPNOBOX });
+    else tabs.push(analise);
+  }
   return tabs;
 }
 
@@ -90,4 +130,5 @@ export const ROLE_LABELS: Record<string, string> = {
   master: "Gerente",
   broker: "Corretor",
   hr: "RH",
+  viewer: "Leitor",
 };

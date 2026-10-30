@@ -23,13 +23,16 @@ export function useBrokers({
 
   return useQuery({
     queryKey: ["brokers-active", profile?.id, profile?.role, includeInactive],
-    enabled: enabled && !!profile && (profile.role === "admin" || profile.role === "master" || profile.role === "director"),
+    // o leitor (gestores da empresa) vê todas as equipes, como o admin
+    enabled:
+      enabled &&
+      !!profile &&
+      (profile.role === "admin" ||
+        profile.role === "master" ||
+        profile.role === "director" ||
+        profile.role === "viewer"),
     queryFn: async () => {
-      let q = supabase
-        .from("profiles")
-        .select(select)
-        .eq("role", "broker")
-        .order("full_name");
+      let q = supabase.from("profiles").select(select).eq("role", "broker").order("full_name");
 
       if (!includeInactive) {
         q = q.eq("is_active", true);

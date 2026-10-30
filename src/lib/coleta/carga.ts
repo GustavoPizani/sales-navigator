@@ -759,6 +759,22 @@ function checagens({
       );
     }
   }
+  // a API da LEN às vezes devolve o funil do CRM zerado (investimento sem nenhum lead)
+  if (carga.tabelas.al_funil_produto) {
+    const funil = carga.tabelas.al_funil_produto;
+    const leads = funil.reduce((x, r) => x + Number(r.leads || 0), 0);
+    const invest = funil.reduce((x, r) => x + Number(r.investimento || 0), 0);
+    if (!leads && invest > 0)
+      itens.push({
+        nome: "Dash da LEN sem nenhum lead no funil (falha da API: sincronize de novo)",
+        valor: 0,
+        referencia: 0,
+        texto: "0",
+        referenciaTexto: "—",
+        ref: null,
+        alerta: true,
+      });
+  }
   if (carga.tabelas.al_mkt_campanhas)
     comparar(
       "Campanhas no período da LEN",

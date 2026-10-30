@@ -390,6 +390,7 @@ function NewCargoSheet({
             <option value="broker">{BASE_ROLE_LABEL.broker}</option>
             <option value="master">{BASE_ROLE_LABEL.master}</option>
             <option value="hr">{BASE_ROLE_LABEL.hr}</option>
+            <option value="viewer">{BASE_ROLE_LABEL.viewer}</option>
           </select>
         </label>
         <p className="text-[11px] text-muted-foreground">

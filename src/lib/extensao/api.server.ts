@@ -83,10 +83,12 @@ async function autenticar(req: Request): Promise<Perfil> {
     .eq("id", sub)
     .single();
   if (!p?.is_active) throw new ErroApi(403, "Conta inativa.");
-  // global = vê todos os clientes da base na busca e no vínculo: admin, diretor e a
-  // conta de teste (para testar a extensão com conversas reais; ela é invisível)
-  const global = p.role === "admin" || p.role === "director" || p.is_test === true;
-  // MVP: só o piloto (enabled_features.extensao), o admin e a conta de teste
+  // a conta de teste não usa a extensão, em nenhum cargo
+  if (p.is_test) throw new ErroApi(403, "A extensão não está liberada para a conta de teste.");
+  // global = vê todos os clientes da base na busca e no vínculo: admin e diretor
+  // (a conta de teste segue a regra do cargo que estiver usando)
+  const global = p.role === "admin" || p.role === "director";
+  // MVP: só o piloto (enabled_features.extensao) e o admin
   const piloto = global || p.enabled_features?.extensao === true;
   if (!piloto) throw new ErroApi(403, "A extensão ainda está em teste e não foi liberada para a sua conta.");
   const perfil = { id: p.id, full_name: p.full_name, role: p.role, global };

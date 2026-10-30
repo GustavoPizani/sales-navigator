@@ -3,7 +3,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_LEVELS, type ModuleKey, type PermissionLevel } from "@/lib/modules";
 
-export type AppRole = "admin" | "broker" | "director" | "master" | "hr";
+export type AppRole = "admin" | "broker" | "director" | "master" | "hr" | "viewer";
 export interface Profile {
   id: string;
   full_name: string;
@@ -40,6 +40,8 @@ interface AuthContextValue {
   isManager: boolean;
   /** RH: acessa o log de check-ins e os módulos liberados pelo ADM. */
   isHr: boolean;
+  /** Leitor (gestores da empresa): vê os módulos liberados de todas as equipes, sem editar. */
+  isLeitor: boolean;
   /**
    * Vê as funções em teste: a conta de teste (em qualquer lugar) e o ADM
    * quando roda o sistema localmente (npm run dev).
@@ -49,7 +51,7 @@ interface AuthContextValue {
   level: (module: ModuleKey) => PermissionLevel;
   /** O usuário alcança o nível mínimo no módulo? */
   can: (module: ModuleKey, min?: "view" | "edit") => boolean;
-  /** Log de check-ins: fixo para ADM e RH (fora da matriz). */
+  /** Log de check-ins: fixo para ADM, RH e leitor (fora da matriz). */
   canSeeCheckinLog: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -203,15 +205,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isSuperAdmin,
     isManager: profile?.role === "master",
     isHr: profile?.role === "hr",
+    isLeitor: profile?.role === "viewer",
     isTester: profile?.is_test === true || (import.meta.env.DEV && isSuperAdmin),
     level,
     can,
-    canSeeCheckinLog: isSuperAdmin || profile?.role === "hr",
+    // o leitor também acompanha o log (só leitura) e baixa os relatórios
+    canSeeCheckinLog: isSuperAdmin || profile?.role === "hr" || profile?.role === "viewer",
     signOut: async () => {
       writeCache(null);
       await supabase.auth.signOut();
     },
-    refreshProfile: async () => { if (session?.user) await loadProfile(session.user.id); },
+    refreshProfile: async () => {
+      if (session?.user) await loadProfile(session.user.id);
+    },
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

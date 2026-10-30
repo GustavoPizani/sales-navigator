@@ -5,6 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { secondaryAdmin } from "@/integrations/supabase/secondary.server";
 import { CANAIS_FORA_LEN } from "@/lib/coleta/carga";
 import { ehCargaCompleta, periodoColetado, type ColetaPeriodo } from "@/lib/coleta/periodo";
+import { exigirLeituraAnalise, INICIO_LEITOR } from "@/lib/analise-acesso.server";
 
 // Central de coleta (Hypnobox + dash da LEN). O extrator roda no PC do ADM e
 // coleta; aqui o servidor lê o banco novo e grava a carga. Dados de contato são
@@ -555,7 +556,11 @@ export const lerParteLen = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }): Promise<ParteLen> => {
-    await exigirAdmin(context);
+    // ler o dash da LEN de outro período também vale para o leitor da análise,
+    // a partir de INICIO_LEITOR
+    const { admin } = await exigirLeituraAnalise(context);
+    const de = !admin && data.de < INICIO_LEITOR ? INICIO_LEITOR : data.de;
+    if (de > data.ate) throw new Error("Período antes do início liberado para a análise.");
     const { lerTarefaLen } = await import("./coleta/len.server");
-    return (await lerTarefaLen(data.indice, data.de, data.ate)) as ParteLen;
+    return (await lerTarefaLen(data.indice, de, data.ate)) as ParteLen;
   });

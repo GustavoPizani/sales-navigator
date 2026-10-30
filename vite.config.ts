@@ -32,6 +32,9 @@ export default defineConfig({
     // o CORS do servidor de desenvolvimento respondia ao preflight antes das rotas
     // (/api/ext e /api/mcp têm CORS próprio): desligado, o local se comporta como a Vercel
     server: { cors: false },
+    // o pdfjs-dist só é importado sob demanda (leitor e capas): pré-empacotado na
+    // largada, o Vite não o reempacota com a página aberta (o que quebrava o import)
+    optimizeDeps: { include: ["pdfjs-dist"] },
     ...(isBuild ? { ssr: { noExternal: true } } : {}),
   },
 });

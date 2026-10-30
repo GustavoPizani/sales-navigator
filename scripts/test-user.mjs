@@ -6,6 +6,7 @@
 //   node scripts/test-user.mjs cliente          cria o cliente (lead) de teste TESTE-001
 //   node scripts/test-user.mjs admin
 //   node scripts/test-user.mjs rh
+//   node scripts/test-user.mjs leitor            (requer 20261030000002_leitor_cargo.sql)
 //   node scripts/test-user.mjs gerente
 //   node scripts/test-user.mjs corretor [nome ou e-mail do gerente]
 //
@@ -92,6 +93,9 @@ if (cmd === "status") {
 } else if (cmd === "admin" || cmd === "rh") {
   await setRole(cmd === "admin" ? "admin" : "hr", null);
   console.log(`Conta de teste agora é ${cmd === "admin" ? "ADM" : "RH"}.`);
+} else if (cmd === "leitor") {
+  await setRole("viewer", null);
+  console.log("Conta de teste agora é Leitor.");
 } else if (cmd === "gerente") {
   // gerente fica abaixo do admin real, como os demais
   const [adm] = await rest(`profiles?select=id&role=eq.admin&is_test=eq.false&order=created_at&limit=1`);

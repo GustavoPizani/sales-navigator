@@ -1,6 +1,6 @@
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, LogOut } from "lucide-react";
+import { ArrowRight, ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLE_LABELS, isTabActive, useNavTabs, type NavTab } from "@/components/nav/useNavTabs";
@@ -12,42 +12,52 @@ export const SIDEBAR_WIDTH = { expanded: "16rem", collapsed: "4.75rem" };
 const labelCls = (collapsed: boolean) =>
   `truncate transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100 delay-75"}`;
 
+/** Lê/grava uma preferência deste navegador (sem armazenamento, fica o padrão). */
+function lerPref(chave: string, padrao: boolean) {
+  try {
+    const v = localStorage.getItem(chave);
+    return v === null ? padrao : v === "1";
+  } catch {
+    return padrao;
+  }
+}
+function gravarPref(chave: string, v: boolean) {
+  try {
+    localStorage.setItem(chave, v ? "1" : "0");
+  } catch {
+    /* navegador sem armazenamento */
+  }
+}
+
 /**
  * Navegação do desktop (no celular é a BottomNav). Colada à esquerda, com a
  * mesma cor e altura do cabeçalho (AppHeader): os dois formam uma moldura em
- * "L" que abraça o conteúdo. Fica como um trilho de ícones e abre ao passar
- * o mouse (ou ao navegar por teclado), por cima do conteúdo, sem empurrá-lo.
+ * "L" que abraça o conteúdo. Abre e fecha pelo botão do topo (fica lembrado);
+ * aberta, empurra o conteúdo (--sidebar-w).
  */
 export function Sidebar() {
   const tabs = useNavTabs();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { profile, signOut } = useAuth();
-  const [open, setOpen] = useState(false);
-  const closeTimer = useRef<number | undefined>(undefined);
+  const [open, setOpen] = useState(() => lerPref("sidebar:aberta", false));
   const collapsed = !open;
-  const expand = () => {
-    window.clearTimeout(closeTimer.current);
-    setOpen(true);
-  };
-  // pequeno atraso ao sair, para não fechar em um deslize do mouse
-  const scheduleClose = () => {
-    window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(() => setOpen(false), 100);
-  };
-  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+  const alternar = () =>
+    setOpen((o) => {
+      gravarPref("sidebar:aberta", !o);
+      return !o;
+    });
+  // largura atual para o conteúdo (e o painel do Dashboard Hypnobox) se ajustarem
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--sidebar-w",
+      open ? SIDEBAR_WIDTH.expanded : SIDEBAR_WIDTH.collapsed,
+    );
+  }, [open]);
 
   return (
     <aside
-      onMouseEnter={expand}
-      onMouseLeave={scheduleClose}
-      onFocus={expand}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) scheduleClose();
-      }}
-      className={`app-sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 flex-col text-white overflow-hidden will-change-[width] transition-[width,box-shadow] duration-200 ease-out motion-reduce:transition-none ${
-        open ? "shadow-[8px_0_32px_rgba(0,0,0,0.28)]" : ""
-      }`}
+      className="app-sidebar hidden lg:flex fixed left-0 top-0 bottom-0 z-40 flex-col text-white overflow-hidden will-change-[width] transition-[width] duration-200 ease-out motion-reduce:transition-none"
       style={{ width: collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded }}
       aria-label="Navegação principal"
     >
@@ -65,6 +75,21 @@ export function Sidebar() {
           </p>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={alternar}
+        aria-expanded={open}
+        aria-label={open ? "Recolher o menu" : "Abrir o menu"}
+        title={open ? "Recolher o menu" : "Abrir o menu"}
+        className={`mx-3 mb-1 flex h-9 flex-shrink-0 items-center gap-3 rounded-lg pl-[14px] pr-3 text-sm text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]`}
+      >
+        {open ? (
+          <PanelLeftClose size={18} className="flex-shrink-0" aria-hidden />
+        ) : (
+          <PanelLeftOpen size={18} className="flex-shrink-0" aria-hidden />
+        )}
+        <span className={labelCls(collapsed)}>Recolher menu</span>
+      </button>
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <SectionLabel collapsed={collapsed}>Menu</SectionLabel>
@@ -85,7 +110,8 @@ export function Sidebar() {
         {profile && (
           <ProfileCard
             name={profile.full_name}
-            role={ROLE_LABELS[profile.role] ?? profile.role}
+            // o leitor não mostra o cargo no cartão
+            role={profile.role === "viewer" ? null : (ROLE_LABELS[profile.role] ?? profile.role)}
             color={profile.color}
             avatarUrl={profile.avatar_url}
             active={pathname.startsWith("/settings/profile")}
@@ -140,8 +166,12 @@ function SidebarItem({
   collapsed: boolean;
 }) {
   const Icon = tab.icon;
+  const search = useSearch({ strict: false }) as { tab?: string };
+  // seções da tela (Dashboard Hypnobox): dá para encolher (fica lembrado)
+  const [secoes, setSecoes] = useState(() => lerPref("sidebar:secoes:" + tab.to, true));
+  const mostrarSecoes = active && !!tab.subs && !collapsed;
   return (
-    <li>
+    <li className="relative">
       <Link
         to={tab.to}
         aria-current={active ? "page" : undefined}
@@ -156,13 +186,70 @@ function SidebarItem({
         <span className={labelCls(collapsed)}>{tab.label}</span>
         {tab.beta &&
           (collapsed ? (
-            <span className="absolute left-[28px] top-1.5 h-2 w-2 rounded-full bg-red-600" aria-label="Beta" />
+            <span
+              className="absolute left-[28px] top-1.5 h-2 w-2 rounded-full bg-red-600"
+              aria-label="Beta"
+            />
           ) : (
             <span className="ml-auto rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold leading-none tracking-wide text-white">
               BETA
             </span>
           ))}
       </Link>
+      {mostrarSecoes && (
+        <button
+          type="button"
+          onClick={() =>
+            setSecoes((v) => {
+              gravarPref("sidebar:secoes:" + tab.to, !v);
+              return !v;
+            })
+          }
+          aria-expanded={secoes}
+          aria-label={secoes ? "Encolher as seções" : "Mostrar as seções"}
+          title={secoes ? "Encolher as seções" : "Mostrar as seções"}
+          className="absolute right-1.5 top-2 flex h-6 w-6 items-center justify-center rounded-md text-white/80 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <ChevronDown
+            size={15}
+            aria-hidden
+            className={`transition-transform ${secoes ? "" : "-rotate-90"}`}
+          />
+        </button>
+      )}
+      {/* abas da tela aberta (seções do Dashboard Hypnobox para o leitor) */}
+      {mostrarSecoes && secoes && (
+        <div className="mt-1 mb-2 ml-[26px] border-l border-white/10 pl-3">
+          {(tab.subs ?? []).map((g) => (
+            <div key={g.grupo} className="mt-1.5 first:mt-0">
+              <p className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+                {g.grupo}
+              </p>
+              <ul>
+                {g.itens.map((s) => {
+                  const atual = (search.tab ?? undefined) === s.tab;
+                  return (
+                    <li key={s.label}>
+                      <Link
+                        to={tab.to}
+                        search={s.tab ? { tab: s.tab } : {}}
+                        aria-current={atual ? "page" : undefined}
+                        className={`block truncate rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+                          atual
+                            ? "font-semibold text-[var(--gold)]"
+                            : "text-white/60 hover:bg-white/[0.06] hover:text-white"
+                        }`}
+                      >
+                        {s.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
     </li>
   );
 }
@@ -181,7 +268,7 @@ function ProfileCard({
   collapsed,
 }: {
   name: string;
-  role: string;
+  role: string | null;
   color: string;
   avatarUrl: string | null;
   active: boolean;
@@ -216,10 +303,12 @@ function ProfileCard({
         className={`relative min-w-0 flex-1 transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100 delay-75"}`}
       >
         <span className="block truncate text-sm font-semibold leading-tight">{name}</span>
-        <span className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium text-white/75">
-          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[var(--gold)]" />
-          <span className="truncate">{role}</span>
-        </span>
+        {role && (
+          <span className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium text-white/75">
+            <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[var(--gold)]" />
+            <span className="truncate">{role}</span>
+          </span>
+        )}
         <span className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-[var(--gold)]">
           Minha conta
           <ArrowRight

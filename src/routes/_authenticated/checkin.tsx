@@ -28,16 +28,19 @@ type Tab = "monitor" | "qr" | "log" | "rules";
 // Check-in da roleta:
 //   corretor → faz o check-in (GPS; pelo app ou escaneando o QR code) e acompanha o status;
 //   gerente  → acompanha os check-ins da equipe e mostra o QR code;
-//   admin    → acompanha todos os turnos, decide vagas, gera o QR code, vê o log e configura as regras.
+//   admin    → acompanha todos os turnos, decide vagas, gera o QR code, vê o log e configura as regras;
+//   leitor   → só acompanha os turnos de todas as equipes.
 function CheckinPage() {
-  const { profile, isSuperAdmin, canSeeCheckinLog } = useAuth();
+  const { profile, isSuperAdmin, isLeitor, canSeeCheckinLog } = useAuth();
   const [tab, setTab] = useState<Tab>("monitor");
   const isBroker = profile?.role === "broker";
 
   const tabs: [Tab, string, React.ElementType][] = [
     ["monitor", "Turno", Radar],
-    ["qr", "QR code", QrCode],
-    ...(canSeeCheckinLog ? ([["log", "Log", ScrollText]] as [Tab, string, React.ElementType][]) : []),
+    ...(isLeitor ? [] : ([["qr", "QR code", QrCode]] as [Tab, string, React.ElementType][])),
+    ...(canSeeCheckinLog
+      ? ([["log", "Log", ScrollText]] as [Tab, string, React.ElementType][])
+      : []),
     ...(isSuperAdmin
       ? ([["rules", "Regras", Settings2]] as [Tab, string, React.ElementType][])
       : []),
@@ -78,7 +81,7 @@ function CheckinPage() {
               <CheckinRules />
             ) : tab === "log" && canSeeCheckinLog ? (
               <CheckinLog embedded />
-            ) : tab === "qr" ? (
+            ) : tab === "qr" && !isLeitor ? (
               <CheckinQr />
             ) : (
               <TurnMonitor canDecide={isSuperAdmin} />
